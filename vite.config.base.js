@@ -38,7 +38,8 @@ export async function createWikiConfig(options = {}) {
     try {
       const { loggerPlugin } = await import('./vite-plugin-logger.js');
       const { githubProxyPlugin } = await import('./vite-plugin-github-proxy.js');
-      devPlugins = [loggerPlugin(), githubProxyPlugin()];
+      const { imageDbPlugin } = await import('./vite-plugin-image-db.js');
+      devPlugins = [loggerPlugin(), githubProxyPlugin(), imageDbPlugin()];
     } catch (error) {
       console.warn('Dev plugins not available:', error.message);
     }
@@ -106,6 +107,18 @@ export function createWikiConfigSync(options = {}) {
 
   // Branch detection plugin (runs in both dev and prod)
   const branchPlugin = branchDetectionPlugin();
+
+  // Import dev plugins synchronously in development mode
+  let devPlugins = [];
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      // ESM doesn't support synchronous imports, so we need to use top-level imports
+      // For now, user must import and pass these plugins manually or use async version
+      console.log('[Wiki Config] Using sync config. Dev plugins should be passed via options.plugins');
+    } catch (error) {
+      console.warn('Dev plugins not available:', error.message);
+    }
+  }
 
   return defineConfig({
     plugins: [
