@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { getAnonymousEditLabels, ensureAllWikiLabels } from './issueLabels';
 
 /**
  * GitHub Issues-based anonymous edit service
@@ -19,14 +20,45 @@ export const submitAnonymousEditViaIssues = async (owner, repo, editData) => {
 
   console.log('[Anonymous Edit - Serverless] Creating issue...');
 
-  // Prepare issue body with JSON data
-  const issueBody = `## Anonymous Edit Request
+  // Ensure labels exist first (will be fast after first run - labels are cached)
+  try {
+    await ensureAllWikiLabels(owner, repo);
+  } catch (error) {
+    console.warn('[Anonymous Edit - Serverless] Could not ensure labels:', error.message);
+    // Continue anyway - workflow can still work
+  }
 
-This is an automated issue created by the wiki editor for processing an anonymous edit.
+  // Prepare structured issue body
+  const pageTitle = editData.metadata?.title || editData.pageId;
+  const sectionTitle = editData.section.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-**DO NOT EDIT THIS ISSUE**
+  const issueBody = `## 🕶️ Anonymous Wiki Edit Request
 
-### Edit Data
+> **This is an automated issue** created by the wiki editor.
+> **DO NOT EDIT** - Will be processed automatically by GitHub Actions.
+
+### 📄 Page Information
+
+| Field | Value |
+|-------|-------|
+| **Page Title** | ${pageTitle} |
+| **Section** | ${sectionTitle} (\`${editData.section}\`) |
+| **Page ID** | \`${editData.pageId}\` |
+| **File Path** | \`${editData.filePath}\` |
+
+### 📝 Edit Summary
+
+${editData.editSummary || '*No summary provided*'}
+
+### 📊 Content Stats
+
+- **Content Length**: ${editData.content.length} bytes
+- **Lines**: ${editData.content.split('\n').length}
+- **Timestamp**: ${new Date().toISOString()}
+
+---
+
+### 🤖 Edit Data (For Automation)
 
 \`\`\`json
 ${JSON.stringify(editData, null, 2)}
@@ -34,20 +66,26 @@ ${JSON.stringify(editData, null, 2)}
 
 ---
 
-This issue will be automatically processed by GitHub Actions and closed once complete.`;
+⚙️ **Status**: 🟡 Waiting for GitHub Actions to process...
+
+This issue will be automatically processed and closed once the edit request is created.`;
 
   try {
-    // Create issue with special label
+    // Get appropriate labels
+    const labels = getAnonymousEditLabels(editData.section);
+
+    // Create issue with comprehensive labels
     const { data: issue } = await octokit.rest.issues.create({
       owner,
       repo,
-      title: `[Anonymous Edit] ${editData.metadata?.title || editData.pageId}`,
+      title: `🕶️ [${sectionTitle}] ${pageTitle}`,
       body: issueBody,
-      labels: ['anonymous-edit-request'],
+      labels: labels,
     });
 
     console.log(`[Anonymous Edit - Serverless] Issue created: #${issue.number}`);
     console.log(`[Anonymous Edit - Serverless] URL: ${issue.html_url}`);
+    console.log(`[Anonymous Edit - Serverless] Labels applied: ${labels.join(', ')}`);
 
     return {
       issueNumber: issue.number,
