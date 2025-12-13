@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import matter from 'gray-matter';
 import { useSection } from '../hooks/useWikiConfig';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
@@ -13,30 +12,37 @@ const SectionPage = ({ sectionId }) => {
   const [loading, setLoading] = useState(true);
   const [indexContent, setIndexContent] = useState(null);
   const [indexMetadata, setIndexMetadata] = useState(null);
+  const [pages, setPages] = useState([]);
 
   useEffect(() => {
-    const loadSectionIndex = async () => {
+    const loadSectionData = async () => {
       try {
         setLoading(true);
 
-        // Try to load index.md for the section
-        // Use import.meta.env.BASE_URL to respect Vite's base path
-        const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/index.md`);
-
-        if (response.ok) {
-          const markdownText = await response.text();
-          const { data, content } = matter(markdownText);
-          setIndexMetadata(data);
-          setIndexContent(content);
+        // Load search index to get list of pages
+        const searchResponse = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
+        console.log('Search index response:', searchResponse.status, searchResponse.ok);
+        if (searchResponse.ok) {
+          const searchIndex = await searchResponse.json();
+          console.log('Total pages in search index:', searchIndex.length);
+          const sectionPages = searchIndex
+            .filter(page => page.section === sectionId && page.pageId !== 'index')
+            .sort((a, b) => a.title.localeCompare(b.title));
+          console.log(`Pages found for section "${sectionId}":`, sectionPages.length, sectionPages);
+          setPages(sectionPages);
+        } else {
+          console.error('Failed to load search index:', searchResponse.status);
         }
       } catch (err) {
-        console.error('Error loading section index:', err);
+        console.error('Error loading section data:', err);
+        console.error('Error message:', err?.message);
+        console.error('Error stack:', err?.stack);
       } finally {
         setLoading(false);
       }
     };
 
-    loadSectionIndex();
+    loadSectionData();
   }, [sectionId]);
 
   if (!section) {
@@ -65,55 +71,67 @@ const SectionPage = ({ sectionId }) => {
       {/* Section header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">
-          {indexMetadata?.title || section.title}
+          {section.title}
         </h1>
-        {indexMetadata?.description && (
-          <p className="text-lg text-gray-600 dark:text-gray-400">
-            {indexMetadata.description}
-          </p>
-        )}
+        <p className="text-lg text-gray-600 dark:text-gray-400">
+          Browse all pages in this section
+        </p>
       </div>
 
-      {/* Section content from index.md */}
-      {indexContent && (
-        <div className="prose prose-lg dark:prose-dark max-w-none mb-12">
-          <p className="text-gray-700 dark:text-gray-300">{indexContent}</p>
+      {/* Dynamic page list */}
+      {pages.length > 0 ? (
+        <div className="space-y-3">
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+            Pages in this section
+          </h2>
+          {pages.map((page) => (
+            <Link
+              key={page.id}
+              to={`/${page.section}/${page.pageId}`}
+              className="block p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-gray-900 dark:text-white">
+                    {page.title}
+                  </h3>
+                  {page.description && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      {page.description}
+                    </p>
+                  )}
+                  {page.tags && page.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {page.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+            No pages yet
+          </h2>
+          <p className="text-gray-700 dark:text-gray-300">
+            Create markdown files in <code className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 rounded text-sm">
+              /public/content/{section.path}/
+            </code> to populate this section.
+          </p>
         </div>
       )}
-
-      {/* Placeholder for page list - will be enhanced in Phase 2 */}
-      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-          Pages in this section
-        </h2>
-        <p className="text-gray-700 dark:text-gray-300 mb-4">
-          Create markdown files in <code className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 rounded text-sm">
-            /public/content/{section.path}/
-          </code> to populate this section.
-        </p>
-
-        {/* Example pages - will be dynamically loaded in Phase 2 */}
-        <div className="space-y-2">
-          <Link
-            to={`/${section.path}/index`}
-            className="block p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium text-gray-900 dark:text-white">
-                  {indexMetadata?.title || 'Introduction'}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {indexMetadata?.description || 'Section overview'}
-                </p>
-              </div>
-              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </div>
-          </Link>
-        </div>
-      </div>
     </div>
   );
 };

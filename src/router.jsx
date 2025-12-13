@@ -10,6 +10,7 @@ const PageHistoryPage = lazy(() => import('./pages/PageHistoryPage'));
 const PageEditorPage = lazy(() => import('./pages/PageEditorPage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
+const BuildViewerPage = lazy(() => import('./pages/BuildViewerPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Suspense wrapper component for lazy-loaded pages
@@ -51,6 +52,14 @@ export const createWikiRouter = (config) => {
           element: (
             <SuspenseWrapper>
               <SearchPage />
+            </SuspenseWrapper>
+          ),
+        },
+        {
+          path: 'build',
+          element: (
+            <SuspenseWrapper>
+              <BuildViewerPage />
             </SuspenseWrapper>
           ),
         },

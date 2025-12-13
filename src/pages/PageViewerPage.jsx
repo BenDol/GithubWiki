@@ -60,7 +60,10 @@ const PageViewerPage = ({ sectionId }) => {
         cachePage(cacheKey, markdownContent, data);
       } catch (err) {
         console.error('Error loading page:', err);
-        setError(err.message);
+        console.error('Error message:', err?.message);
+        console.error('Error stack:', err?.stack);
+        console.error('Error name:', err?.name);
+        setError(err.message || 'Failed to load page');
       } finally {
         setLoading(false);
       }

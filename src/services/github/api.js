@@ -95,31 +95,39 @@ export const getFileContent = async (owner, repo, path, ref = 'main') => {
  */
 export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) => {
   const octokit = getOctokit();
-  const { data } = await octokit.rest.repos.listCommits({
-    owner,
-    repo,
-    path,
-    page,
-    per_page: perPage,
-  });
+  try {
+    const { data } = await octokit.rest.repos.listCommits({
+      owner,
+      repo,
+      path,
+      page,
+      per_page: perPage,
+    });
 
-  return data.map(commit => ({
-    sha: commit.sha,
-    message: commit.commit.message,
-    author: {
-      name: commit.commit.author.name,
-      email: commit.commit.author.email,
-      date: commit.commit.author.date,
-      avatar: commit.author?.avatar_url,
-      username: commit.author?.login,
-    },
-    committer: {
-      name: commit.commit.committer.name,
-      date: commit.commit.committer.date,
-    },
-    url: commit.html_url,
-    parents: commit.parents,
-  }));
+    return data.map(commit => ({
+      sha: commit.sha,
+      message: commit.commit.message,
+      author: {
+        name: commit.commit.author.name,
+        email: commit.commit.author.email,
+        date: commit.commit.author.date,
+        avatar: commit.author?.avatar_url,
+        username: commit.author?.login,
+      },
+      committer: {
+        name: commit.commit.committer.name,
+        date: commit.commit.committer.date,
+      },
+      url: commit.html_url,
+      parents: commit.parents,
+    }));
+  } catch (error) {
+    // Handle 404 (file not in repo) or 500 (file path doesn't exist)
+    if (error.status === 404 || error.status === 500 || error.status === 409) {
+      return []; // Return empty array for files not yet in repo
+    }
+    throw error;
+  }
 };
 
 /**

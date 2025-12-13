@@ -36,11 +36,19 @@ const PageHistory = ({ sectionId, pageId }) => {
 
   if (commits.length === 0) {
     return (
-      <div className="text-center py-12">
-        <svg className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-8 text-center">
+        <svg className="w-16 h-16 mx-auto mb-4 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p className="text-gray-600 dark:text-gray-400">No history available for this page</p>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+          No History Yet
+        </h3>
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          This page hasn't been committed to the GitHub repository yet.
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-500">
+          History will appear once the page is pushed to GitHub.
+        </p>
       </div>
     );
   }
