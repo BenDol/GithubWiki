@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { loggerPlugin } from './vite-plugin-logger.js';
+import { githubProxyPlugin } from './vite-plugin-github-proxy.js';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), loggerPlugin(), githubProxyPlugin()],
   base: '/wiki/', // Replace with your repo name
   build: {
     outDir: 'dist',

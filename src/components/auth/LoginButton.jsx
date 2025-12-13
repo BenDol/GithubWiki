@@ -38,6 +38,8 @@ const LoginButton = () => {
       }
     } catch (err) {
       console.error('Login failed:', err);
+      console.error('Error message:', err?.message);
+      console.error('Error details:', JSON.stringify(err, null, 2));
     }
   };
 

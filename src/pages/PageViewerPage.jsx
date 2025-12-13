@@ -41,7 +41,8 @@ const PageViewerPage = ({ sectionId }) => {
         }
 
         // Load markdown file from public/content/
-        const response = await fetch(`/content/${sectionId}/${pageId}.md`);
+        // Use import.meta.env.BASE_URL to respect Vite's base path
+        const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md`);
 
         if (!response.ok) {
           throw new Error('Page not found');

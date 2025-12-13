@@ -1,0 +1,1 @@
+* Always check logs via `/logs/debug.log` for info and error results.

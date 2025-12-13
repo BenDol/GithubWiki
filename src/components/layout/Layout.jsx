@@ -3,11 +3,26 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import Footer from './Footer';
 import ToastContainer from '../common/ToastContainer';
+import DevPanel from '../common/DevPanel';
+import { useDevStore } from '../../store/devStore';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 /**
  * Main layout component that wraps all pages
  */
 const Layout = () => {
+  const { toggleDevPanel } = useDevStore();
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    {
+      key: 'd',
+      ctrl: true,
+      shift: true,
+      handler: () => toggleDevPanel(),
+    },
+  ]);
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       <Header />
@@ -26,6 +41,9 @@ const Layout = () => {
 
       {/* Toast notifications */}
       <ToastContainer />
+
+      {/* Developer Tools Panel */}
+      <DevPanel />
     </div>
   );
 };

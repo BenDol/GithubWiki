@@ -370,6 +370,49 @@ npm run build:search
 npm run lint
 ```
 
+### Developer Tools & Debugging
+
+The wiki includes a powerful **Developer Tools Panel** for debugging:
+
+#### Opening the Dev Panel
+
+Press **`Ctrl+Shift+D`** or click the "🛠️ Dev Tools" button in the bottom-right corner.
+
+#### Features
+
+- **Live Error Tracking**: See all errors and warnings in real-time
+- **Console Logs**: Captures all `console.log()`, `console.error()`, etc.
+- **Filter by Type**: View All, Errors, Warnings, Info, or Success messages
+- **Export Logs**: Download logs as a text file
+- **Persistent Logging**: Logs are saved to `logs/debug.log` for easy access
+
+#### Log File Location
+
+All logs are automatically written to:
+```
+C:\Projects\slayerlegend\wiki\logs\debug.log
+```
+
+This allows AI assistants (like Claude) to read logs directly without you needing to copy/paste them.
+
+**Example usage:**
+```
+User: "Read the logs"
+Claude: *reads logs/debug.log and analyzes errors*
+```
+
+#### Keyboard Shortcuts
+
+- **`Ctrl+Shift+D`** - Toggle Developer Tools Panel
+- **`Ctrl+K`** - Open Search (Quick Search)
+
+#### Clearing Logs
+
+- **Clear Panel**: Removes logs from the UI panel
+- **Clear File**: Erases `logs/debug.log` on disk
+
+See [logs/README.md](./logs/README.md) for more details about logging.
+
 ### Tech Stack
 
 - **Framework**: React 18

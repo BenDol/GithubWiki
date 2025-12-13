@@ -20,7 +20,8 @@ const SectionPage = ({ sectionId }) => {
         setLoading(true);
 
         // Try to load index.md for the section
-        const response = await fetch(`/content/${sectionId}/index.md`);
+        // Use import.meta.env.BASE_URL to respect Vite's base path
+        const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/index.md`);
 
         if (response.ok) {
           const markdownText = await response.text();

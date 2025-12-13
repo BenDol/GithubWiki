@@ -15,7 +15,8 @@ export const useSearch = () => {
     const loadSearchIndex = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/search-index.json');
+        // Use import.meta.env.BASE_URL to respect Vite's base path
+        const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
 
         if (!response.ok) {
           throw new Error('Failed to load search index');

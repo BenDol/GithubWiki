@@ -4,36 +4,100 @@
  */
 
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
-const DEVICE_CODE_URL = 'https://github.com/login/device/code';
-const TOKEN_URL = 'https://github.com/login/oauth/access_token';
+
+// Use proxy endpoints in development to avoid CORS issues
+const DEVICE_CODE_URL = import.meta.env.DEV
+  ? '/api/github/device-code'
+  : 'https://github.com/login/device/code';
+
+const TOKEN_URL = import.meta.env.DEV
+  ? '/api/github/access-token'
+  : 'https://github.com/login/oauth/access_token';
+
 const USER_URL = 'https://api.github.com/user';
+
+// Debug: Log environment variables
+console.log('GitHub Auth Configuration:', {
+  VITE_GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID,
+  DEV_MODE: import.meta.env.DEV,
+  USING_PROXY: import.meta.env.DEV ? 'YES (via /api/github/*)' : 'NO (direct to GitHub)',
+  DEVICE_CODE_URL,
+  TOKEN_URL,
+});
+
+/**
+ * Test GitHub connectivity
+ */
+const testGitHubConnectivity = async () => {
+  try {
+    console.log('Testing GitHub connectivity...');
+    const response = await fetch('https://api.github.com/zen', { method: 'GET' });
+    const text = await response.text();
+    console.log('GitHub connectivity test SUCCESS:', text);
+    return true;
+  } catch (error) {
+    console.error('GitHub connectivity test FAILED:', error);
+    return false;
+  }
+};
 
 /**
  * Start GitHub Device Flow authentication
  * Returns device code and user verification URL
  */
 export const initiateDeviceFlow = async () => {
+  console.log('Attempting to initiate device flow with Client ID:', GITHUB_CLIENT_ID);
+
   if (!GITHUB_CLIENT_ID) {
+    console.error('GITHUB_CLIENT_ID is undefined or empty!');
+    console.error('All env vars:', import.meta.env);
     throw new Error('GitHub Client ID not configured. Please set VITE_GITHUB_CLIENT_ID in .env.local');
   }
 
-  const response = await fetch(DEVICE_CODE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      client_id: GITHUB_CLIENT_ID,
-      scope: 'repo read:user user:email',
-    }),
-  });
+  // Test connectivity first
+  await testGitHubConnectivity();
+
+  let response;
+  try {
+    response = await fetch(DEVICE_CODE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: GITHUB_CLIENT_ID,
+        scope: 'repo read:user user:email',
+      }),
+    });
+  } catch (fetchError) {
+    console.error('Fetch error details:', fetchError);
+    console.error('Error name:', fetchError.name);
+    console.error('Error message:', fetchError.message);
+    throw new Error(
+      `Network error: Unable to connect to GitHub. This could be due to:\n` +
+      `1. CORS blocking (browser security)\n` +
+      `2. Network connectivity issues\n` +
+      `3. Ad blocker or security extension\n` +
+      `4. Firewall blocking GitHub API\n\n` +
+      `Original error: ${fetchError.message}`
+    );
+  }
 
   if (!response.ok) {
-    throw new Error('Failed to initiate device flow');
+    const errorText = await response.text();
+    console.error('GitHub API Error:', errorText);
+    throw new Error(`Failed to initiate device flow: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
+
+  // Log the response for debugging
+  console.log('Device flow initiated:', {
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    expiresIn: data.expires_in,
+  });
 
   return {
     deviceCode: data.device_code,
