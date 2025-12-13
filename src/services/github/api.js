@@ -259,6 +259,8 @@ export const createPullRequest = async (owner, repo, title, body, head, base = '
   }
   const octokit = getOctokit();
 
+  console.log(`[API] Creating PR: ${head} -> ${base}`);
+
   const { data } = await octokit.rest.pulls.create({
     owner,
     repo,
@@ -268,12 +270,15 @@ export const createPullRequest = async (owner, repo, title, body, head, base = '
     base,
   });
 
+  console.log(`[API] PR created #${data.number} targeting ${base}`);
+
   return {
     number: data.number,
     url: data.html_url,
     state: data.state,
     title: data.title,
     body: data.body,
+    base: data.base.ref,
     createdAt: data.created_at,
     user: {
       username: data.user.login,

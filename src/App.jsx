@@ -3,6 +3,7 @@ import { RouterProvider } from 'react-router-dom';
 import { useWikiConfig } from './hooks/useWikiConfig';
 import { useAuthStore } from './store/authStore';
 import { createWikiRouter } from './router';
+import { BranchProvider } from './hooks/useBranchNamespace';
 
 function App() {
   const { config, loading, error } = useWikiConfig();
@@ -47,7 +48,11 @@ function App() {
   // Create router with loaded config
   const router = createWikiRouter(config);
 
-  return <RouterProvider router={router} />;
+  return (
+    <BranchProvider>
+      <RouterProvider router={router} />
+    </BranchProvider>
+  );
 }
 
 export default App;

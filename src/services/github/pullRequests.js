@@ -107,21 +107,31 @@ export const generatePRTitle = (pageTitle, sectionTitle) => {
 /**
  * Get all pull requests for a user in a repository
  */
-export const getUserPullRequests = async (owner, repo, username) => {
+export const getUserPullRequests = async (owner, repo, username, baseBranch = null) => {
   const octokit = getOctokit();
 
-  // Get all pull requests created by the user
-  const { data } = await octokit.rest.pulls.list({
+  const listParams = {
     owner,
     repo,
     state: 'all',
     sort: 'created',
     direction: 'desc',
     per_page: 100,
-  });
+  };
+
+  // Add base branch filter if provided
+  if (baseBranch) {
+    listParams.base = baseBranch;
+    console.log(`[PR Filter] Filtering PRs by base branch: ${baseBranch}`);
+  }
+
+  // Get all pull requests (filtered by base if provided)
+  const { data } = await octokit.rest.pulls.list(listParams);
 
   // Filter to only PRs created by the current user
   const userPRs = data.filter(pr => pr.user.login === username);
+
+  console.log(`[PR Filter] Found ${userPRs.length} PRs by ${username}${baseBranch ? ` targeting ${baseBranch}` : ''}`);
 
   // Fetch detailed information for each PR to get diff stats
   const detailedPRs = await Promise.all(

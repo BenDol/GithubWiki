@@ -10,13 +10,17 @@ import { getOctokit } from './api';
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} pageTitle - Page title
+ * @param {string} branch - Branch name for namespace filtering
  * @returns {Promise<Object|null>} Issue object or null if not found
  */
-export const findPageIssue = async (owner, repo, pageTitle) => {
+export const findPageIssue = async (owner, repo, pageTitle, branch) => {
   const octokit = getOctokit();
 
-  // Search for existing issue with this page title
-  const searchQuery = `repo:${owner}/${repo} is:issue in:title "${pageTitle}"`;
+  // Search for existing issue with this page title AND branch label
+  const branchLabel = `branch:${branch}`;
+  const searchQuery = `repo:${owner}/${repo} is:issue label:"${branchLabel}" in:title "${pageTitle}"`;
+
+  console.log(`[Comments] Searching for page issue in branch: ${branch}`);
 
   try {
     const { data: searchResults } = await octokit.rest.search.issuesAndPullRequests({
@@ -41,26 +45,31 @@ export const findPageIssue = async (owner, repo, pageTitle) => {
  * @param {string} repo - Repository name
  * @param {string} pageTitle - Page title
  * @param {string} pageUrl - Page URL
+ * @param {string} branch - Branch name for namespace
  * @returns {Promise<Object>} Issue object
  */
-export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl) => {
+export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, branch) => {
   const octokit = getOctokit();
 
   // First try to find existing issue
-  const existingIssue = await findPageIssue(owner, repo, pageTitle);
+  const existingIssue = await findPageIssue(owner, repo, pageTitle, branch);
   if (existingIssue) {
     return existingIssue;
   }
 
   // Create new issue for this page (requires authentication)
+  const branchLabel = `branch:${branch}`;
+
   try {
     const { data: newIssue } = await octokit.rest.issues.create({
       owner,
       repo,
       title: `Comments: ${pageTitle}`,
-      body: `💬 **Comments for:** ${pageTitle}\n\n🔗 **Page URL:** ${pageUrl}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!`,
-      labels: ['wiki-comments'],
+      body: `💬 **Comments for:** ${pageTitle}\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!`,
+      labels: ['wiki-comments', branchLabel],
     });
+
+    console.log(`[Comments] Created page issue for ${pageTitle} in branch: ${branch}`);
 
     return newIssue;
   } catch (error) {

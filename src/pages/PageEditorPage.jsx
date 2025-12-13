@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import matter from 'gray-matter';
 import { useAuthStore } from '../store/authStore';
 import { useWikiConfig, useSection } from '../hooks/useWikiConfig';
+import { useBranchNamespace } from '../hooks/useBranchNamespace';
 import { getFileContent, hasFileChanged, deleteFileContent } from '../services/github/content';
 import { createBranch, generateEditBranchName } from '../services/github/branches';
 import { updateFileContent } from '../services/github/content';
@@ -26,6 +27,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const { config } = useWikiConfig();
   const section = useSection(sectionId);
   const { isAuthenticated, user } = useAuthStore();
+  const { branch: currentBranch, loading: branchLoading } = useBranchNamespace();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -55,9 +57,9 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
 
   useEffect(() => {
     const loadPage = async () => {
-      // Wait for config and section to load before checking permissions
-      if (!config || !section) {
-        return; // Keep loading until both are available
+      // Wait for config, section, and branch to load before checking permissions
+      if (!config || !section || branchLoading) {
+        return; // Keep loading until all are available
       }
 
       if (!isAuthenticated) {
@@ -170,14 +172,14 @@ Include any supplementary details, notes, or related information.
     };
 
     loadPage();
-  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage]);
+  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading]);
 
   /**
    * Handle anonymous edit submission
    * Supports both server and serverless modes
    */
   const handleAnonymousSave = async (newContent, editSummary) => {
-    if (!config) return;
+    if (!config || branchLoading || !currentBranch) return;
 
     // For new pages, validate that pageId is set
     if (isNewPage && !newPageId.trim()) {
@@ -230,11 +232,13 @@ Include any supplementary details, notes, or related information.
       if (mode === 'serverless') {
         // Serverless mode: GitHub Issues + Actions
         console.log('[Anonymous Edit] Using serverless mode (GitHub Issues + Actions)');
+        console.log(`[Anonymous Edit] Branch: ${currentBranch}`);
 
         result = await submitAnonymousEdit(
           owner,
           repo,
           payload,
+          currentBranch,
           (status) => setSavingStatus(status)
         );
 
@@ -285,7 +289,7 @@ Include any supplementary details, notes, or related information.
       return handleAnonymousSave(newContent, editSummary);
     }
 
-    if (!config || !user) return;
+    if (!config || !user || branchLoading || !currentBranch) return;
 
     // For new pages, validate that pageId is set
     if (isNewPage && !newPageId.trim()) {
@@ -297,7 +301,8 @@ Include any supplementary details, notes, or related information.
       setIsSaving(true);
       setError(null);
 
-      const { owner, repo, contentPath, branch: baseBranch } = config.wiki.repository;
+      const { owner, repo, contentPath } = config.wiki.repository;
+      const baseBranch = currentBranch; // Use detected branch from context
       const currentPageId = isNewPage ? newPageId : pageId;
       const filePath = `${contentPath}/${sectionId}/${currentPageId}.md`;
 
@@ -467,7 +472,37 @@ Include any supplementary details, notes, or related information.
           targetRepo = fork.repo;
 
           console.log(`[PageEditor] ✓ Fork ready: ${fork.fullName}`);
-          setSavingStatus('Fork ready!');
+          setSavingStatus('');
+
+          // Check if fork needs manual sync
+          if (fork.needsManualSync && fork.outOfDate) {
+            const divergedWarning = fork.diverged
+              ? ' Your fork has also diverged, so you may need to resolve conflicts.'
+              : '';
+
+            const shouldContinue = window.confirm(
+              `🔄 Fork Sync Required\n\n` +
+              `Your fork is ${fork.behindBy} commit${fork.behindBy > 1 ? 's' : ''} behind the main repository.${divergedWarning}\n\n` +
+              `We'll open GitHub in a new tab where you can sync your fork with one click.\n\n` +
+              `Steps:\n` +
+              `1. Click OK to open the sync page\n` +
+              `2. Click "Sync fork" → "Update branch" on GitHub\n` +
+              `3. Come back here and try saving again\n\n` +
+              `(Or click Cancel to continue without syncing - may cause conflicts)`
+            );
+
+            if (shouldContinue) {
+              // Open fork page in new tab
+              window.open(fork.syncUrl, '_blank', 'noopener,noreferrer');
+
+              // Give user time to sync, then they can try again
+              setError(`Please sync your fork on GitHub (opened in new tab), then try saving again.`);
+              setIsSaving(false);
+              setSavingStatus('');
+              return;
+            }
+            // If they click Cancel, continue anyway (they accepted the risk)
+          }
         } catch (err) {
           console.error('[PageEditor] Failed to setup fork:', err);
           setError('Failed to setup your fork. Please try again or contact support.');
@@ -614,7 +649,7 @@ Include any supplementary details, notes, or related information.
   };
 
   const handleDelete = async () => {
-    if (!config || !user || !pageId || !fileSha) return;
+    if (!config || !user || !pageId || !fileSha || branchLoading || !currentBranch) return;
 
     // Confirm deletion
     const pageTitle = metadata?.title || pageId;
@@ -640,7 +675,8 @@ Include any supplementary details, notes, or related information.
       setIsSaving(true);
       setError(null);
 
-      const { owner, repo, contentPath, branch: baseBranch } = config.wiki.repository;
+      const { owner, repo, contentPath } = config.wiki.repository;
+      const baseBranch = currentBranch; // Use detected branch from context
       const filePath = `${contentPath}/${sectionId}/${pageId}.md`;
 
       // Parse content to extract metadata for page ID
@@ -721,7 +757,37 @@ Include any supplementary details, notes, or related information.
           targetRepo = fork.repo;
 
           console.log(`[PageEditor] ✓ Fork ready: ${fork.fullName}`);
-          setSavingStatus('Fork ready!');
+          setSavingStatus('');
+
+          // Check if fork needs manual sync
+          if (fork.needsManualSync && fork.outOfDate) {
+            const divergedWarning = fork.diverged
+              ? ' Your fork has also diverged, so you may need to resolve conflicts.'
+              : '';
+
+            const shouldContinue = window.confirm(
+              `🔄 Fork Sync Required\n\n` +
+              `Your fork is ${fork.behindBy} commit${fork.behindBy > 1 ? 's' : ''} behind the main repository.${divergedWarning}\n\n` +
+              `We'll open GitHub in a new tab where you can sync your fork with one click.\n\n` +
+              `Steps:\n` +
+              `1. Click OK to open the sync page\n` +
+              `2. Click "Sync fork" → "Update branch" on GitHub\n` +
+              `3. Come back here and try deleting again\n\n` +
+              `(Or click Cancel to continue without syncing - may cause conflicts)`
+            );
+
+            if (shouldContinue) {
+              // Open fork page in new tab
+              window.open(fork.syncUrl, '_blank', 'noopener,noreferrer');
+
+              // Give user time to sync, then they can try again
+              setError(`Please sync your fork on GitHub (opened in new tab), then try deleting again.`);
+              setIsSaving(false);
+              setSavingStatus('');
+              return;
+            }
+            // If they click Cancel, continue anyway (they accepted the risk)
+          }
         } catch (err) {
           console.error('[PageEditor] Failed to setup fork:', err);
           setError('Failed to setup your fork. Please try again or contact support.');
@@ -808,12 +874,14 @@ Include any supplementary details, notes, or related information.
   }, [loading]);
 
   // Loading state (must check BEFORE permission checks to avoid flashing messages)
-  if (loading || !section) {
+  if (loading || !section || branchLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-center">
           <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading editor...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">
+            {branchLoading ? 'Detecting branch...' : 'Loading editor...'}
+          </p>
         </div>
       </div>
     );

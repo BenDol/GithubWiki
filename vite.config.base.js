@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { branchDetectionPlugin } from './vite-plugin-branch-detection.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -28,7 +29,10 @@ export async function createWikiConfig(options = {}) {
     ...otherOptions
   } = options;
 
-  // Only import plugins in development mode
+  // Branch detection plugin (runs in both dev and prod)
+  const branchPlugin = branchDetectionPlugin();
+
+  // Only import dev plugins in development mode
   let devPlugins = [];
   if (process.env.NODE_ENV !== 'production') {
     try {
@@ -43,6 +47,7 @@ export async function createWikiConfig(options = {}) {
   return defineConfig({
     plugins: [
       react(),
+      branchPlugin,
       ...devPlugins,
       ...plugins,
     ],
@@ -99,13 +104,13 @@ export function createWikiConfigSync(options = {}) {
     ...otherOptions
   } = options;
 
-  // Lazy-load dev plugins
-  const devPlugins = [];
+  // Branch detection plugin (runs in both dev and prod)
+  const branchPlugin = branchDetectionPlugin();
 
   return defineConfig({
     plugins: [
       react(),
-      ...devPlugins,
+      branchPlugin,
       ...plugins,
     ],
 

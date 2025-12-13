@@ -190,8 +190,11 @@ export const createLabel = async (owner, repo, label) => {
 /**
  * Ensure all wiki labels exist
  * Creates missing labels, skips existing ones
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string[]} allowedBranches - Optional list of allowed branches for namespace labels
  */
-export const ensureAllWikiLabels = async (owner, repo) => {
+export const ensureAllWikiLabels = async (owner, repo, allowedBranches = []) => {
   console.log(`\n${'='.repeat(60)}`);
   console.log('[Labels] Ensuring all wiki labels exist...');
   console.log(`${'='.repeat(60)}\n`);
@@ -217,15 +220,22 @@ export const ensureAllWikiLabels = async (owner, repo) => {
     }
   }
 
+  // Create branch labels if allowedBranches provided
+  if (allowedBranches && allowedBranches.length > 0) {
+    const branchResult = await ensureBranchLabels(owner, repo, allowedBranches);
+    created += branchResult.created;
+    existing += branchResult.existing;
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[Labels] Summary:`);
   console.log(`[Labels] - Created: ${created}`);
   console.log(`[Labels] - Already existed: ${existing}`);
   console.log(`[Labels] - Failed: ${failed}`);
-  console.log(`[Labels] - Total: ${allLabels.length}`);
+  console.log(`[Labels] - Total: ${allLabels.length + (allowedBranches?.length || 0)}`);
   console.log(`${'='.repeat(60)}\n`);
 
-  return { created, existing, failed, total: allLabels.length };
+  return { created, existing, failed, total: allLabels.length + (allowedBranches?.length || 0) };
 };
 
 /**
@@ -237,9 +247,11 @@ export const getSectionLabel = (sectionId) => {
 
 /**
  * Get labels for anonymous edit request
+ * @param {string} sectionId - Section identifier
+ * @param {string|null} branch - Branch name for namespace (optional)
  */
-export const getAnonymousEditLabels = (sectionId) => {
-  return [
+export const getAnonymousEditLabels = (sectionId, branch = null) => {
+  const labels = [
     'wiki:anonymous-edit',
     'wiki:edit',
     getSectionLabel(sectionId),
@@ -247,17 +259,31 @@ export const getAnonymousEditLabels = (sectionId) => {
     'automated',
     'status:processing',
   ];
+
+  if (branch) {
+    labels.push(`branch:${branch}`);
+  }
+
+  return labels;
 };
 
 /**
  * Get labels for wiki comment
+ * @param {string} sectionId - Section identifier
+ * @param {string|null} branch - Branch name for namespace (optional)
  */
-export const getWikiCommentLabels = (sectionId) => {
-  return [
+export const getWikiCommentLabels = (sectionId, branch = null) => {
+  const labels = [
     'wiki:comment',
     getSectionLabel(sectionId),
     'automated',
   ];
+
+  if (branch) {
+    labels.push(`branch:${branch}`);
+  }
+
+  return labels;
 };
 
 /**
@@ -297,4 +323,55 @@ export const updateIssueStatus = async (owner, repo, issueNumber, newStatus) => 
     console.error(`[Labels] Failed to update issue status:`, error.message);
     return false;
   }
+};
+
+/**
+ * Generate branch labels from allowed branches list
+ * @param {string[]} allowedBranches - List of allowed branch names
+ * @returns {Array} Array of label objects
+ */
+export const generateBranchLabels = (allowedBranches) => {
+  const branchColors = {
+    main: '0e8a16',    // Green
+    dev: '0075ca',     // Blue
+    staging: 'fbca04', // Yellow
+  };
+
+  return allowedBranches.map(branch => ({
+    name: `branch:${branch}`,
+    description: `Items for ${branch} branch namespace`,
+    color: branchColors[branch] || 'bfd4f2', // Default light blue
+  }));
+};
+
+/**
+ * Ensure branch labels exist
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string[]} allowedBranches - List of allowed branches
+ * @returns {Promise<{created: number, existing: number}>}
+ */
+export const ensureBranchLabels = async (owner, repo, allowedBranches) => {
+  console.log('[Labels] Ensuring branch labels exist...');
+
+  const branchLabels = generateBranchLabels(allowedBranches);
+  let created = 0;
+  let existing = 0;
+
+  for (const label of branchLabels) {
+    try {
+      const exists = await labelExists(owner, repo, label.name);
+      if (!exists) {
+        await createLabel(owner, repo, label);
+        created++;
+      } else {
+        existing++;
+      }
+    } catch (error) {
+      console.error(`[Labels] Error with branch label ${label.name}:`, error.message);
+    }
+  }
+
+  console.log(`[Labels] Branch labels: ${created} created, ${existing} existing`);
+  return { created, existing };
 };

@@ -28,6 +28,7 @@ const PageEditor = ({
   const [isToolbarStuck, setIsToolbarStuck] = useState(false);
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [shakeValidationError, setShakeValidationError] = useState(false);
 
   // Metadata fields
   const [metadata, setMetadata] = useState({
@@ -43,9 +44,10 @@ const PageEditor = ({
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
 
-  // Refs for sticky detection
+  // Refs for sticky detection and scrolling
   const sentinelRef = useRef(null);
   const toolbarRef = useRef(null);
+  const validationErrorsRef = useRef(null);
 
   // Get available categories from sections
   const availableCategories = config?.sections
@@ -78,7 +80,31 @@ const PageEditor = ({
 
   // Parse initial content to extract metadata and body
   useEffect(() => {
-    if (initialContent) {
+    // Prefer initialMetadata if provided, otherwise parse from content
+    if (initialMetadata && Object.keys(initialMetadata).length > 0) {
+      const newMetadata = {
+        id: initialMetadata.id || '',
+        title: initialMetadata.title || '',
+        description: initialMetadata.description || '',
+        tags: Array.isArray(initialMetadata.tags) ? initialMetadata.tags : [],
+        category: initialMetadata.category || '',
+        date: initialMetadata.date || '',
+        order: initialMetadata.order ?? 0,
+      };
+      setMetadata(newMetadata);
+
+      // Ensure content has the metadata in frontmatter
+      if (initialContent) {
+        try {
+          const parsed = matter(initialContent);
+          const contentWithMetadata = matter.stringify(parsed.content, newMetadata);
+          setContent(contentWithMetadata);
+        } catch (err) {
+          console.error('Failed to reconstruct content with metadata:', err);
+          setContent(initialContent);
+        }
+      }
+    } else if (initialContent) {
       try {
         const parsed = matter(initialContent);
         setMetadata({
@@ -94,7 +120,7 @@ const PageEditor = ({
         console.error('Failed to parse frontmatter:', err);
       }
     }
-  }, [initialContent]);
+  }, [initialContent, initialMetadata]);
 
   // Track if content has been modified
   useEffect(() => {
@@ -461,10 +487,9 @@ const PageEditor = ({
     const validationErrors = validateMetadata();
 
     if (validationErrors.length > 0) {
-      // Show validation errors in a formatted alert
-      const errorMessage = 'Cannot save page due to metadata validation errors:\n\n' +
-        validationErrors.map((err, idx) => `${idx + 1}. ${err}`).join('\n');
-      alert(errorMessage);
+      // Trigger shake animation
+      setShakeValidationError(true);
+      setTimeout(() => setShakeValidationError(false), 500);
       return;
     }
 
@@ -484,6 +509,16 @@ const PageEditor = ({
     onCancel?.();
   };
 
+  // Scroll to validation errors
+  const scrollToValidationErrors = () => {
+    if (validationErrorsRef.current) {
+      validationErrorsRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Sentinel for detecting when toolbar becomes stuck */}
@@ -492,82 +527,188 @@ const PageEditor = ({
       {/* Toolbar - Sticky */}
       <div
         ref={toolbarRef}
-        className={`sticky top-16 z-40 flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 shadow-md transition-all ${
+        className={`sticky top-16 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md transition-all ${
           isToolbarStuck ? 'rounded-b-lg' : 'rounded-lg'
         }`}
       >
-        <div className="flex items-center space-x-2">
-          {/* View Mode Buttons */}
-          <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('edit')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewMode === 'edit'
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              📝 Edit Only
-            </button>
-            <button
-              onClick={() => setViewMode('split')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewMode === 'split'
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              ⚡ Split View
-            </button>
-            <button
-              onClick={() => setViewMode('preview')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                viewMode === 'preview'
-                  ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              👁️ Preview Only
-            </button>
-          </div>
+        {/* Mobile Layout - Compact Horizontal */}
+        <div className="md:hidden p-2.5">
+          <div className="flex items-center justify-between gap-2">
+            {/* View Mode Buttons - Horizontal */}
+            <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('edit')}
+                className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                  viewMode === 'edit'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}
+                title="Edit Only"
+              >
+                📝
+              </button>
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                  viewMode === 'split'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}
+                title="Split View"
+              >
+                ⚡
+              </button>
+              <button
+                onClick={() => setViewMode('preview')}
+                className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                  viewMode === 'preview'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400'
+                }`}
+                title="Preview Only"
+              >
+                👁️
+              </button>
+            </div>
 
-          <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            {content.length} characters
-          </span>
-
-          {hasUnsavedChanges && (
-            <>
-              <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-              <span className="flex items-center text-sm text-amber-600 dark:text-amber-400 font-medium">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {/* Status Indicator - Compact */}
+            {hasUnsavedChanges && (
+              <div className="flex items-center text-xs text-amber-600 dark:text-amber-400 font-medium">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                Unsaved changes
-              </span>
-            </>
-          )}
+              </div>
+            )}
+
+            {validationErrors.length > 0 && (
+              <button
+                onClick={scrollToValidationErrors}
+                className={`flex items-center text-xs text-red-600 dark:text-red-400 font-medium hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer ${
+                  shakeValidationError ? 'animate-shake' : ''
+                }`}
+                title="Click to view validation errors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span className="ml-1">{validationErrors.length}</span>
+              </button>
+            )}
+
+            {/* Action Buttons - Icon Only */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleCancel}
+                disabled={isSaving}
+                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Cancel"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="p-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={validationErrors.length > 0 ? 'Click to view validation errors' : 'Save changes'}
+              >
+                {isSaving ? (
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {validationErrors.length > 0 && (
-            <span className="text-xs text-red-600 dark:text-red-400 font-medium">
-              {validationErrors.length} validation {validationErrors.length === 1 ? 'error' : 'errors'}
+        {/* Desktop Layout - Horizontal */}
+        <div className="hidden md:flex items-center justify-between p-3">
+          <div className="flex items-center space-x-2">
+            {/* View Mode Buttons */}
+            <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+              <button
+                onClick={() => setViewMode('edit')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewMode === 'edit'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                📝 Edit Only
+              </button>
+              <button
+                onClick={() => setViewMode('split')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewMode === 'split'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                ⚡ Split View
+              </button>
+              <button
+                onClick={() => setViewMode('preview')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewMode === 'preview'
+                    ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                👁️ Preview Only
+              </button>
+            </div>
+
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {content.length} characters
             </span>
-          )}
-          <Button variant="secondary" size="sm" onClick={handleCancel} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSave}
-            disabled={isSaving || validationErrors.length > 0}
-            title={validationErrors.length > 0 ? 'Fix validation errors before saving' : 'Save changes'}
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </Button>
+
+            {hasUnsavedChanges && (
+              <>
+                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+                <span className="flex items-center text-sm text-amber-600 dark:text-amber-400 font-medium">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Unsaved changes
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {validationErrors.length > 0 && (
+              <button
+                onClick={scrollToValidationErrors}
+                className={`text-xs text-red-600 dark:text-red-400 font-medium hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer ${
+                  shakeValidationError ? 'animate-shake' : ''
+                }`}
+                title="Click to view validation errors"
+              >
+                {validationErrors.length} validation {validationErrors.length === 1 ? 'error' : 'errors'}
+              </button>
+            )}
+            <Button variant="secondary" size="sm" onClick={handleCancel} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving}
+              title={validationErrors.length > 0 ? 'Click to view validation errors' : 'Save changes'}
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -715,22 +856,22 @@ const PageEditor = ({
 
       {/* Validation Status - Only show when there are errors */}
       {validationErrors.length > 0 && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
+        <div ref={validationErrorsRef} className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 md:p-4">
+          <div className="flex items-start space-x-2 md:space-x-3">
             <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <div className="flex-1">
-              <h4 className="text-sm font-semibold text-red-900 dark:text-red-200 mb-2">
-                Metadata Validation Errors
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs md:text-sm font-semibold text-red-900 dark:text-red-200 mb-1.5 md:mb-2">
+                Validation Errors ({validationErrors.length})
               </h4>
-              <ul className="text-sm text-red-800 dark:text-red-300 space-y-1 list-disc list-inside">
+              <ul className="text-xs md:text-sm text-red-800 dark:text-red-300 space-y-0.5 md:space-y-1 list-disc list-inside">
                 {validationErrors.map((error, index) => (
-                  <li key={index}>{error}</li>
+                  <li key={index} className="break-words">{error}</li>
                 ))}
               </ul>
-              <p className="text-xs text-red-700 dark:text-red-400 mt-3">
-                Please fix these errors before saving. The page cannot be saved with invalid metadata.
+              <p className="text-xs text-red-700 dark:text-red-400 mt-2 md:mt-3">
+                Please fix these errors before saving.
               </p>
             </div>
           </div>

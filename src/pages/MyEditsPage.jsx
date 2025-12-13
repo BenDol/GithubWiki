@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useWikiConfig } from '../hooks/useWikiConfig';
+import { useBranchNamespace } from '../hooks/useBranchNamespace';
 import { getUserPullRequests, closePullRequest } from '../services/github/pullRequests';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import PrestigeAvatar from '../components/common/PrestigeAvatar';
@@ -13,6 +14,7 @@ import { getPrestigeTier, getProgressToNextTier } from '../utils/prestige';
 const MyEditsPage = () => {
   const { user, isAuthenticated } = useAuthStore();
   const { config } = useWikiConfig();
+  const { branch, loading: branchLoading } = useBranchNamespace();
   const [pullRequests, setPullRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,8 +32,8 @@ const MyEditsPage = () => {
 
   useEffect(() => {
     const loadPullRequests = async () => {
-      // Keep loading until config is available
-      if (!config) {
+      // Keep loading until config and branch are available
+      if (!config || branchLoading) {
         return;
       }
 
@@ -46,7 +48,8 @@ const MyEditsPage = () => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        let prs = await getUserPullRequests(owner, repo, user.login);
+        console.log(`[MyEdits] Loading PRs for branch: ${branch}`);
+        let prs = await getUserPullRequests(owner, repo, user.login, branch);
 
         // DEV: Add fake PRs for testing pagination
         const ENABLE_FAKE_PRS = false; // Set to true to enable fake test data
@@ -83,7 +86,7 @@ const MyEditsPage = () => {
     };
 
     loadPullRequests();
-  }, [isAuthenticated, user, config, refreshKey]);
+  }, [isAuthenticated, user, config, branch, branchLoading, refreshKey]);
 
   // Reset to page 1 when filter changes
   useEffect(() => {
@@ -142,12 +145,14 @@ const MyEditsPage = () => {
     }
   };
 
-  if (loading) {
+  if (loading || branchLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-center">
           <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading your edits...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">
+            {branchLoading ? 'Detecting branch...' : 'Loading your edits...'}
+          </p>
         </div>
       </div>
     );
@@ -337,9 +342,21 @@ const MyEditsPage = () => {
       {/* Statistics Section */}
       {pullRequests.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            Contribution Statistics
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Contribution Statistics
+            </h2>
+            {branch && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  Branch: {branch}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {/* Total PRs */}
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">

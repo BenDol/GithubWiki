@@ -67,7 +67,10 @@ export const initiateDeviceFlow = async () => {
       },
       body: JSON.stringify({
         client_id: GITHUB_CLIENT_ID,
-        scope: 'repo read:user user:email',
+        // Use public_repo instead of repo for more limited access
+        // This only grants access to public repositories (not private ones)
+        // Removed 'workflow' scope for security - fork may be slightly out of date
+        scope: 'public_repo read:user user:email',
       }),
     });
   } catch (fetchError) {

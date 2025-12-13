@@ -34,11 +34,15 @@ const Header = () => {
             </button>
 
             {/* Logo */}
-            <Link to="/" className="flex items-center space-x-2">
+            <Link to="/" className="flex items-center space-x-2 group">
               {config.wiki.logo ? (
-                <img src={config.wiki.logo} alt={config.wiki.title} id="logo" className="h-8 w-8" />
+                <img
+                  src={config.wiki.logo}
+                  alt={config.wiki.title}
+                  className="h-8 w-8 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] dark:group-hover:drop-shadow-[0_0_12px_rgba(96,165,250,0.6)]"
+                />
               ) : (
-                <div className="h-8 w-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">
+                <div className="h-8 w-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:shadow-[0_0_12px_rgba(59,130,246,0.6)]">
                   W
                 </div>
               )}

@@ -10,6 +10,7 @@ import { useWikiStore } from '../store/wikiStore';
 import { useSection, useWikiConfig } from '../hooks/useWikiConfig';
 import { useFeature } from '../hooks/useWikiConfig';
 import { getDisplayTitle } from '../utils/textUtils';
+import { useAuthStore } from '../store/authStore';
 
 /**
  * Page viewer page component
@@ -28,9 +29,18 @@ const PageViewerPage = ({ sectionId }) => {
   const section = useSection(sectionId);
   const showToc = useFeature('tableOfContents');
   const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
+  const { isAuthenticated } = useAuthStore();
 
   // Check if this is a framework/hardcoded page (no editing allowed)
   const isFrameworkPage = section?.allowContributions === false;
+
+  // Check if anonymous editing is available
+  const anonymousEnabled = config?.features?.editRequestCreator?.anonymous?.enabled ?? false;
+  const requireAuth = config?.features?.editRequestCreator?.permissions?.requireAuth ?? true;
+
+  // Determine if edit button should be shown
+  // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available)
+  const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth));
 
   useEffect(() => {
     const loadPage = async () => {
@@ -210,8 +220,8 @@ const PageViewerPage = ({ sectionId }) => {
           </Link>
         )}
 
-        {/* Edit button - only show for pages that allow contributions */}
-        {!isFrameworkPage && (
+        {/* Edit button - only show if user is authenticated or anonymous editing is enabled */}
+        {canShowEditButton && (
           <Link
             to={`/${sectionId}/${pageId}/edit`}
             className="inline-flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"

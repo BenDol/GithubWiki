@@ -187,22 +187,20 @@ const SearchBar = () => {
 
             {/* Footer */}
             <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <div className="flex items-center space-x-4">
-                  <span className="flex items-center space-x-1">
-                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">↑</kbd>
-                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">↓</kbd>
-                    <span>to navigate</span>
-                  </span>
-                  <span className="flex items-center space-x-1">
-                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">Enter</kbd>
-                    <span>to select</span>
-                  </span>
-                  <span className="flex items-center space-x-1">
-                    <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">Esc</kbd>
-                    <span>to close</span>
-                  </span>
-                </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className="flex items-center space-x-1">
+                  <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">↑</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">↓</kbd>
+                  <span>to navigate</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">Enter</kbd>
+                  <span>to select</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <kbd className="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-xs">Esc</kbd>
+                  <span>to close</span>
+                </span>
               </div>
             </div>
           </div>

@@ -13,12 +13,13 @@ import { getAnonymousEditLabels, ensureAllWikiLabels } from './issueLabels';
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} editData - Edit data
+ * @param {string} branch - Branch name for namespace
  * @returns {Promise<Object>} Issue and polling information
  */
-export const submitAnonymousEditViaIssues = async (owner, repo, editData) => {
+export const submitAnonymousEditViaIssues = async (owner, repo, editData, branch) => {
   const octokit = getOctokit();
 
-  console.log('[Anonymous Edit - Serverless] Creating issue...');
+  console.log(`[Anonymous Edit - Serverless] Creating issue for branch: ${branch}`);
 
   // Ensure labels exist first (will be fast after first run - labels are cached)
   try {
@@ -71,8 +72,8 @@ ${JSON.stringify(editData, null, 2)}
 This issue will be automatically processed and closed once the edit request is created.`;
 
   try {
-    // Get appropriate labels
-    const labels = getAnonymousEditLabels(editData.section);
+    // Get appropriate labels with branch namespace
+    const labels = getAnonymousEditLabels(editData.section, branch);
 
     // Create issue with comprehensive labels
     const { data: issue } = await octokit.rest.issues.create({
@@ -86,6 +87,7 @@ This issue will be automatically processed and closed once the edit request is c
     console.log(`[Anonymous Edit - Serverless] Issue created: #${issue.number}`);
     console.log(`[Anonymous Edit - Serverless] URL: ${issue.html_url}`);
     console.log(`[Anonymous Edit - Serverless] Labels applied: ${labels.join(', ')}`);
+    console.log(`[Anonymous Edit - Serverless] Branch namespace: ${branch}`);
 
     return {
       issueNumber: issue.number,

@@ -34,6 +34,11 @@ export default {
           '0%': { transform: 'translateX(-100%)' },
           '100%': { transform: 'translateX(100%)' },
         },
+        'shake': {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-4px)' },
+          '20%, 40%, 60%, 80%': { transform: 'translateX(4px)' },
+        },
       },
       animation: {
         'pop-in': 'pop-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
@@ -43,6 +48,7 @@ export default {
         'sparkle-2': 'sparkle 1.8s ease-in-out 0.2s infinite',
         'sparkle-3': 'sparkle 1.6s ease-in-out 0.4s infinite',
         'sparkle-4': 'sparkle 1.7s ease-in-out 0.6s infinite',
+        'shake': 'shake 0.5s ease-in-out',
       },
       typography: {
         DEFAULT: {

@@ -109,7 +109,7 @@ const SortableTable = ({ data, columns, pageSize = 20 }) => {
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-sm text-gray-600 dark:text-gray-400">
             Showing {startIndex + 1}-{Math.min(startIndex + pageSize, filteredAndSortedData.length)} of{' '}
             {filteredAndSortedData.length}
@@ -122,7 +122,7 @@ const SortableTable = ({ data, columns, pageSize = 20 }) => {
             >
               Previous
             </button>
-            <span className="px-4 py-2">
+            <span className="px-4 py-2 whitespace-nowrap">
               Page {currentPage} of {totalPages}
             </span>
             <button

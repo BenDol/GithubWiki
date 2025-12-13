@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { formatDistance } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { usePageHistory } from '../../hooks/usePageHistory';
@@ -10,6 +11,25 @@ import PrestigeAvatar from '../common/PrestigeAvatar';
  */
 const PageHistory = ({ sectionId, pageId }) => {
   const { commits, loading, error } = usePageHistory(sectionId, pageId);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Ref for commits section
+  const commitsRef = useRef(null);
+
+  // Reset to page 1 when commits change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [commits]);
+
+  // Scroll to commits section when page changes
+  useEffect(() => {
+    if (commitsRef.current && currentPage > 1) {
+      commitsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [currentPage]);
 
   if (loading) {
     return (
@@ -55,19 +75,33 @@ const PageHistory = ({ sectionId, pageId }) => {
     );
   }
 
+  // Calculate pagination
+  const totalPages = Math.ceil(commits.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedCommits = commits.slice(startIndex, endIndex);
+
   return (
     <div className="space-y-6">
-      <div className="mb-6">
+      <div ref={commitsRef} className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
           Page History
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
           {commits.length} {commits.length === 1 ? 'commit' : 'commits'}
+          {totalPages > 1 && (
+            <span className="ml-2">
+              (Showing {startIndex + 1}-{Math.min(endIndex, commits.length)})
+            </span>
+          )}
         </p>
       </div>
 
       <div className="space-y-4">
-        {commits.map((commit, index) => (
+        {paginatedCommits.map((commit, index) => {
+          // Calculate actual index in full commits array for "Latest" badge
+          const actualIndex = startIndex + index;
+          return (
           <div
             key={commit.sha}
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -106,7 +140,7 @@ const PageHistory = ({ sectionId, pageId }) => {
                     )}
                   </div>
 
-                  {index === 0 && (
+                  {actualIndex === 0 && (
                     <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full">
                       Latest
                     </span>
@@ -168,8 +202,80 @@ const PageHistory = ({ sectionId, pageId }) => {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-8 flex items-center justify-center gap-2">
+          {/* Previous button */}
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          {/* Page numbers */}
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+              // Show first page, last page, current page, and pages around current
+              const showPage =
+                pageNum === 1 ||
+                pageNum === totalPages ||
+                (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+
+              // Show ellipsis
+              const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
+              const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
+
+              if (showEllipsisBefore || showEllipsisAfter) {
+                return (
+                  <span key={pageNum} className="px-2 text-gray-500 dark:text-gray-400">
+                    ...
+                  </span>
+                );
+              }
+
+              if (!showPage) return null;
+
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    currentPage === pageNum
+                      ? 'bg-blue-500 text-white'
+                      : 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Next button */}
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* Page info */}
+          <span className="ml-4 text-sm text-gray-600 dark:text-gray-400">
+            Page {currentPage} of {totalPages}
+          </span>
+        </div>
+      )}
     </div>
   );
 };

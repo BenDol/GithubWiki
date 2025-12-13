@@ -91,6 +91,65 @@ export const createFork = async (owner, repo) => {
 };
 
 /**
+ * Check if fork is behind upstream (doesn't require workflow scope)
+ * @param {string} forkOwner - Fork owner
+ * @param {string} forkRepo - Fork repository name
+ * @param {string} upstreamOwner - Upstream repository owner
+ * @param {string} upstreamRepo - Upstream repository name
+ * @returns {Promise<Object>} Status information
+ */
+export const checkForkStatus = async (forkOwner, forkRepo, upstreamOwner, upstreamRepo) => {
+  const octokit = getOctokit();
+
+  try {
+    console.log(`[Forks] Checking if ${forkOwner}/${forkRepo} is behind ${upstreamOwner}/${upstreamRepo}`);
+
+    // Get default branches
+    const { data: forkData } = await octokit.rest.repos.get({
+      owner: forkOwner,
+      repo: forkRepo,
+    });
+
+    const { data: upstreamData } = await octokit.rest.repos.get({
+      owner: upstreamOwner,
+      repo: upstreamRepo,
+    });
+
+    const defaultBranch = forkData.default_branch;
+
+    // Compare fork with upstream using GitHub's compare API
+    // Format: base...head where base is fork, head is upstream
+    const { data: comparison } = await octokit.rest.repos.compareCommitsWithBasehead({
+      owner: upstreamOwner,
+      repo: upstreamRepo,
+      basehead: `${forkOwner}:${defaultBranch}...${upstreamOwner}:${defaultBranch}`,
+    });
+
+    const status = {
+      behind: comparison.behind_by > 0,
+      ahead: comparison.ahead_by > 0,
+      behindBy: comparison.behind_by,
+      aheadBy: comparison.ahead_by,
+      status: comparison.status, // 'identical', 'ahead', 'behind', or 'diverged'
+      upToDate: comparison.status === 'identical',
+      diverged: comparison.status === 'diverged',
+    };
+
+    console.log(`[Forks] Fork status: ${status.status}`);
+    console.log(`[Forks] Behind by ${status.behindBy} commits, ahead by ${status.aheadBy} commits`);
+
+    return status;
+  } catch (error) {
+    console.error('[Forks] Failed to check fork status:', error);
+    // Non-fatal - return unknown status
+    return {
+      unknown: true,
+      error: error.message,
+    };
+  }
+};
+
+/**
  * Sync fork's default branch with upstream repository
  * @param {string} forkOwner - Fork owner (usually the user)
  * @param {string} forkRepo - Fork repository name
@@ -147,7 +206,14 @@ export const syncForkWithUpstream = async (forkOwner, forkRepo, upstreamOwner, u
       };
     }
 
-    console.error('[Forks] Failed to sync fork:', error);
+    if (error.status === 422 && error.message?.includes('workflow')) {
+      // OAuth token lacks workflow scope - this is expected and non-critical
+      console.warn('[Forks] Cannot sync workflow files (OAuth token lacks workflow scope)');
+      console.warn('[Forks] This is expected behavior - fork can still be used for content edits');
+    } else {
+      console.error('[Forks] Failed to sync fork:', error);
+    }
+
     throw error;
   }
 };
@@ -178,15 +244,69 @@ export const getOrCreateFork = async (owner, repo, username, autoSync = true) =>
   } else {
     console.log(`[Forks] ✓ Fork already exists: ${fork.fullName}`);
 
-    // Sync if requested
+    // Try to auto-sync, fall back to manual instructions if workflow scope missing
     if (autoSync) {
-      console.log('[Forks] Syncing fork with upstream...');
-      const syncResult = await syncForkWithUpstream(fork.owner, fork.repo, owner, repo);
+      console.log('[Forks] Attempting to sync fork with upstream...');
 
-      if (syncResult.merged) {
-        console.log(`[Forks] ✓ Fork synced (${syncResult.mergeType})`);
-      } else if (syncResult.alreadyUpToDate) {
-        console.log('[Forks] ✓ Fork already up to date');
+      try {
+        // Try automated sync first
+        const syncResult = await syncForkWithUpstream(fork.owner, fork.repo, owner, repo);
+
+        if (syncResult.merged) {
+          console.log('[Forks] ✓ Fork synced successfully');
+          fork.upToDate = true;
+          fork.justSynced = true;
+        } else if (syncResult.alreadyUpToDate) {
+          console.log('[Forks] ✓ Fork is already up to date');
+          fork.upToDate = true;
+        }
+      } catch (syncError) {
+        // If sync fails due to workflow scope, check status and provide manual sync option
+        if (syncError.status === 422 && syncError.message?.includes('workflow')) {
+          console.warn('[Forks] ⚠ Cannot auto-sync (workflow files changed)');
+          console.warn('[Forks] Checking fork status for manual sync...');
+
+          const status = await checkForkStatus(fork.owner, fork.repo, owner, repo);
+
+          if (status.unknown) {
+            console.warn('[Forks] ⚠ Could not determine fork status');
+            fork.statusUnknown = true;
+          } else if (status.upToDate) {
+            console.log('[Forks] ✓ Fork is up to date (despite workflow changes)');
+            fork.upToDate = true;
+          } else if (status.behind) {
+            console.warn('[Forks] ⚠ Fork is behind upstream by', status.behindBy, 'commits');
+            console.warn('[Forks] Manual sync required');
+
+            fork.outOfDate = true;
+            fork.behindBy = status.behindBy;
+            fork.syncUrl = `https://github.com/${fork.fullName}`;
+            fork.needsManualSync = true; // Flag for UI to show sync button
+
+            if (status.diverged) {
+              console.warn('[Forks] ⚠ Fork has diverged from upstream');
+              fork.diverged = true;
+            }
+          } else if (status.ahead) {
+            console.log('[Forks] ℹ Fork is ahead of upstream by', status.aheadBy, 'commits');
+            fork.ahead = true;
+            fork.upToDate = true; // Ahead is fine
+          }
+        } else {
+          // Other sync error - check status as fallback
+          console.error('[Forks] Sync failed:', syncError.message);
+          const status = await checkForkStatus(fork.owner, fork.repo, owner, repo);
+
+          if (status.behind) {
+            fork.outOfDate = true;
+            fork.behindBy = status.behindBy;
+            fork.syncUrl = `https://github.com/${fork.fullName}`;
+            fork.needsManualSync = true;
+            fork.diverged = status.diverged;
+          } else {
+            fork.upToDate = status.upToDate;
+          }
+        }
       }
     }
   }

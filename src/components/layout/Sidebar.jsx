@@ -22,7 +22,8 @@ const TreeNode = ({
   showTreeLines = true,
   isLastChild = false,
   treeLineWidth = 1,
-  treeLineStyle = 'solid'
+  treeLineStyle = 'solid',
+  onNavigate
 }) => {
   const baseIndent = 12;
   const levelIndent = 20;
@@ -72,6 +73,7 @@ const TreeNode = ({
         )}
         <Link
           to={path}
+          onClick={onNavigate}
           className={`
             flex items-center gap-2 py-2 px-3 text-sm rounded-lg transition-colors relative
             ${isActive
@@ -171,14 +173,28 @@ const Sidebar = () => {
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Sidebar width state (default 256px = w-64)
+  // Sidebar width state (default 256px = w-64, but clamped to 85% on mobile)
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const stored = localStorage.getItem('sidebarWidth');
-    return stored ? parseInt(stored, 10) : 256;
+    const defaultWidth = 256;
+    return stored ? parseInt(stored, 10) : defaultWidth;
   });
+
+  // Responsive sidebar width - max 85% of screen width on mobile
+  const effectiveSidebarWidth = typeof window !== 'undefined' && window.innerWidth < 1024
+    ? Math.min(sidebarWidth, window.innerWidth * 0.85)
+    : sidebarWidth;
   const [isResizing, setIsResizing] = useState(false);
 
   const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
+
+  // Handler to close sidebar on mobile when navigating
+  const handleNavigate = () => {
+    // Only close on mobile (< 1024px)
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
 
   // Support both boolean and object format for backward compatibility
   const treeLineConfig = config?.features?.sidebarTreeLines;
@@ -344,13 +360,13 @@ const Sidebar = () => {
       {/* Sidebar */}
       <aside
         className={`
-          fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)] relative
+          fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)]
           flex-shrink-0 overflow-y-auto border-r border-gray-200 dark:border-gray-800
           bg-white dark:bg-gray-900 transition-transform duration-200
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${isResizing ? 'select-none' : ''}
         `}
-        style={{ width: `${sidebarWidth}px` }}
+        style={{ width: `${effectiveSidebarWidth}px` }}
       >
         <nav className="p-4 space-y-1">
           {loading ? (
@@ -370,6 +386,7 @@ const Sidebar = () => {
                 showTreeLines={showTreeLines}
                 treeLineWidth={treeLineWidth}
                 treeLineStyle={treeLineStyle}
+                onNavigate={handleNavigate}
               />
 
               {/* Categories tree */}
@@ -438,6 +455,7 @@ const Sidebar = () => {
                                 showTreeLines={showTreeLines}
                                 treeLineWidth={treeLineWidth}
                                 treeLineStyle={treeLineStyle}
+                                onNavigate={handleNavigate}
                               />
                             );
                           })}
