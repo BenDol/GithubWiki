@@ -85,6 +85,37 @@ export const updateFileContent = async (
 };
 
 /**
+ * Delete file content
+ */
+export const deleteFileContent = async (
+  owner,
+  repo,
+  path,
+  message,
+  branch,
+  sha
+) => {
+  const octokit = getOctokit();
+
+  const { data } = await octokit.rest.repos.deleteFile({
+    owner,
+    repo,
+    path,
+    message,
+    branch,
+    sha,
+  });
+
+  return {
+    commit: {
+      sha: data.commit.sha,
+      message: data.commit.message,
+      url: data.commit.html_url,
+    },
+  };
+};
+
+/**
  * Check if file has been modified since a given SHA
  */
 export const hasFileChanged = async (owner, repo, path, originalSha, branch = 'main') => {

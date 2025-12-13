@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import matter from 'gray-matter';
 import { useAuthStore } from '../store/authStore';
 import { useWikiConfig, useSection } from '../hooks/useWikiConfig';
-import { getFileContent, hasFileChanged } from '../services/github/content';
+import { getFileContent, hasFileChanged, deleteFileContent } from '../services/github/content';
 import { createBranch, generateEditBranchName } from '../services/github/branches';
 import { updateFileContent } from '../services/github/content';
 import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExistingBranch, getUserPullRequests } from '../services/github/pullRequests';
@@ -388,6 +388,47 @@ Include any supplementary details, notes, or related information.
       const userHasWriteAccess = await hasWriteAccess(owner, repo, user.login);
       console.log(`[PageEditor] User ${user.login} has write access: ${userHasWriteAccess}`);
 
+      // Check if direct commit is allowed
+      const allowDirectCommit = editRequestConfig?.permissions?.allowDirectCommit ?? false;
+
+      // If direct commit is enabled and user has write access, commit directly to main
+      if (allowDirectCommit && userHasWriteAccess) {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`[PageEditor] DIRECT COMMIT MODE - Committing to main branch`);
+        console.log(`[PageEditor] User: ${user.login}`);
+        console.log(`[PageEditor] Target: ${owner}/${repo}:${baseBranch}`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        setSavingStatus('Committing to main branch...');
+
+        const action = isNewPage ? 'Create' : 'Update';
+        const commitMessage = `${action} ${parsedMetadata?.title || currentPageId}\n\n${editSummary || `${action}d via wiki editor`}`;
+
+        // Commit directly to main branch
+        await updateFileContent(
+          owner,
+          repo,
+          filePath,
+          newContent,
+          commitMessage,
+          baseBranch,
+          isNewPage ? null : fileSha
+        );
+
+        console.log(`\n[PageEditor] ✓ Successfully committed to ${baseBranch}`);
+
+        // Show success message without PR
+        setSavingStatus('');
+        setIsSaving(false);
+
+        // Navigate back to the page view
+        setTimeout(() => {
+          navigate(isNewPage ? `/${sectionId}/${currentPageId}` : `/${sectionId}/${pageId}`);
+        }, 1000);
+
+        return;
+      }
+
       // Determine if we should use fork workflow
       let useFork = false;
       if (mode === 'auto') {
@@ -567,6 +608,189 @@ Include any supplementary details, notes, or related information.
     if (confirmCancel) {
       // For new pages, go back to section page; for existing pages, go to page view
       navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!config || !user || !pageId || !fileSha) return;
+
+    // Confirm deletion
+    const pageTitle = metadata?.title || pageId;
+
+    // Check if direct commit is allowed
+    const editRequestConfig = config.features?.editRequestCreator;
+    const allowDirectCommit = editRequestConfig?.permissions?.allowDirectCommit ?? false;
+    const userHasWriteAccess = await hasWriteAccess(config.wiki.repository.owner, config.wiki.repository.repo, user.login);
+
+    const confirmMessage = allowDirectCommit && userHasWriteAccess
+      ? `Are you sure you want to delete "${pageTitle}"?\n\nThis will immediately delete the page from the main branch.`
+      : `Are you sure you want to delete "${pageTitle}"?\n\nThis will create a pull request to remove this page. The deletion will not take effect until the PR is merged.`;
+
+    const confirmDelete = window.confirm(confirmMessage);
+
+    if (!confirmDelete) return;
+
+    try {
+      setIsSaving(true);
+      setError(null);
+
+      const { owner, repo, contentPath, branch: baseBranch } = config.wiki.repository;
+      const filePath = `${contentPath}/${sectionId}/${pageId}.md`;
+
+      // Parse content to extract metadata for page ID
+      const { data: parsedMetadata } = matter(content);
+      const pageIdFromMetadata = parsedMetadata.id?.trim() || pageId;
+
+      // Check user permissions
+      setSavingStatus('Checking permissions...');
+      console.log(`[PageEditor] User ${user.login} has write access: ${userHasWriteAccess}`);
+
+      // If direct commit is enabled and user has write access, delete directly from main
+      if (allowDirectCommit && userHasWriteAccess) {
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`[PageEditor] DIRECT DELETE MODE - Deleting from main branch`);
+        console.log(`[PageEditor] User: ${user.login}`);
+        console.log(`[PageEditor] Target: ${owner}/${repo}:${baseBranch}`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        setSavingStatus('Deleting from main branch...');
+
+        const commitMessage = `Delete ${pageTitle}\n\nRemove page via wiki editor`;
+
+        // Delete directly from main branch
+        await deleteFileContent(
+          owner,
+          repo,
+          filePath,
+          commitMessage,
+          baseBranch,
+          fileSha
+        );
+
+        console.log(`\n[PageEditor] ✓ Successfully deleted from ${baseBranch}`);
+
+        // Show success and navigate back
+        setSavingStatus('');
+        setIsSaving(false);
+
+        setTimeout(() => {
+          navigate(`/${sectionId}`);
+        }, 1000);
+
+        return;
+      }
+
+      // Determine if we should use fork workflow
+      const mode = editRequestConfig?.mode || 'auto';
+      const forksEnabled = editRequestConfig?.forks?.enabled ?? true;
+      const autoSync = editRequestConfig?.forks?.autoSync ?? true;
+
+      let useFork = false;
+      if (mode === 'auto') {
+        useFork = !userHasWriteAccess && forksEnabled;
+      } else if (mode === 'fork-only') {
+        useFork = forksEnabled;
+      } else if (mode === 'branch-only') {
+        if (!userHasWriteAccess) {
+          setError('You need write access to this repository to delete pages. Please contact the repository owner.');
+          setIsSaving(false);
+          setSavingStatus('');
+          return;
+        }
+        useFork = false;
+      }
+
+      // Set target repository (main repo or fork)
+      let targetOwner = owner;
+      let targetRepo = repo;
+      let fork = null;
+
+      if (useFork) {
+        console.log(`\n[PageEditor] Setting up fork workflow for deletion...`);
+        setSavingStatus('Setting up your fork...');
+
+        try {
+          fork = await getOrCreateFork(owner, repo, user.login, autoSync);
+          targetOwner = fork.owner;
+          targetRepo = fork.repo;
+
+          console.log(`[PageEditor] ✓ Fork ready: ${fork.fullName}`);
+          setSavingStatus('Fork ready!');
+        } catch (err) {
+          console.error('[PageEditor] Failed to setup fork:', err);
+          setError('Failed to setup your fork. Please try again or contact support.');
+          setIsSaving(false);
+          setSavingStatus('');
+          return;
+        }
+      }
+
+      // Generate unique branch name for deletion
+      const branchName = generateEditBranchName(sectionId, pageIdFromMetadata, 'delete');
+      const commitMessage = `Delete ${pageTitle}\n\nRemove page via wiki editor`;
+
+      // Create branch on target repository
+      setSavingStatus('Creating branch...');
+      await createBranch(targetOwner, targetRepo, branchName, baseBranch);
+
+      // Delete file from new branch
+      setSavingStatus('Deleting file...');
+      await deleteFileContent(
+        targetOwner,
+        targetRepo,
+        filePath,
+        commitMessage,
+        branchName,
+        fileSha
+      );
+
+      // Create pull request
+      setSavingStatus('Creating deletion request...');
+      let pr;
+
+      if (useFork) {
+        // Cross-repository PR from fork to upstream
+        pr = await createCrossRepoPR(
+          owner,          // upstream owner
+          repo,           // upstream repo
+          user.login,     // fork owner (username)
+          branchName,     // branch on fork
+          `Delete ${pageTitle}`,  // title
+          `Request to delete page: ${pageTitle}\n\nSection: ${section?.title || sectionId}\nPage ID: ${pageIdFromMetadata}`,  // body
+          baseBranch      // base branch on upstream
+        );
+        console.log(`[PageEditor] ✓ Created cross-repo deletion PR from ${user.login}:${branchName} to ${owner}/${repo}`);
+      } else {
+        // Direct PR on main repository
+        pr = await createWikiEditPR(
+          owner,
+          repo,
+          `Delete ${pageTitle}`,
+          section?.title,
+          sectionId,
+          pageIdFromMetadata,
+          branchName,
+          `Request to delete page: ${pageTitle}`,
+          baseBranch
+        );
+        console.log(`[PageEditor] ✓ Created direct deletion PR from ${branchName} on ${owner}/${repo}`);
+      }
+
+      console.log(`\n[PageEditor] ✓ Successfully created deletion PR #${pr.number}`);
+      console.log(`[PageEditor] URL: ${pr.url}\n`);
+
+      setSavingStatus('');
+      setPrUrl(pr.url);
+
+      // Navigate back to section page after successful deletion PR
+      setTimeout(() => {
+        navigate(`/${sectionId}`);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to delete page:', err);
+      setError(handleGitHubError(err));
+      setIsSaving(false);
+      setSavingStatus('');
     }
   };
 
@@ -931,13 +1155,30 @@ Include any supplementary details, notes, or related information.
       </nav>
 
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          {isNewPage ? 'Create New Page' : `Edit Page: ${getDisplayTitle(pageId, metadata?.title, autoFormatTitles)}`}
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          {isNewPage ? 'Enter a filename and create your new page' : 'Make your changes and submit a pull request for review'}
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            {isNewPage ? 'Create New Page' : `Edit Page: ${getDisplayTitle(pageId, metadata?.title, autoFormatTitles)}`}
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {isNewPage ? 'Enter a filename and create your new page' : 'Make your changes and submit a pull request for review'}
+          </p>
+        </div>
+
+        {/* Delete button - only for existing pages and authenticated users */}
+        {!isNewPage && isAuthenticated && (
+          <button
+            onClick={handleDelete}
+            disabled={isSaving}
+            className="ml-4 inline-flex items-center px-4 py-2 text-sm font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete this page (creates a pull request)"
+          >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete Page
+          </button>
+        )}
       </div>
 
       {/* Anonymous Mode Banner */}

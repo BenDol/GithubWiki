@@ -7,10 +7,10 @@ import { getOctokit } from './api';
 /**
  * Generate a unique branch name for wiki edits
  */
-export const generateEditBranchName = (sectionId, pageId) => {
+export const generateEditBranchName = (sectionId, pageId, action = 'edit') => {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
-  return `wiki-edit/${sectionId}/${pageId}-${timestamp}-${random}`;
+  return `wiki-${action}/${sectionId}/${pageId}-${timestamp}-${random}`;
 };
 
 /**
