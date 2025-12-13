@@ -7,12 +7,40 @@ import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import 'highlight.js/styles/github-dark.css';
 
 /**
+ * Remove duplicate first header if it matches the page title
+ * @param {string} content - Markdown content
+ * @param {string} title - Page title from metadata
+ * @returns {string} - Content with duplicate header removed if found
+ */
+const removeDuplicateHeader = (content, title) => {
+  if (!content || !title) return content;
+
+  // Match first header (# Header or ## Header, etc.)
+  const headerMatch = content.match(/^(#+)\s+(.+?)$/m);
+
+  if (headerMatch) {
+    const headerText = headerMatch[2].trim();
+
+    // Case-insensitive comparison
+    if (headerText.toLowerCase() === title.toLowerCase()) {
+      // Remove the entire header line (including trailing newlines)
+      return content.replace(/^#+\s+.+$/m, '').replace(/^\n+/, '');
+    }
+  }
+
+  return content;
+};
+
+/**
  * PageViewer component for rendering markdown content
  * Uses react-markdown with syntax highlighting and enhanced features
  */
-const PageViewer = ({ content, metadata }) => {
+const PageViewer = ({ content, metadata, className = '' }) => {
+  // Process content to remove duplicate header
+  const processedContent = removeDuplicateHeader(content, metadata?.title);
+
   return (
-    <article className="max-w-4xl mx-auto">
+    <article className={className || 'max-w-4xl mx-auto'}>
       {/* Page metadata */}
       {metadata && (
         <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-800">
@@ -91,14 +119,65 @@ const PageViewer = ({ content, metadata }) => {
           ]}
           components={{
             // Custom link rendering
-            a: ({ node, ...props }) => (
-              <a
-                {...props}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                target={props.href?.startsWith('http') ? '_blank' : undefined}
-                rel={props.href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-              />
-            ),
+            a: ({ node, ...props }) => {
+              // Check if this is a heading anchor link
+              const isHeadingAnchor = props.className?.includes('anchor');
+
+              // Handle heading anchor links
+              if (isHeadingAnchor) {
+                return (
+                  <a
+                    {...props}
+                    className="anchor"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const id = props.href.slice(1);
+                      const element = document.getElementById(id);
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        // Update URL without triggering route change
+                        // For hash routing, preserve the route hash and append anchor
+                        const currentPath = window.location.pathname + window.location.hash;
+                        window.history.replaceState(null, '', `${currentPath}#${id}`);
+                      }
+                    }}
+                  />
+                );
+              }
+
+              // Handle anchor links (same-page navigation)
+              const isAnchor = props.href?.startsWith('#');
+
+              if (isAnchor) {
+                return (
+                  <a
+                    {...props}
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const id = props.href.slice(1);
+                      const element = document.getElementById(id);
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        // Update URL without triggering route change
+                        // For hash routing, preserve the route hash and append anchor
+                        const currentPath = window.location.pathname + window.location.hash;
+                        window.history.replaceState(null, '', `${currentPath}#${id}`);
+                      }
+                    }}
+                  />
+                );
+              }
+
+              return (
+                <a
+                  {...props}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  target={props.href?.startsWith('http') ? '_blank' : undefined}
+                  rel={props.href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                />
+              );
+            },
             // Custom code block rendering
             code: ({ node, inline, className, children, ...props }) => {
               return inline ? (
@@ -139,7 +218,7 @@ const PageViewer = ({ content, metadata }) => {
             ),
           }}
         >
-          {content}
+          {processedContent}
         </ReactMarkdown>
       </div>
     </article>

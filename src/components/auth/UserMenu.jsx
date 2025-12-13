@@ -1,14 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import PrestigeAvatar from '../common/PrestigeAvatar';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useUserPrestige } from '../../hooks/usePrestige';
 
 /**
  * UserMenu component with profile dropdown
  * Shows user avatar and provides logout option
+ * Prestige badge auto-loads for authenticated user
  */
 const UserMenu = () => {
   const { user, logout } = useAuthStore();
+  const { config } = useWikiConfig();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
+
+  // Load prestige data for current user
+  const { tier: prestigeTier } = useUserPrestige(user?.login);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -36,10 +45,13 @@ const UserMenu = () => {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center space-x-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
-        <img
+        <PrestigeAvatar
           src={user.avatar_url}
           alt={user.name || user.login}
-          className="h-8 w-8 rounded-full ring-2 ring-gray-200 dark:ring-gray-700"
+          size="sm"
+          username={user.login}
+          showBadge={true}
+          className="ring-2 ring-gray-200 dark:ring-gray-700 rounded-full"
         />
         <svg
           className={`w-4 h-4 text-gray-600 dark:text-gray-400 transition-transform ${
@@ -59,10 +71,12 @@ const UserMenu = () => {
           {/* User info */}
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-3">
-              <img
+              <PrestigeAvatar
                 src={user.avatar_url}
                 alt={user.name || user.login}
-                className="h-10 w-10 rounded-full"
+                size="md"
+                username={user.login}
+                showBadge={true}
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -71,6 +85,11 @@ const UserMenu = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   @{user.login}
                 </p>
+                {prestigeTier && (
+                  <p className="text-xs font-medium truncate mt-0.5" style={{ color: prestigeTier.color }}>
+                    {prestigeTier.title}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -83,6 +102,17 @@ const UserMenu = () => {
 
           {/* Menu items */}
           <div className="py-1">
+            <Link
+              to="/my-edits"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              My Edits
+            </Link>
+
             <a
               href={`https://github.com/${user.login}`}
               target="_blank"

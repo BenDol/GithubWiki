@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUIStore } from '../../store/uiStore';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useSearch, performSearch } from '../../hooks/useSearch';
 import SearchResults from './SearchResults';
+import { getDisplayTitle } from '../../utils/textUtils';
 
 /**
  * SearchBar component with keyboard shortcuts (Ctrl+K)
@@ -12,10 +14,13 @@ const SearchBar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const navigate = useNavigate();
 
+  const { config } = useWikiConfig();
   const { fuse, loading } = useSearch();
+  const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -30,12 +35,27 @@ const SearchBar = () => {
       if (e.key === 'Escape') {
         setIsOpen(false);
         setQuery('');
+        setSelectedIndex(0);
+      }
+
+      // Arrow navigation when modal is open
+      if (isOpen && results.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedIndex((prev) => (prev + 1) % results.length);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedIndex((prev) => (prev - 1 + results.length) % results.length);
+        } else if (e.key === 'Enter' && results[selectedIndex]) {
+          e.preventDefault();
+          handleResultClick(results[selectedIndex]);
+        }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isOpen, results, selectedIndex]);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -48,17 +68,27 @@ const SearchBar = () => {
   useEffect(() => {
     if (!fuse || query.length < 2) {
       setResults([]);
+      setSelectedIndex(0);
       return;
     }
 
     const searchResults = performSearch(fuse, query);
-    setResults(searchResults.slice(0, 10)); // Limit to 10 results
-  }, [query, fuse]);
+
+    // Apply title formatting if enabled
+    const formattedResults = searchResults.map(result => ({
+      ...result,
+      title: getDisplayTitle(result.pageId, result.title, autoFormatTitles)
+    }));
+
+    setResults(formattedResults.slice(0, 10)); // Limit to 10 results
+    setSelectedIndex(0); // Reset selection when results change
+  }, [query, fuse, autoFormatTitles]);
 
   const handleResultClick = (result) => {
     navigate(result.url.replace('/#', ''));
     setIsOpen(false);
     setQuery('');
+    setSelectedIndex(0);
   };
 
   if (loading) {
@@ -146,7 +176,12 @@ const SearchBar = () => {
                   <p className="text-sm">No results found for "{query}"</p>
                 </div>
               ) : (
-                <SearchResults results={results} query={query} onResultClick={handleResultClick} />
+                <SearchResults
+                  results={results}
+                  query={query}
+                  onResultClick={handleResultClick}
+                  selectedIndex={selectedIndex}
+                />
               )}
             </div>
 

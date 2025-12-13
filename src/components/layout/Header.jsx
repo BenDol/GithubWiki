@@ -16,13 +16,11 @@ const Header = () => {
 
   if (!config) return null;
 
-  const headerSections = config.sections.filter(s => s.showInHeader);
-
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
-          {/* Left side - Logo and navigation */}
+          {/* Left side - Logo and Home link */}
           <div className="flex items-center space-x-6">
             {/* Mobile menu button */}
             <button
@@ -49,15 +47,16 @@ const Header = () => {
               </span>
             </Link>
 
-            {/* Navigation sections - desktop */}
+            {/* Navigation links - desktop */}
             <nav className="hidden md:flex items-center space-x-1">
-              {headerSections.map((section) => (
+              {config.sidebar?.pages?.filter(page => page.path !== '/').map((page, index) => (
                 <Link
-                  key={section.id}
-                  to={`/${section.path}`}
-                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors"
+                  key={index}
+                  to={page.path}
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors flex items-center gap-2"
                 >
-                  {section.title}
+                  {page.icon && <span>{page.icon}</span>}
+                  <span>{page.title}</span>
                 </Link>
               ))}
             </nav>

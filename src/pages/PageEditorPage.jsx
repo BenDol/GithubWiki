@@ -10,13 +10,14 @@ import { createWikiEditPR } from '../services/github/pullRequests';
 import PageEditor from '../components/wiki/PageEditor';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
+import { getDisplayTitle } from '../utils/textUtils';
 
 /**
  * PageEditorPage
  * Handles the complete page editing workflow
  */
-const PageEditorPage = ({ sectionId }) => {
-  const { pageId } = useParams();
+const PageEditorPage = ({ sectionId, isNewPage = false }) => {
+  const { pageId: urlPageId } = useParams();
   const navigate = useNavigate();
   const { config } = useWikiConfig();
   const section = useSection(sectionId);
@@ -28,14 +29,69 @@ const PageEditorPage = ({ sectionId }) => {
   const [metadata, setMetadata] = useState(null);
   const [fileSha, setFileSha] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [newPageId, setNewPageId] = useState('');
+
+  const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
   const [prUrl, setPrUrl] = useState(null);
+
+  // Use newPageId for new pages, urlPageId for editing existing pages
+  const pageId = isNewPage ? newPageId : urlPageId;
 
   // Check permissions
   const canEdit = section?.allowContributions && isAuthenticated;
 
   useEffect(() => {
     const loadPage = async () => {
-      if (!config || !isAuthenticated) {
+      // Wait for config and section to load before checking permissions
+      if (!config || !section) {
+        return; // Keep loading until both are available
+      }
+
+      if (!isAuthenticated) {
+        setLoading(false);
+        return;
+      }
+
+      // For new pages, initialize with blank template
+      if (isNewPage) {
+        try {
+          setLoading(true);
+          setError(null);
+
+          const today = new Date().toISOString().split('T')[0];
+          const defaultContent = `---
+title:
+description:
+tags: []
+category: ${section?.title || ''}
+date: ${today}
+---
+
+# Your Page Title
+
+Write your content here...
+`;
+
+          setMetadata({
+            title: '',
+            description: '',
+            tags: [],
+            category: section?.title || '',
+            date: today,
+          });
+          setContent(defaultContent);
+          setFileSha(null);
+        } catch (err) {
+          console.error('Failed to initialize new page:', err);
+          setError(handleGitHubError(err));
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // For existing pages, load from GitHub
+      if (!pageId) {
         setLoading(false);
         return;
       }
@@ -69,44 +125,54 @@ const PageEditorPage = ({ sectionId }) => {
     };
 
     loadPage();
-  }, [config, sectionId, pageId, isAuthenticated]);
+  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage]);
 
   const handleSave = async (newContent, editSummary) => {
     if (!config || !user) return;
+
+    // For new pages, validate that pageId is set
+    if (isNewPage && !newPageId.trim()) {
+      setError('Please enter a page filename (e.g., "my-new-page")');
+      return;
+    }
 
     try {
       setIsSaving(true);
       setError(null);
 
       const { owner, repo, contentPath, branch: baseBranch } = config.wiki.repository;
-      const filePath = `${contentPath}/${sectionId}/${pageId}.md`;
+      const currentPageId = isNewPage ? newPageId : pageId;
+      const filePath = `${contentPath}/${sectionId}/${currentPageId}.md`;
 
-      // Check if file has been modified since we loaded it
-      const changed = await hasFileChanged(owner, repo, filePath, fileSha, baseBranch);
+      // For existing pages, check if file has been modified since we loaded it
+      if (!isNewPage) {
+        const changed = await hasFileChanged(owner, repo, filePath, fileSha, baseBranch);
 
-      if (changed) {
-        const confirmOverwrite = window.confirm(
-          'This page has been modified by someone else since you started editing. Do you want to overwrite their changes?'
-        );
+        if (changed) {
+          const confirmOverwrite = window.confirm(
+            'This page has been modified by someone else since you started editing. Do you want to overwrite their changes?'
+          );
 
-        if (!confirmOverwrite) {
-          setIsSaving(false);
-          return;
+          if (!confirmOverwrite) {
+            setIsSaving(false);
+            return;
+          }
+
+          // Refresh SHA to get latest version
+          const latestFile = await getFileContent(owner, repo, filePath, baseBranch);
+          setFileSha(latestFile.sha);
         }
-
-        // Refresh SHA to get latest version
-        const latestFile = await getFileContent(owner, repo, filePath, baseBranch);
-        setFileSha(latestFile.sha);
       }
 
       // Generate unique branch name
-      const branchName = generateEditBranchName(sectionId, pageId);
+      const branchName = generateEditBranchName(sectionId, currentPageId);
 
       // Create branch
       await createBranch(owner, repo, branchName, baseBranch);
 
       // Commit changes to new branch
-      const commitMessage = `Update ${metadata?.title || pageId}\n\n${editSummary || 'Updated via wiki editor'}`;
+      const action = isNewPage ? 'Create' : 'Update';
+      const commitMessage = `${action} ${metadata?.title || currentPageId}\n\n${editSummary || `${action}d via wiki editor`}`;
 
       await updateFileContent(
         owner,
@@ -115,17 +181,17 @@ const PageEditorPage = ({ sectionId }) => {
         newContent,
         commitMessage,
         branchName,
-        fileSha
+        isNewPage ? null : fileSha  // No SHA for new files
       );
 
       // Create pull request
       const pr = await createWikiEditPR(
         owner,
         repo,
-        metadata?.title || pageId,
+        metadata?.title || currentPageId,
         section?.title,
         sectionId,
-        pageId,
+        currentPageId,
         branchName,
         editSummary,
         baseBranch
@@ -147,9 +213,29 @@ const PageEditorPage = ({ sectionId }) => {
     );
 
     if (confirmCancel) {
-      navigate(`/${sectionId}/${pageId}`);
+      // For new pages, go back to section page; for existing pages, go to page view
+      navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`);
     }
   };
+
+  // Scroll to top when editor loads
+  useEffect(() => {
+    if (!loading) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [loading]);
+
+  // Loading state (must check BEFORE permission checks to avoid flashing messages)
+  if (loading || !section) {
+    return (
+      <div className="flex justify-center items-center min-h-[400px]">
+        <div className="text-center">
+          <LoadingSpinner size="lg" />
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading editor...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Redirect if not authenticated
   if (!isAuthenticated) {
@@ -252,18 +338,6 @@ const PageEditorPage = ({ sectionId }) => {
     );
   }
 
-  // Loading state
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="text-center">
-          <LoadingSpinner size="lg" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading editor...</p>
-        </div>
-      </div>
-    );
-  }
-
   // Error state
   if (error) {
     return (
@@ -300,24 +374,51 @@ const PageEditorPage = ({ sectionId }) => {
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <Link to={`/${sectionId}/${pageId}`} className="hover:text-blue-600 dark:hover:text-blue-400">
-          {metadata?.title || pageId}
-        </Link>
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        <span className="text-gray-900 dark:text-white font-medium">Edit</span>
+        {!isNewPage && (
+          <>
+            <Link to={`/${sectionId}/${pageId}`} className="hover:text-blue-600 dark:hover:text-blue-400">
+              {getDisplayTitle(pageId, metadata?.title, autoFormatTitles)}
+            </Link>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <span className="text-gray-900 dark:text-white font-medium">Edit</span>
+          </>
+        )}
+        {isNewPage && (
+          <span className="text-gray-900 dark:text-white font-medium">Create Page</span>
+        )}
       </nav>
 
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Edit Page: {metadata?.title || pageId}
+          {isNewPage ? 'Create New Page' : `Edit Page: ${getDisplayTitle(pageId, metadata?.title, autoFormatTitles)}`}
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Make your changes and submit a pull request for review
+          {isNewPage ? 'Enter a filename and create your new page' : 'Make your changes and submit a pull request for review'}
         </p>
       </div>
+
+      {/* Filename input for new pages */}
+      {isNewPage && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <label htmlFor="pageId" className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+            Page Filename
+          </label>
+          <input
+            id="pageId"
+            type="text"
+            value={newPageId}
+            onChange={(e) => setNewPageId(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+            placeholder="my-new-page"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Enter a URL-friendly filename (lowercase letters, numbers, and hyphens only). Example: "getting-started" or "advanced-guide"
+          </p>
+        </div>
+      )}
 
       {/* Editor */}
       <PageEditor

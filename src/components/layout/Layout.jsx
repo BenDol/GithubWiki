@@ -30,8 +30,8 @@ const Layout = () => {
       <div className="flex flex-1">
         <Sidebar />
 
-        <main className="flex-1 w-full">
-          <div className="container mx-auto px-4 py-8 max-w-7xl">
+        <main className="flex-1 w-full flex flex-col">
+          <div className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
             <Outlet />
           </div>
 

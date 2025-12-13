@@ -1,8 +1,22 @@
+import { useRef, useEffect } from 'react';
+
 /**
  * SearchResults component
  * Displays search results with highlighting
  */
-const SearchResults = ({ results, query, onResultClick }) => {
+const SearchResults = ({ results, query, onResultClick, selectedIndex = 0 }) => {
+  const selectedRef = useRef(null);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (selectedRef.current) {
+      selectedRef.current.scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth'
+      });
+    }
+  }, [selectedIndex]);
+
   const highlightText = (text, query) => {
     if (!text || !query) return text;
 
@@ -25,8 +39,13 @@ const SearchResults = ({ results, query, onResultClick }) => {
       {results.map((result, index) => (
         <button
           key={result.id}
+          ref={index === selectedIndex ? selectedRef : null}
           onClick={() => onResultClick(result)}
-          className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:bg-gray-50 dark:focus:bg-gray-700 focus:outline-none"
+          className={`w-full text-left p-4 transition-colors focus:outline-none ${
+            index === selectedIndex
+              ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500'
+              : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+          }`}
         >
           <div className="flex items-start space-x-3">
             {/* Icon */}

@@ -43,8 +43,8 @@ html {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -92,3 +92,95 @@ html {
 .animate-slide-in {
   animation: slide-in 0.3s ease-out forwards;
 }
+
+/* Heading anchor links */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  scroll-margin-top: 5rem;
+  position: relative;
+}
+
+/* Style the anchor link - keep default link styling */
+.prose h1 a.anchor,
+.prose h2 a.anchor,
+.prose h3 a.anchor,
+.prose h4 a.anchor,
+.prose h5 a.anchor,
+.prose h6 a.anchor {
+  position: relative;
+  display: inline-block;
+}
+
+/* Add link icon before heading */
+.prose h1 a.anchor::before,
+.prose h2 a.anchor::before,
+.prose h3 a.anchor::before,
+.prose h4 a.anchor::before,
+.prose h5 a.anchor::before,
+.prose h6 a.anchor::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  margin-right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  width: 0.75em;
+  height: 0.75em;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  filter: invert(44%) sepia(97%) saturate(2726%) hue-rotate(201deg) brightness(96%) contrast(101%);
+}
+
+/* Blue color for light mode */
+.prose h1 a.anchor::before,
+.prose h2 a.anchor::before,
+.prose h3 a.anchor::before,
+.prose h4 a.anchor::before,
+.prose h5 a.anchor::before,
+.prose h6 a.anchor::before {
+  filter: invert(44%) sepia(97%) saturate(2726%) hue-rotate(201deg) brightness(96%) contrast(101%);
+}
+
+/* Blue color for dark mode */
+.dark .prose h1 a.anchor::before,
+.dark .prose h2 a.anchor::before,
+.dark .prose h3 a.anchor::before,
+.dark .prose h4 a.anchor::before,
+.dark .prose h5 a.anchor::before,
+.dark .prose h6 a.anchor::before {
+  filter: invert(64%) sepia(35%) saturate(1486%) hue-rotate(194deg) brightness(101%) contrast(96%);
+}
+
+/* Show icon on hover */
+.prose h1:hover a.anchor::before,
+.prose h2:hover a.anchor::before,
+.prose h3:hover a.anchor::before,
+.prose h4:hover a.anchor::before,
+.prose h5:hover a.anchor::before,
+.prose h6:hover a.anchor::before {
+  opacity: 1 !important;
+}
+
+/* Highlight target anchor */
+:target {
+  @apply scroll-mt-20;
+  animation: highlight-anchor 2s ease-out;
+}
+
+@keyframes highlight-anchor {
+  0% {
+    @apply bg-yellow-100 dark:bg-yellow-900/30;
+  }
+  100% {
+    @apply bg-transparent;
+  }
+}
+

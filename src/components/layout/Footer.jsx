@@ -43,7 +43,7 @@ const Footer = () => {
             <span className="text-xs text-gray-500 dark:text-gray-500">
               Powered by{' '}
               <a
-                href="https://github.com"
+                href="https://github.com/BenDol/GithubWiki"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-blue-500"

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 
@@ -6,6 +7,11 @@ import { useWikiConfig } from '../hooks/useWikiConfig';
  */
 const HomePage = () => {
   const { config } = useWikiConfig();
+
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   if (!config) return null;
 

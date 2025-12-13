@@ -55,6 +55,13 @@ const SearchPage = () => {
     setSearchParams(params);
   }, [query, selectedTag, setSearchParams]);
 
+  // Scroll to top when search page loads
+  useEffect(() => {
+    if (!loading) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [loading]);
+
   const handleResultClick = (result) => {
     navigate(result.url.replace('/#', ''));
   };

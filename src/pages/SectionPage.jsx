@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSection } from '../hooks/useWikiConfig';
+import { useSection, useWikiConfig } from '../hooks/useWikiConfig';
+import { useAuthStore } from '../store/authStore';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { getDisplayTitle } from '../utils/textUtils';
 
 /**
  * Section page component
@@ -9,10 +11,15 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
  */
 const SectionPage = ({ sectionId }) => {
   const section = useSection(sectionId);
+  const { config } = useWikiConfig();
+  const { isAuthenticated } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [indexContent, setIndexContent] = useState(null);
   const [indexMetadata, setIndexMetadata] = useState(null);
   const [pages, setPages] = useState([]);
+
+  const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
+  const canCreatePage = section?.allowContributions && isAuthenticated;
 
   useEffect(() => {
     const loadSectionData = async () => {
@@ -45,15 +52,12 @@ const SectionPage = ({ sectionId }) => {
     loadSectionData();
   }, [sectionId]);
 
-  if (!section) {
-    return (
-      <div className="text-center py-12">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Section Not Found
-        </h1>
-      </div>
-    );
-  }
+  // Scroll to top when section changes
+  useEffect(() => {
+    if (!loading) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [loading, sectionId]);
 
   if (loading) {
     return (
@@ -66,13 +70,36 @@ const SectionPage = ({ sectionId }) => {
     );
   }
 
+  if (!section) {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          Section Not Found
+        </h1>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto">
       {/* Section header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">
-          {section.title}
-        </h1>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+            {section.title}
+          </h1>
+          {canCreatePage && (
+            <Link
+              to={`/${sectionId}/new`}
+              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create New Page
+            </Link>
+          )}
+        </div>
         <p className="text-lg text-gray-600 dark:text-gray-400">
           Browse all pages in this section
         </p>
@@ -93,7 +120,7 @@ const SectionPage = ({ sectionId }) => {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-medium text-gray-900 dark:text-white">
-                    {page.title}
+                    {getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
                   </h3>
                   {page.description && (
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -125,11 +152,28 @@ const SectionPage = ({ sectionId }) => {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
             No pages yet
           </h2>
-          <p className="text-gray-700 dark:text-gray-300">
-            Create markdown files in <code className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 rounded text-sm">
-              /public/content/{section.path}/
-            </code> to populate this section.
+          <p className="text-gray-700 dark:text-gray-300 mb-4">
+            This section doesn't have any pages yet.
+            {canCreatePage ? ' Click the button below to create the first page!' : ' Create markdown files to populate this section.'}
           </p>
+          {canCreatePage && (
+            <Link
+              to={`/${sectionId}/new`}
+              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create First Page
+            </Link>
+          )}
+          {!canCreatePage && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+              Create markdown files in <code className="px-2 py-1 bg-yellow-100 dark:bg-yellow-900 rounded text-sm">
+                /public/content/{section.path}/
+              </code> to populate this section.
+            </p>
+          )}
         </div>
       )}
     </div>

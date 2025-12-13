@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function loggerPlugin() {
   const logsDir = path.join(__dirname, 'logs');
   const logFile = path.join(logsDir, 'debug.log');
+  const MAX_LOG_SIZE = 500 * 1024; // 500KB max log file size
 
   // Ensure logs directory exists
   if (!fs.existsSync(logsDir)) {
@@ -21,6 +22,26 @@ export function loggerPlugin() {
   if (!fs.existsSync(logFile)) {
     fs.writeFileSync(logFile, '=== Wiki Debug Log ===\n\n', 'utf-8');
   }
+
+  /**
+   * Rotate log file if it exceeds max size
+   * Keeps only the most recent 50% of the log
+   */
+  const rotateLogIfNeeded = () => {
+    try {
+      const stats = fs.statSync(logFile);
+      if (stats.size > MAX_LOG_SIZE) {
+        const content = fs.readFileSync(logFile, 'utf-8');
+        const lines = content.split('\n');
+        // Keep the last 50% of lines
+        const keepLines = Math.floor(lines.length / 2);
+        const newContent = '=== Wiki Debug Log (Rotated) ===\n\n' + lines.slice(-keepLines).join('\n');
+        fs.writeFileSync(logFile, newContent, 'utf-8');
+      }
+    } catch (error) {
+      console.error('Error rotating log file:', error);
+    }
+  };
 
   return {
     name: 'wiki-logger',
@@ -50,6 +71,9 @@ export function loggerPlugin() {
               }
 
               logLine += '\n---\n\n';
+
+              // Rotate log if needed before appending
+              rotateLogIfNeeded();
 
               // Append to log file
               fs.appendFileSync(logFile, logLine, 'utf-8');

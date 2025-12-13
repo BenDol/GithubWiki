@@ -1,6 +1,9 @@
 import { formatDistance } from 'date-fns';
+import { Link } from 'react-router-dom';
 import { usePageHistory } from '../../hooks/usePageHistory';
+import { useAuthStore } from '../../store/authStore';
 import LoadingSpinner from '../common/LoadingSpinner';
+import PrestigeAvatar from '../common/PrestigeAvatar';
 
 /**
  * PageHistory component
@@ -8,6 +11,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
  */
 const PageHistory = ({ sectionId, pageId }) => {
   const { commits, loading, error } = usePageHistory(sectionId, pageId);
+  const { isAuthenticated } = useAuthStore();
 
   if (loading) {
     return (
@@ -16,6 +20,29 @@ const PageHistory = ({ sectionId, pageId }) => {
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">Loading page history...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-12">
+        <div className="text-gray-400 text-6xl mb-4">🔒</div>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+          Authentication Required
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">
+          You need to sign in with GitHub to view page history.
+        </p>
+        <Link
+          to={`/${sectionId}/${pageId}`}
+          className="inline-flex items-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Back to Page
+        </Link>
       </div>
     );
   }
@@ -71,13 +98,15 @@ const PageHistory = ({ sectionId, pageId }) => {
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-start space-x-4">
-              {/* Author avatar */}
+              {/* Author avatar with prestige badge */}
               <div className="flex-shrink-0">
                 {commit.author.avatar ? (
-                  <img
+                  <PrestigeAvatar
                     src={commit.author.avatar}
                     alt={commit.author.name}
-                    className="h-10 w-10 rounded-full"
+                    username={commit.author.username}
+                    size="md"
+                    showBadge={true}
                   />
                 ) : (
                   <div className="h-10 w-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">

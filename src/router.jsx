@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { createHashRouter, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 
 // Lazy load page components for code splitting
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -11,6 +12,7 @@ const PageEditorPage = lazy(() => import('./pages/PageEditorPage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const BuildViewerPage = lazy(() => import('./pages/BuildViewerPage'));
+const MyEditsPage = lazy(() => import('./pages/MyEditsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Suspense wrapper component for lazy-loaded pages
@@ -38,6 +40,7 @@ export const createWikiRouter = (config) => {
     {
       path: '/',
       element: <Layout />,
+      errorElement: <RouteErrorBoundary />,
       children: [
         {
           index: true,
@@ -63,6 +66,14 @@ export const createWikiRouter = (config) => {
             </SuspenseWrapper>
           ),
         },
+        {
+          path: 'my-edits',
+          element: (
+            <SuspenseWrapper>
+              <MyEditsPage />
+            </SuspenseWrapper>
+          ),
+        },
         // Dynamic routes for each section
         ...( config?.sections || []).map((section) => ({
           path: section.path,
@@ -72,6 +83,14 @@ export const createWikiRouter = (config) => {
               element: (
                 <SuspenseWrapper>
                   <SectionPage sectionId={section.id} />
+                </SuspenseWrapper>
+              ),
+            },
+            {
+              path: 'new',
+              element: (
+                <SuspenseWrapper>
+                  <PageEditorPage sectionId={section.id} isNewPage={true} />
                 </SuspenseWrapper>
               ),
             },

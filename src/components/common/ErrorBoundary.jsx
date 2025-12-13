@@ -21,11 +21,28 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('Error caught by boundary:', error, errorInfo);
-    this.state = {
+    this.setState({
       hasError: true,
       error,
       errorInfo,
-    };
+    });
+
+    // Log error to debug system
+    fetch('/api/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'error',
+        message: `Component Error: ${error.message || 'Unknown error'}`,
+        data: {
+          componentStack: errorInfo.componentStack,
+          path: window.location.hash,
+        },
+        stack: error.stack,
+      }),
+    }).catch(err => {
+      console.error('Failed to log error:', err);
+    });
   }
 
   handleReset = () => {
@@ -115,6 +132,29 @@ class ErrorBoundary extends Component {
                     </svg>
                     Reload Page
                   </button>
+                </div>
+
+                {/* Help Text */}
+                <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 rounded-lg">
+                  <p className="text-sm text-blue-900 dark:text-blue-200">
+                    <span className="font-semibold">Need help?</span> Try checking the{' '}
+                    <button
+                      onClick={() => {
+                        // Open dev tools with Ctrl+Shift+D
+                        window.dispatchEvent(new KeyboardEvent('keydown', {
+                          key: 'D',
+                          code: 'KeyD',
+                          ctrlKey: true,
+                          shiftKey: true,
+                          bubbles: true,
+                        }));
+                      }}
+                      className="underline hover:text-blue-700 dark:hover:text-blue-100"
+                    >
+                      Developer Tools (Ctrl+Shift+D)
+                    </button>
+                    {' '}for more details about this error.
+                  </p>
                 </div>
               </div>
 

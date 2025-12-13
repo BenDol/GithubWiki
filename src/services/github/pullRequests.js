@@ -49,6 +49,101 @@ export const generatePRTitle = (pageTitle, sectionTitle) => {
 };
 
 /**
+ * Get all pull requests for a user in a repository
+ */
+export const getUserPullRequests = async (owner, repo, username) => {
+  const octokit = getOctokit();
+
+  // Get all pull requests created by the user
+  const { data } = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    state: 'all',
+    sort: 'created',
+    direction: 'desc',
+    per_page: 100,
+  });
+
+  // Filter to only PRs created by the current user
+  const userPRs = data.filter(pr => pr.user.login === username);
+
+  // Fetch detailed information for each PR to get diff stats
+  const detailedPRs = await Promise.all(
+    userPRs.map(async (pr) => {
+      try {
+        const { data: detailedPR } = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: pr.number,
+        });
+
+        return {
+          number: detailedPR.number,
+          title: detailedPR.title,
+          body: detailedPR.body,
+          state: detailedPR.state,
+          html_url: detailedPR.html_url,
+          created_at: detailedPR.created_at,
+          updated_at: detailedPR.updated_at,
+          merged_at: detailedPR.merged_at,
+          additions: detailedPR.additions,
+          deletions: detailedPR.deletions,
+          changed_files: detailedPR.changed_files,
+          user: {
+            login: detailedPR.user.login,
+            avatar_url: detailedPR.user.avatar_url,
+          },
+          labels: detailedPR.labels,
+        };
+      } catch (error) {
+        console.error(`Failed to fetch details for PR #${pr.number}:`, error);
+        // Return basic info if detailed fetch fails
+        return {
+          number: pr.number,
+          title: pr.title,
+          body: pr.body,
+          state: pr.state,
+          html_url: pr.html_url,
+          created_at: pr.created_at,
+          updated_at: pr.updated_at,
+          merged_at: pr.merged_at,
+          additions: 0,
+          deletions: 0,
+          changed_files: 0,
+          user: {
+            login: pr.user.login,
+            avatar_url: pr.user.avatar_url,
+          },
+          labels: pr.labels,
+        };
+      }
+    })
+  );
+
+  return detailedPRs;
+};
+
+/**
+ * Close a pull request
+ */
+export const closePullRequest = async (owner, repo, pullNumber) => {
+  const octokit = getOctokit();
+
+  const { data } = await octokit.rest.pulls.update({
+    owner,
+    repo,
+    pull_number: pullNumber,
+    state: 'closed',
+  });
+
+  return {
+    number: data.number,
+    state: data.state,
+    closed_at: data.closed_at,
+  };
+};
+
+/**
  * Generate PR body with edit details
  */
 export const generatePRBody = async (pageTitle, sectionId, pageId, summary = null) => {

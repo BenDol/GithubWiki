@@ -14,7 +14,6 @@ export const initializeOctokit = (token) => {
   octokitInstance = new Octokit({
     auth: token,
     userAgent: 'GitHub-Wiki-Framework/1.0',
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
 
   return octokitInstance;
@@ -22,10 +21,14 @@ export const initializeOctokit = (token) => {
 
 /**
  * Get Octokit instance
+ * Creates an unauthenticated instance for public repo access if not logged in
  */
 export const getOctokit = () => {
   if (!octokitInstance) {
-    throw new Error('Octokit not initialized. Please login first.');
+    // Create unauthenticated instance for public repo read-only access
+    octokitInstance = new Octokit({
+      userAgent: 'GitHub-Wiki-Framework/1.0',
+    });
   }
   return octokitInstance;
 };
@@ -38,9 +41,23 @@ export const clearOctokit = () => {
 };
 
 /**
+ * Check if user is authenticated (has token)
+ */
+export const isAuthenticated = () => {
+  // Check if we have an authenticated instance with a token
+  return octokitInstance !== null &&
+         octokitInstance.auth !== undefined &&
+         (typeof octokitInstance.auth === 'string' || typeof octokitInstance.auth === 'function');
+};
+
+/**
  * Get authenticated user
+ * Requires login
  */
 export const getAuthenticatedUser = async () => {
+  if (!isAuthenticated()) {
+    throw new Error('Authentication required. Please login first.');
+  }
   const octokit = getOctokit();
   const { data } = await octokit.rest.users.getAuthenticated();
   return data;
@@ -181,8 +198,12 @@ export const compareCommits = async (owner, repo, base, head) => {
 
 /**
  * Create a new branch
+ * Requires login
  */
 export const createBranch = async (owner, repo, branchName, fromRef = 'main') => {
+  if (!isAuthenticated()) {
+    throw new Error('Authentication required. Please login to create branches.');
+  }
   const octokit = getOctokit();
 
   // Get the SHA of the ref we're branching from
@@ -207,8 +228,12 @@ export const createBranch = async (owner, repo, branchName, fromRef = 'main') =>
 
 /**
  * Update file content (commit changes)
+ * Requires login
  */
 export const updateFile = async (owner, repo, path, content, message, branch = 'main', sha = null) => {
+  if (!isAuthenticated()) {
+    throw new Error('Authentication required. Please login to edit files.');
+  }
   const octokit = getOctokit();
 
   const { data } = await octokit.rest.repos.createOrUpdateFileContents({
@@ -226,8 +251,12 @@ export const updateFile = async (owner, repo, path, content, message, branch = '
 
 /**
  * Create a pull request
+ * Requires login
  */
 export const createPullRequest = async (owner, repo, title, body, head, base = 'main') => {
+  if (!isAuthenticated()) {
+    throw new Error('Authentication required. Please login to create pull requests.');
+  }
   const octokit = getOctokit();
 
   const { data } = await octokit.rest.pulls.create({
