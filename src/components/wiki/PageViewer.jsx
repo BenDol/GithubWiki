@@ -136,9 +136,14 @@ const PageViewer = ({ content, metadata, className = '' }) => {
                       if (element) {
                         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         // Update URL without triggering route change
-                        // For hash routing, preserve the route hash and append anchor
-                        const currentPath = window.location.pathname + window.location.hash;
-                        window.history.replaceState(null, '', `${currentPath}#${id}`);
+                        // For hash routing: #/route/path#anchor (max 2 hash symbols)
+                        // Extract just the route part (before any existing anchor)
+                        const hashParts = window.location.hash.split('#');
+                        // hashParts: ['', '/route/path', 'old-anchor'?]
+                        // We want: #/route/path#new-anchor
+                        const routePath = hashParts[1] || '';
+                        const newUrl = `${window.location.pathname}#${routePath}#${id}`;
+                        window.history.replaceState(null, '', newUrl);
                       }
                     }}
                   />
@@ -160,9 +165,14 @@ const PageViewer = ({ content, metadata, className = '' }) => {
                       if (element) {
                         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
                         // Update URL without triggering route change
-                        // For hash routing, preserve the route hash and append anchor
-                        const currentPath = window.location.pathname + window.location.hash;
-                        window.history.replaceState(null, '', `${currentPath}#${id}`);
+                        // For hash routing: #/route/path#anchor (max 2 hash symbols)
+                        // Extract just the route part (before any existing anchor)
+                        const hashParts = window.location.hash.split('#');
+                        // hashParts: ['', '/route/path', 'old-anchor'?]
+                        // We want: #/route/path#new-anchor
+                        const routePath = hashParts[1] || '';
+                        const newUrl = `${window.location.pathname}#${routePath}#${id}`;
+                        window.history.replaceState(null, '', newUrl);
                       }
                     }}
                   />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useWikiConfig } from '../hooks/useWikiConfig';
@@ -21,9 +21,22 @@ const MyEditsPage = () => {
   const [expandedPRs, setExpandedPRs] = useState(new Set());
   const [showClosed, setShowClosed] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Ref for Edit Requests section
+  const editRequestsRef = useRef(null);
+
   useEffect(() => {
     const loadPullRequests = async () => {
-      if (!isAuthenticated || !user || !config) {
+      // Keep loading until config is available
+      if (!config) {
+        return;
+      }
+
+      // If not authenticated, stop loading
+      if (!isAuthenticated || !user) {
         setLoading(false);
         return;
       }
@@ -33,7 +46,33 @@ const MyEditsPage = () => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        const prs = await getUserPullRequests(owner, repo, user.login);
+        let prs = await getUserPullRequests(owner, repo, user.login);
+
+        // DEV: Add fake PRs for testing pagination
+        const ENABLE_FAKE_PRS = false; // Set to true to enable fake test data
+        if (import.meta.env.DEV && ENABLE_FAKE_PRS) {
+          const fakePRs = Array.from({ length: 20 }, (_, i) => ({
+            id: 999000 + i,
+            number: 1000 + i,
+            title: `[TEST] Fake Pull Request ${i + 1} - Testing Pagination`,
+            user: {
+              login: user.login,
+              avatar_url: user.avatar_url,
+              html_url: `https://github.com/${user.login}`
+            },
+            state: i % 5 === 0 ? 'merged' : i % 7 === 0 ? 'closed' : 'open',
+            created_at: new Date(Date.now() - i * 86400000).toISOString(),
+            html_url: `https://github.com/${owner}/${repo}/pull/${1000 + i}`,
+            changed_files: Math.floor(Math.random() * 10) + 1,
+            additions: Math.floor(Math.random() * 500) + 10,
+            deletions: Math.floor(Math.random() * 200) + 5,
+            labels: i % 3 === 0 ? [{ id: i, name: 'enhancement', color: '84b6eb' }] : [],
+            merged_at: i % 5 === 0 ? new Date(Date.now() - i * 86400000).toISOString() : null
+          }));
+          prs = [...prs, ...fakePRs];
+          console.log('[MyEdits] Added 20 fake PRs for testing');
+        }
+
         setPullRequests(prs);
       } catch (err) {
         console.error('Failed to load pull requests:', err);
@@ -45,6 +84,18 @@ const MyEditsPage = () => {
 
     loadPullRequests();
   }, [isAuthenticated, user, config, refreshKey]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [showClosed]);
+
+  // Scroll to Edit Requests section when page changes
+  useEffect(() => {
+    if (editRequestsRef.current) {
+      editRequestsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [currentPage]);
 
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
@@ -154,6 +205,12 @@ const MyEditsPage = () => {
   const filteredPullRequests = showClosed
     ? pullRequests
     : pullRequests.filter(pr => pr.state === 'open');
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredPullRequests.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedPullRequests = filteredPullRequests.slice(startIndex, endIndex);
 
   // Calculate contribution statistics (from all PRs, not just filtered)
   const stats = {
@@ -391,10 +448,17 @@ const MyEditsPage = () => {
 
       {/* Filter controls */}
       {pullRequests.length > 0 && (
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Edit Requests
-          </h2>
+        <div ref={editRequestsRef} className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Edit Requests
+            </h2>
+            {filteredPullRequests.length > 0 && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredPullRequests.length)} of {filteredPullRequests.length}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">
               Show closed:
@@ -440,8 +504,9 @@ const MyEditsPage = () => {
           )}
         </div>
       ) : (
+        <>
         <div className="space-y-4">
-          {filteredPullRequests.map((pr) => {
+          {paginatedPullRequests.map((pr) => {
             const isExpanded = expandedPRs.has(pr.number);
             const isClosed = pr.state === 'closed' || pr.state === 'merged';
 
@@ -608,6 +673,78 @@ const MyEditsPage = () => {
             );
           })}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            {/* Previous button */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            {/* Page numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                // Show first page, last page, current page, and pages around current
+                const showPage =
+                  pageNum === 1 ||
+                  pageNum === totalPages ||
+                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+
+                // Show ellipsis
+                const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
+                const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
+
+                if (showEllipsisBefore || showEllipsisAfter) {
+                  return (
+                    <span key={pageNum} className="px-2 text-gray-500 dark:text-gray-400">
+                      ...
+                    </span>
+                  );
+                }
+
+                if (!showPage) return null;
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      currentPage === pageNum
+                        ? 'bg-blue-500 text-white'
+                        : 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Next button */}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            {/* Page info */}
+            <span className="ml-4 text-sm text-gray-600 dark:text-gray-400">
+              Page {currentPage} of {totalPages} ({filteredPullRequests.length} total)
+            </span>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

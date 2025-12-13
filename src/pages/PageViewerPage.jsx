@@ -96,20 +96,45 @@ const PageViewerPage = ({ sectionId }) => {
       const hashParts = window.location.hash.split('#');
       const anchor = hashParts[2]; // The anchor is the 3rd element (index 2)
 
+      console.log('Full hash:', window.location.hash);
+      console.log('Hash parts:', hashParts);
+      console.log('Extracted anchor:', anchor);
+
       if (anchor) {
-        // Wait a bit for the content to render
-        setTimeout(() => {
-          const element = document.getElementById(anchor);
+        // Decode the anchor in case it's URL-encoded
+        const decodedAnchor = decodeURIComponent(anchor);
+        console.log('Looking for element with ID:', decodedAnchor);
+
+        // Use MutationObserver to wait for the element to be added to the DOM
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds max (50 * 100ms)
+
+        const checkElement = () => {
+          const element = document.getElementById(decodedAnchor);
+
           if (element) {
+            console.log('Found element:', element);
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          } else {
+            attempts++;
+            if (attempts >= maxAttempts) {
+              console.error(`Element with ID "${decodedAnchor}" not found after ${maxAttempts} attempts`);
+              console.log('Available IDs on page:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+            } else {
+              // Try again
+              requestAnimationFrame(checkElement);
+            }
           }
-        }, 100);
+        };
+
+        // Start checking
+        checkElement();
       } else {
         // No anchor, scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }
-  }, [loading, content]);
+  }, [loading, content, location]);
 
   if (loading) {
     return (

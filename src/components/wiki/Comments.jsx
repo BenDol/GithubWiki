@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { formatDistance } from 'date-fns';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
@@ -31,6 +31,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [commentReactions, setCommentReactions] = useState({});
   const [reactionLoading, setReactionLoading] = useState({});
 
+  // Lazy loading state
+  const [visibleCount, setVisibleCount] = useState(10); // Show 10 comments initially
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sentinelRef = useRef(null);
+
   const pageUrl = `${window.location.origin}${window.location.pathname}#/${sectionId}/${pageId}`;
 
   // Load issue and comments
@@ -51,14 +56,52 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           setIssue(pageIssue);
 
           // Load comments for the issue
-          const issueComments = await getIssueComments(owner, repo, pageIssue.number);
+          let issueComments = await getIssueComments(owner, repo, pageIssue.number);
+
+          // DEV: Add 100 fake comments for testing lazy loading
+          const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data
+          if (import.meta.env.DEV && ENABLE_FAKE_COMMENTS) {
+            const fakeComments = Array.from({ length: 100 }, (_, i) => ({
+              id: 8000000 + i,
+              body: `[TEST] This is fake test comment number ${i + 1} for testing lazy loading pagination. Lorem ipsum dolor sit amet, consectetur adipiscing elit.`,
+              user: {
+                login: 'TestUser' + (i % 5),
+                avatar_url: `https://avatars.githubusercontent.com/u/${1000000 + i}?v=4`,
+                html_url: `https://github.com/TestUser${i % 5}`
+              },
+              created_at: new Date(Date.now() - i * 3600000).toISOString(),
+              updated_at: new Date(Date.now() - i * 3600000).toISOString(),
+              reactions: {
+                url: `https://api.github.com/repos/${owner}/${repo}/issues/comments/${8000000 + i}/reactions`,
+                total_count: 0,
+                '+1': 0,
+                '-1': 0,
+                laugh: 0,
+                hooray: 0,
+                confused: 0,
+                heart: 0,
+                rocket: 0,
+                eyes: 0
+              },
+              html_url: `https://github.com/${owner}/${repo}/issues/4#issuecomment-${8000000 + i}`
+            }));
+            issueComments = [...issueComments, ...fakeComments];
+            console.log('[Comments] Added 100 fake comments for testing');
+          }
+
           setComments(issueComments);
 
-          // Load reactions for each comment
+          // Load reactions only for initially visible comments (lazy load rest)
           const reactions = {};
-          for (const comment of issueComments) {
-            const commentReactionList = await getCommentReactions(owner, repo, comment.id);
-            reactions[comment.id] = commentReactionList;
+          const initialComments = issueComments.slice(0, 10);
+          for (const comment of initialComments) {
+            // Skip loading reactions for fake comments
+            if (comment.id < 8000000) {
+              const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+              reactions[comment.id] = commentReactionList;
+            } else {
+              reactions[comment.id] = [];
+            }
           }
           setCommentReactions(reactions);
         }
@@ -74,6 +117,65 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     loadComments();
   }, [config, pageTitle, pageUrl, sectionId, pageId, isAuthenticated]);
 
+  // Lazy load more comments when sentinel is visible
+  const loadMore = useCallback(async () => {
+    if (loadingMore || visibleCount >= comments.length || !config) return;
+
+    setLoadingMore(true);
+
+    try {
+      const newVisibleCount = Math.min(visibleCount + 10, comments.length);
+      const newComments = comments.slice(visibleCount, newVisibleCount);
+
+      // Load reactions for newly visible comments
+      const { owner, repo } = config.wiki.repository;
+      const newReactions = { ...commentReactions };
+
+      for (const comment of newComments) {
+        if (!newReactions[comment.id]) {
+          // Skip loading reactions for fake comments
+          if (comment.id < 8000000) {
+            const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+            newReactions[comment.id] = commentReactionList;
+          } else {
+            newReactions[comment.id] = [];
+          }
+        }
+      }
+
+      setCommentReactions(newReactions);
+      setVisibleCount(newVisibleCount);
+    } catch (err) {
+      console.error('Failed to load more comments:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, visibleCount, comments, config, commentReactions]);
+
+  // Set up IntersectionObserver for lazy loading
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    if (visibleCount >= comments.length) return; // All loaded
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel);
+      }
+    };
+  }, [loadMore, visibleCount, comments.length]);
+
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return;
 
@@ -81,19 +183,66 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       setIsSubmitting(true);
       const { owner, repo } = config.wiki.repository;
 
+      console.log('[Comments] Submitting comment...');
+      console.log('[Comments] Current issue:', issue);
+
       // If no issue exists yet, create it (first comment on the page)
       let pageIssue = issue;
       if (!pageIssue) {
+        console.log('[Comments] No issue exists, creating new issue...');
         pageIssue = await getOrCreatePageIssue(owner, repo, pageTitle, pageUrl);
+        console.log('[Comments] Created/found issue:', pageIssue);
         setIssue(pageIssue);
       }
 
-      await createIssueComment(owner, repo, pageIssue.number, newComment);
+      console.log('[Comments] Creating comment on issue #', pageIssue.number);
+      const createdComment = await createIssueComment(owner, repo, pageIssue.number, newComment);
+      console.log('[Comments] Comment created:', createdComment);
 
       // Reload comments
+      console.log('[Comments] Reloading all comments...');
       const updatedComments = await getIssueComments(owner, repo, pageIssue.number);
+      console.log('[Comments] Loaded comments:', updatedComments.length, updatedComments);
+
+      // GitHub API may have stale cache - ensure the new comment is included
+      const commentExists = updatedComments.some(c => c.id === createdComment.id);
+      if (!commentExists) {
+        console.log('[Comments] New comment not in list yet (API cache), adding manually');
+        // Add the created comment to the end of the list
+        updatedComments.push({
+          id: createdComment.id,
+          body: createdComment.body,
+          user: createdComment.user,
+          created_at: createdComment.created_at,
+          updated_at: createdComment.updated_at,
+          reactions: createdComment.reactions,
+          html_url: createdComment.html_url
+        });
+      }
+
       setComments(updatedComments);
       setNewComment('');
+
+      // Load reactions for visible comments (including the new one)
+      const newVisibleCount = Math.min(10, updatedComments.length);
+      console.log('[Comments] Setting visible count to:', newVisibleCount);
+      setVisibleCount(newVisibleCount);
+
+      const newReactions = {};
+      const visibleComments = updatedComments.slice(0, newVisibleCount);
+      console.log('[Comments] Loading reactions for', visibleComments.length, 'comments');
+      for (const comment of visibleComments) {
+        // Skip loading reactions for fake comments
+        if (comment.id < 8000000) {
+          const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+          newReactions[comment.id] = commentReactionList;
+        } else {
+          newReactions[comment.id] = [];
+        }
+      }
+      console.log('[Comments] Loaded reactions:', newReactions);
+      setCommentReactions(newReactions);
+      console.log('[Comments] Comment submission complete!');
     } catch (err) {
       console.error('Failed to submit comment:', err);
       alert('Failed to submit comment: ' + err.message);
@@ -105,6 +254,12 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const handleReaction = async (commentId, reactionType) => {
     if (!isAuthenticated) {
       alert('Please sign in to react to comments');
+      return;
+    }
+
+    // Skip reactions on fake test comments
+    if (commentId >= 8000000) {
+      console.log('[Comments] Skipping reaction on fake comment');
       return;
     }
 
@@ -259,7 +414,8 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
             <p>No comments yet. Be the first to comment!</p>
           </div>
         ) : (
-          comments.map((comment) => (
+          <>
+            {comments.slice(0, visibleCount).map((comment) => (
             <div
               key={comment.id}
               className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
@@ -371,7 +527,26 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                 </div>
               </div>
             </div>
-          ))
+          ))}
+
+          {/* Sentinel element for IntersectionObserver */}
+          {visibleCount < comments.length && (
+            <div ref={sentinelRef} className="py-4">
+              {loadingMore ? (
+                <div className="flex justify-center">
+                  <LoadingSpinner size="md" />
+                </div>
+              ) : (
+                <button
+                  onClick={loadMore}
+                  className="w-full py-3 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
+                >
+                  Load More Comments ({comments.length - visibleCount} remaining)
+                </button>
+              )}
+            </div>
+          )}
+        </>
         )}
       </div>
     </div>
