@@ -36,7 +36,7 @@ const Header = () => {
             {/* Logo */}
             <Link to="/" className="flex items-center space-x-2">
               {config.wiki.logo ? (
-                <img src={config.wiki.logo} alt={config.wiki.title} className="h-8 w-8" />
+                <img src={config.wiki.logo} alt={config.wiki.title} id="logo" className="h-8 w-8" />
               ) : (
                 <div className="h-8 w-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">
                   W

@@ -6,11 +6,14 @@ import { useWikiConfig, useSection } from '../hooks/useWikiConfig';
 import { getFileContent, hasFileChanged } from '../services/github/content';
 import { createBranch, generateEditBranchName } from '../services/github/branches';
 import { updateFileContent } from '../services/github/content';
-import { createWikiEditPR } from '../services/github/pullRequests';
+import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExistingBranch, getUserPullRequests } from '../services/github/pullRequests';
+import { hasWriteAccess } from '../services/github/permissions';
+import { getOrCreateFork } from '../services/github/forks';
 import PageEditor from '../components/wiki/PageEditor';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
+import { generatePageId } from '../utils/pageIdUtils';
 
 /**
  * PageEditorPage
@@ -33,6 +36,10 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
 
   const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
   const [prUrl, setPrUrl] = useState(null);
+  const [isFirstContribution, setIsFirstContribution] = useState(false);
+  const [prestigeTier, setPrestigeTier] = useState(null);
+  const [isUpdatingExistingPR, setIsUpdatingExistingPR] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(''); // For showing fork operation progress
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -60,6 +67,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
 
           const today = new Date().toISOString().split('T')[0];
           const defaultContent = `---
+id:
 title:
 description:
 tags: []
@@ -73,6 +81,7 @@ Write your content here...
 `;
 
           setMetadata({
+            id: '',
             title: '',
             description: '',
             tags: [],
@@ -113,7 +122,18 @@ Write your content here...
         // Parse frontmatter
         const { data, content: markdownContent } = matter(fileData.content);
 
-        setMetadata(data);
+        // Ensure metadata has all required fields with defaults
+        const normalizedMetadata = {
+          ...data, // Start with all existing fields
+          id: data.id || '',
+          title: data.title || '',
+          description: data.description || '',
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          category: data.category || '',
+          date: data.date || ''
+        };
+
+        setMetadata(normalizedMetadata);
         setContent(fileData.content);
         setFileSha(fileData.sha);
       } catch (err) {
@@ -144,6 +164,51 @@ Write your content here...
       const currentPageId = isNewPage ? newPageId : pageId;
       const filePath = `${contentPath}/${sectionId}/${currentPageId}.md`;
 
+      // Parse content to extract/generate page ID from metadata
+      const { data: parsedMetadata, content: bodyContent } = matter(newContent);
+      console.log('[PageEditor] Parsed metadata:', parsedMetadata);
+
+      let pageIdFromMetadata = parsedMetadata.id?.trim() || '';
+
+      // Generate page ID from title if not present
+      if (!pageIdFromMetadata) {
+        const title = parsedMetadata.title?.trim();
+
+        if (!title) {
+          // For existing pages, fall back to using the current pageId
+          // For new pages, we require a title
+          if (!isNewPage && currentPageId) {
+            console.log(`[PageEditor] No ID or title found, using current pageId: ${currentPageId}`);
+            pageIdFromMetadata = currentPageId;
+
+            // Update the content with the current pageId
+            const updatedMetadata = { ...parsedMetadata, id: pageIdFromMetadata };
+            newContent = matter.stringify(bodyContent, updatedMetadata);
+          } else {
+            console.error('[PageEditor] No ID and no title found in metadata:', parsedMetadata);
+            setError('Page must have a title. Please ensure the title field is filled in the metadata section.');
+            setIsSaving(false);
+            return;
+          }
+        } else {
+          // Generate ID from title
+          pageIdFromMetadata = generatePageId(title);
+          console.log(`[PageEditor] Generated page ID from title "${title}": ${pageIdFromMetadata}`);
+
+          // Update the content with the generated ID
+          const updatedMetadata = { ...parsedMetadata, id: pageIdFromMetadata };
+          newContent = matter.stringify(bodyContent, updatedMetadata);
+          console.log('[PageEditor] Updated content with generated ID');
+        }
+      } else {
+        console.log(`[PageEditor] Using existing page ID: ${pageIdFromMetadata}`);
+      }
+
+      // TODO: Implement duplicate ID validation across all pages
+      // For now, we log a warning. In production, this should check all pages
+      // and prevent saving if a duplicate ID is found (excluding the current page)
+      console.log(`[PageEditor] Using page ID: ${pageIdFromMetadata} for file: ${filePath}`);
+
       // For existing pages, check if file has been modified since we loaded it
       if (!isNewPage) {
         const changed = await hasFileChanged(owner, repo, filePath, fileSha, baseBranch);
@@ -164,44 +229,196 @@ Write your content here...
         }
       }
 
-      // Generate unique branch name
-      const branchName = generateEditBranchName(sectionId, currentPageId);
+      // Check if this is the user's first contribution
+      const userPRs = await getUserPullRequests(owner, repo, user.login);
+      const isFirstEver = userPRs.length === 0;
 
-      // Create branch
-      await createBranch(owner, repo, branchName, baseBranch);
+      if (isFirstEver) {
+        console.log(`[PageEditor] This is ${user.login}'s first contribution!`);
+      }
 
-      // Commit changes to new branch
+      // Determine workflow: direct branch vs fork
+      const editRequestConfig = config.features?.editRequestCreator;
+      const mode = editRequestConfig?.mode || 'auto';
+      const forksEnabled = editRequestConfig?.forks?.enabled ?? true;
+      const autoSync = editRequestConfig?.forks?.autoSync ?? true;
+
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`[PageEditor] Edit Request Mode: ${mode}`);
+      console.log(`[PageEditor] Forks Enabled: ${forksEnabled}`);
+      console.log(`${'='.repeat(60)}\n`);
+
+      // Check user permissions
+      setSavingStatus('Checking permissions...');
+      const userHasWriteAccess = await hasWriteAccess(owner, repo, user.login);
+      console.log(`[PageEditor] User ${user.login} has write access: ${userHasWriteAccess}`);
+
+      // Determine if we should use fork workflow
+      let useFork = false;
+      if (mode === 'auto') {
+        useFork = !userHasWriteAccess && forksEnabled;
+        if (!userHasWriteAccess && forksEnabled) {
+          console.log(`[PageEditor] No write access detected - falling back to fork workflow`);
+        }
+      } else if (mode === 'fork-only') {
+        useFork = forksEnabled;
+      } else if (mode === 'branch-only') {
+        if (!userHasWriteAccess) {
+          setError('You need write access to this repository to contribute. Please contact the repository owner.');
+          setIsSaving(false);
+          setSavingStatus('');
+          return;
+        }
+        useFork = false;
+      }
+
+      console.log(`[PageEditor] Using fork workflow: ${useFork}`);
+
+      // Set target repository (main repo or fork)
+      let targetOwner = owner;
+      let targetRepo = repo;
+      let fork = null;
+
+      if (useFork) {
+        console.log(`\n[PageEditor] Setting up fork workflow...`);
+        setSavingStatus('Setting up your fork...');
+
+        try {
+          fork = await getOrCreateFork(owner, repo, user.login, autoSync);
+          targetOwner = fork.owner;
+          targetRepo = fork.repo;
+
+          console.log(`[PageEditor] ✓ Fork ready: ${fork.fullName}`);
+          setSavingStatus('Fork ready!');
+        } catch (err) {
+          console.error('[PageEditor] Failed to setup fork:', err);
+          setError('Failed to setup your fork. Please try again or contact support.');
+          setIsSaving(false);
+          setSavingStatus('');
+          return;
+        }
+      } else {
+        console.log(`[PageEditor] Using direct branch workflow on ${owner}/${repo}`);
+        setSavingStatus('');
+      }
+
+      // Check if user already has an open PR for this page ID
+      console.log(`[PageEditor] Checking for existing PR for page ID: ${pageIdFromMetadata}, filename: ${currentPageId}`);
+      setSavingStatus('Checking for existing edit requests...');
+      const existingPR = await findExistingPRForPage(owner, repo, sectionId, pageIdFromMetadata, user.login, currentPageId);
+
+      let pr;
       const action = isNewPage ? 'Create' : 'Update';
-      const commitMessage = `${action} ${metadata?.title || currentPageId}\n\n${editSummary || `${action}d via wiki editor`}`;
+      const commitMessage = `${action} ${parsedMetadata?.title || currentPageId}\n\n${editSummary || `${action}d via wiki editor`}`;
 
-      await updateFileContent(
-        owner,
-        repo,
-        filePath,
-        newContent,
-        commitMessage,
-        branchName,
-        isNewPage ? null : fileSha  // No SHA for new files
-      );
+      setSavingStatus(existingPR ? 'Updating existing edit request...' : 'Creating branch...');
 
-      // Create pull request
-      const pr = await createWikiEditPR(
-        owner,
-        repo,
-        metadata?.title || currentPageId,
-        section?.title,
-        sectionId,
-        currentPageId,
-        branchName,
-        editSummary,
-        baseBranch
-      );
+      if (existingPR) {
+        // Commit to existing branch
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`[PageEditor] ✓ FOUND EXISTING PR - WILL UPDATE`);
+        console.log(`[PageEditor] PR #${existingPR.number}: ${existingPR.title}`);
+        console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
+        console.log(`[PageEditor] URL: ${existingPR.url}`);
+        console.log(`${'='.repeat(60)}\n`);
 
+        // Commit to the branch on the correct repository (fork or main)
+        await commitToExistingBranch(
+          targetOwner,
+          targetRepo,
+          existingPR.head.ref,
+          filePath,
+          newContent,
+          commitMessage,
+          isNewPage ? null : fileSha
+        );
+
+        pr = existingPR;
+        setIsUpdatingExistingPR(true);
+        console.log(`\n[PageEditor] ✓ Successfully added commit to existing PR #${existingPR.number}\n`);
+      } else {
+        // Create new branch and PR
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`[PageEditor] ✓ NO EXISTING PR - WILL CREATE NEW`);
+        console.log(`[PageEditor] Section: ${sectionId}`);
+        console.log(`[PageEditor] Page ID: ${pageIdFromMetadata}`);
+        console.log(`[PageEditor] Target: ${targetOwner}/${targetRepo}`);
+        console.log(`[PageEditor] Using fork: ${useFork}`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        // Generate unique branch name using page ID
+        const branchName = generateEditBranchName(sectionId, pageIdFromMetadata);
+
+        // Create branch on target repository (fork or main)
+        setSavingStatus('Creating branch...');
+        await createBranch(targetOwner, targetRepo, branchName, baseBranch);
+
+        // Commit changes to new branch
+        setSavingStatus('Committing changes...');
+        await updateFileContent(
+          targetOwner,
+          targetRepo,
+          filePath,
+          newContent,
+          commitMessage,
+          branchName,
+          isNewPage ? null : fileSha
+        );
+
+        // Create pull request (cross-repo if fork, direct if main repo)
+        setSavingStatus('Creating edit request...');
+        if (useFork) {
+          // Cross-repository PR from fork to upstream
+          pr = await createCrossRepoPR(
+            owner,          // upstream owner
+            repo,           // upstream repo
+            user.login,     // fork owner (username)
+            branchName,     // branch on fork
+            parsedMetadata?.title || currentPageId,  // title
+            editSummary || `Update ${parsedMetadata?.title || currentPageId}`,  // body
+            baseBranch      // base branch on upstream
+          );
+          console.log(`[PageEditor] ✓ Created cross-repo PR from ${user.login}:${branchName} to ${owner}/${repo}`);
+        } else {
+          // Direct PR on main repository
+          pr = await createWikiEditPR(
+            owner,
+            repo,
+            parsedMetadata?.title || currentPageId,
+            section?.title,
+            sectionId,
+            pageIdFromMetadata,
+            branchName,
+            editSummary,
+            baseBranch
+          );
+          console.log(`[PageEditor] ✓ Created direct PR from ${branchName} on ${owner}/${repo}`);
+        }
+
+        console.log(`\n[PageEditor] ✓ Successfully created new PR #${pr.number}`);
+        console.log(`[PageEditor] URL: ${pr.url}\n`);
+      }
+
+      // Set first contribution state and determine prestige tier
+      if (isFirstEver) {
+        setIsFirstContribution(true);
+
+        // Get the first prestige tier (Contributor - 1 contribution)
+        const prestigeTiers = config?.prestige?.tiers || [];
+        const firstTier = prestigeTiers.find(tier => tier.minContributions === 1) ||
+                          prestigeTiers[1] || // Fallback to second tier
+                          { id: 'contributor', title: 'Contributor', badge: '✍️', color: '#3b82f6' };
+
+        setPrestigeTier(firstTier);
+      }
+
+      setSavingStatus(''); // Clear saving status on success
       setPrUrl(pr.url);
     } catch (err) {
       console.error('Failed to save changes:', err);
       setError(handleGitHubError(err));
       setIsSaving(false);
+      setSavingStatus(''); // Clear saving status on error
     }
   };
 
@@ -283,13 +500,143 @@ Write your content here...
   if (prUrl) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
-        <div className="text-green-500 text-6xl mb-4">✅</div>
+        {/* Animated icon with glow and sparkle effects */}
+        <div className="relative inline-flex items-center justify-center w-32 h-32 mb-4">
+          {/* Glow rings - centered */}
+          <div className="absolute inset-0 flex items-center justify-center animate-ping-slow">
+            <div className={`w-24 h-24 rounded-full opacity-20 ${isUpdatingExistingPR ? 'bg-blue-400' : 'bg-green-400'}`}></div>
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center animate-pulse-slow">
+            <div className={`w-24 h-24 rounded-full opacity-30 blur-xl ${isUpdatingExistingPR ? 'bg-blue-400' : 'bg-green-400'}`}></div>
+          </div>
+
+          {/* Main icon with pop-in animation */}
+          {isUpdatingExistingPR ? (
+            // Pencil/Edit icon for updates
+            <div className="relative animate-pop-in" style={{ filter: 'drop-shadow(0 0 15px rgba(59, 130, 246, 0.5))' }}>
+              <svg className="w-16 h-16 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+              </svg>
+            </div>
+          ) : (
+            // Checkmark for new PRs
+            <div className="relative animate-pop-in text-6xl drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]">
+              ✅
+            </div>
+          )}
+
+          {/* Sparkle particles - rendered on top with higher z-index */}
+          <div className="absolute inset-0 z-10 pointer-events-none">
+            {/* Sparkle 1 - top left */}
+            <svg className="absolute top-4 left-8 w-6 h-6 animate-sparkle-1" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FCD34D" stroke="#FCD34D" strokeWidth="1"/>
+              <path d="M12 6L12.5 9.5L16 10L12.5 10.5L12 14L11.5 10.5L8 10L11.5 9.5L12 6Z" fill="#FEF3C7" />
+            </svg>
+
+            {/* Sparkle 2 - top right */}
+            <svg className="absolute top-8 right-6 w-5 h-5 animate-sparkle-2" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FBBF24" stroke="#FBBF24" strokeWidth="1"/>
+              <path d="M12 6L12.5 9.5L16 10L12.5 10.5L12 14L11.5 10.5L8 10L11.5 9.5L12 6Z" fill="#FDE68A" />
+            </svg>
+
+            {/* Sparkle 3 - bottom left */}
+            <svg className="absolute bottom-8 left-12 w-5 h-5 animate-sparkle-3" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FCD34D" stroke="#FCD34D" strokeWidth="1"/>
+              <path d="M12 6L12.5 9.5L16 10L12.5 10.5L12 14L11.5 10.5L8 10L11.5 9.5L12 6Z" fill="#FEF3C7" />
+            </svg>
+
+            {/* Sparkle 4 - bottom right */}
+            <svg className="absolute bottom-6 right-10 w-6 h-6 animate-sparkle-4" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FBBF24" stroke="#FBBF24" strokeWidth="1"/>
+              <path d="M12 6L12.5 9.5L16 10L12.5 10.5L12 14L11.5 10.5L8 10L11.5 9.5L12 6Z" fill="#FDE68A" />
+            </svg>
+
+            {/* Additional smaller sparkles for more effect */}
+            <svg className="absolute top-12 left-4 w-4 h-4 animate-sparkle-1" style={{ animationDelay: '0.3s' }} viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FDE047" stroke="#FDE047" strokeWidth="1"/>
+            </svg>
+
+            <svg className="absolute top-6 right-12 w-4 h-4 animate-sparkle-3" style={{ animationDelay: '0.5s' }} viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FDE047" stroke="#FDE047" strokeWidth="1"/>
+            </svg>
+
+            <svg className="absolute bottom-12 right-4 w-4 h-4 animate-sparkle-2" style={{ animationDelay: '0.4s' }} viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" fill="#FDE047" stroke="#FDE047" strokeWidth="1"/>
+            </svg>
+          </div>
+        </div>
+
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
-          Pull Request Created!
+          {isUpdatingExistingPR ? 'Edit Request Updated!' : 'Edit Request Created!'}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-6">
-          Your changes have been submitted for review. A pull request has been created and will be reviewed by the maintainers.
+          {isUpdatingExistingPR
+            ? 'Your changes have been added to your existing edit request. The maintainers will review your updated changes.'
+            : 'Your changes have been submitted for review. An edit request has been created and will be reviewed by the maintainers.'
+          }
         </p>
+
+        {/* First contribution congratulations */}
+        {isFirstContribution && prestigeTier && (
+          <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-2 border-purple-300 dark:border-purple-700 rounded-lg p-6 mb-6 animate-pop-in">
+            <div className="text-center mb-4">
+              <h2 className="text-2xl font-bold text-purple-900 dark:text-purple-200 mb-2">
+                🎉 Congratulations on Your First Contribution! 🎉
+              </h2>
+              <p className="text-purple-700 dark:text-purple-300">
+                Welcome to the wiki community! You've taken your first step as a contributor.
+              </p>
+            </div>
+
+            {/* Prestige level up animation */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg">
+              <div className="text-center mb-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">You've achieved</p>
+                <div className="inline-flex items-center justify-center space-x-3 animate-pop-in" style={{ animationDelay: '0.3s' }}>
+                  <span className="text-4xl animate-pop-in" style={{ animationDelay: '0.5s' }}>{prestigeTier.badge}</span>
+                  <div>
+                    <h3 className="text-2xl font-bold" style={{ color: prestigeTier.color }}>
+                      {prestigeTier.title}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Prestige Rank</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Animated progress bar */}
+              <div className="mt-6">
+                <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
+                  <span>Newcomer</span>
+                  <span>{prestigeTier.title}</span>
+                </div>
+                <div className="relative h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  {/* Background track */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-gray-300 to-gray-200 dark:from-gray-600 dark:to-gray-700"></div>
+
+                  {/* Animated fill */}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-[2000ms] ease-out"
+                    style={{
+                      width: '100%',
+                      background: `linear-gradient(90deg, ${prestigeTier.color}, ${prestigeTier.color}dd)`,
+                      boxShadow: `0 0 20px ${prestigeTier.color}88`,
+                      animation: 'progress-fill 2s ease-out forwards'
+                    }}
+                  ></div>
+
+                  {/* Shine effect */}
+                  <div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                    style={{ animation: 'shine 2s ease-out' }}
+                  ></div>
+                </div>
+                <p className="text-center text-sm text-gray-600 dark:text-gray-400 mt-2 animate-pop-in" style={{ animationDelay: '2s' }}>
+                  Level Up! 🎊
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -328,7 +675,7 @@ Write your content here...
             rel="noopener noreferrer"
             className="inline-flex items-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
           >
-            View Pull Request
+            View Edit Request
             <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
@@ -417,6 +764,25 @@ Write your content here...
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Enter a URL-friendly filename (lowercase letters, numbers, and hyphens only). Example: "getting-started" or "advanced-guide"
           </p>
+        </div>
+      )}
+
+      {/* Saving Status Banner */}
+      {savingStatus && (
+        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                {savingStatus}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

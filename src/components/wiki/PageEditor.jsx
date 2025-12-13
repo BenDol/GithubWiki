@@ -7,6 +7,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import Button from '../common/Button';
 import TagInput from '../common/TagInput';
+import { isValidPageId } from '../../utils/pageIdUtils';
 
 /**
  * PageEditor component with live preview
@@ -30,6 +31,7 @@ const PageEditor = ({
 
   // Metadata fields
   const [metadata, setMetadata] = useState({
+    id: '',
     title: '',
     description: '',
     tags: [],
@@ -79,6 +81,7 @@ const PageEditor = ({
       try {
         const parsed = matter(initialContent);
         setMetadata({
+          id: parsed.data.id || '',
           title: parsed.data.title || '',
           description: parsed.data.description || '',
           tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
@@ -191,7 +194,7 @@ const PageEditor = ({
     // Check for unknown/invalid metadata fields in the raw content
     try {
       const parsed = matter(content);
-      const allowedFields = ['title', 'description', 'tags', 'category', 'date'];
+      const allowedFields = ['id', 'title', 'description', 'tags', 'category', 'date'];
       const actualFields = Object.keys(parsed.data);
 
       const unknownFields = actualFields.filter(field => !allowedFields.includes(field));
@@ -240,6 +243,17 @@ const PageEditor = ({
       // Check for placeholder text
       if (/your (page )?title/i.test(title)) {
         errors.push('Title appears to be placeholder text - please enter a real title');
+      }
+    }
+
+    // ID validation (optional field, but must be valid if present)
+    if (metadata.id && metadata.id.trim()) {
+      const id = metadata.id.trim();
+      if (!isValidPageId(id)) {
+        errors.push('Page ID must contain only lowercase letters, numbers, and hyphens (cannot start or end with hyphen)');
+      }
+      if (id.length > 100) {
+        errors.push('Page ID must be 100 characters or less');
       }
     }
 
@@ -396,6 +410,7 @@ const PageEditor = ({
         const parsed = matter(newContent);
         if (parsed.data) {
           setMetadata({
+            id: parsed.data.id || '',
             title: parsed.data.title || '',
             description: parsed.data.description || '',
             tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
@@ -736,7 +751,7 @@ const PageEditor = ({
                 className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                This will be included in the pull request description
+                This will be included in the edit request description
               </p>
             </div>
           )}
@@ -785,7 +800,7 @@ const PageEditor = ({
           Editing Guidelines
         </h4>
         <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-disc list-inside">
-          <li>Your changes will create a pull request for review</li>
+          <li>Your changes will create an edit request for review</li>
           <li>Use the metadata fields above to edit page properties</li>
           <li>Use standard Markdown syntax for formatting</li>
           <li>Preview your changes before saving</li>

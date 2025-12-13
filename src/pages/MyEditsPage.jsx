@@ -51,26 +51,26 @@ const MyEditsPage = () => {
         // DEV: Add fake PRs for testing pagination
         const ENABLE_FAKE_PRS = false; // Set to true to enable fake test data
         if (import.meta.env.DEV && ENABLE_FAKE_PRS) {
-          const fakePRs = Array.from({ length: 20 }, (_, i) => ({
+          const fakePRs = Array.from({ length: 5 }, (_, i) => ({
             id: 999000 + i,
             number: 1000 + i,
-            title: `[TEST] Fake Pull Request ${i + 1} - Testing Pagination`,
+            title: `[TEST] Fake Pull Request ${i + 1} - ${i === 0 ? 'MERGED' : i === 1 ? 'OPEN' : 'CLOSED'}`,
             user: {
               login: user.login,
               avatar_url: user.avatar_url,
               html_url: `https://github.com/${user.login}`
             },
-            state: i % 5 === 0 ? 'merged' : i % 7 === 0 ? 'closed' : 'open',
+            state: i === 0 ? 'merged' : i === 1 ? 'open' : 'closed',
             created_at: new Date(Date.now() - i * 86400000).toISOString(),
             html_url: `https://github.com/${owner}/${repo}/pull/${1000 + i}`,
             changed_files: Math.floor(Math.random() * 10) + 1,
             additions: Math.floor(Math.random() * 500) + 10,
             deletions: Math.floor(Math.random() * 200) + 5,
             labels: i % 3 === 0 ? [{ id: i, name: 'enhancement', color: '84b6eb' }] : [],
-            merged_at: i % 5 === 0 ? new Date(Date.now() - i * 86400000).toISOString() : null
+            merged_at: i === 0 ? new Date(Date.now() - i * 86400000).toISOString() : null
           }));
           prs = [...prs, ...fakePRs];
-          console.log('[MyEdits] Added 20 fake PRs for testing');
+          console.log('[MyEdits] Added 5 fake PRs for testing (1 merged, 1 open, 3 closed)');
         }
 
         setPullRequests(prs);
@@ -117,7 +117,7 @@ const MyEditsPage = () => {
     if (!config) return;
 
     const confirmClose = window.confirm(
-      'Are you sure you want to cancel this edit? This will close the pull request and cannot be undone.'
+      'Are you sure you want to cancel this edit? This will close the edit request and cannot be undone.'
     );
 
     if (!confirmClose) return;
@@ -186,14 +186,25 @@ const MyEditsPage = () => {
     );
   }
 
-  const getStatusBadge = (state) => {
+  const getStatusBadge = (pr) => {
+    // Check if PR was merged (GitHub returns state='closed' for both closed and merged)
+    const isMerged = pr.merged_at || pr.state === 'merged';
+
     const badges = {
       open: { color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200', text: 'Open' },
       closed: { color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200', text: 'Closed' },
       merged: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', text: 'Merged' },
     };
 
-    const badge = badges[state] || badges.open;
+    let badge;
+    if (isMerged) {
+      badge = badges.merged;
+    } else if (pr.state === 'open') {
+      badge = badges.open;
+    } else {
+      badge = badges.closed;
+    }
+
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded-full ${badge.color}`}>
         {badge.text}
@@ -216,8 +227,8 @@ const MyEditsPage = () => {
   const stats = {
     totalPRs: pullRequests.length,
     openPRs: pullRequests.filter(pr => pr.state === 'open').length,
-    mergedPRs: pullRequests.filter(pr => pr.state === 'merged').length,
-    closedPRs: pullRequests.filter(pr => pr.state === 'closed' && !pr.merged_at).length,
+    mergedPRs: pullRequests.filter(pr => pr.merged_at || pr.state === 'merged').length,
+    closedPRs: pullRequests.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
     totalAdditions: pullRequests.reduce((sum, pr) => sum + (pr.additions || 0), 0),
     totalDeletions: pullRequests.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
     totalFiles: pullRequests.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
@@ -509,6 +520,7 @@ const MyEditsPage = () => {
           {paginatedPullRequests.map((pr) => {
             const isExpanded = expandedPRs.has(pr.number);
             const isClosed = pr.state === 'closed' || pr.state === 'merged';
+            const isMerged = pr.state === 'merged' || pr.merged_at;
 
             return (
             <div
@@ -535,18 +547,34 @@ const MyEditsPage = () => {
                         {pr.title}
                       </h3>
                       <p className="text-xs text-gray-600 dark:text-gray-400">
-                        #{pr.number} • {getStatusBadge(pr.state)}
+                        #{pr.number} • {getStatusBadge(pr)}
                       </p>
                     </div>
                   </div>
-                  <svg
-                    className="w-5 h-5 text-gray-400 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Merged checkmark icon */}
+                    {isMerged && (
+                      <div className="flex items-center justify-center w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                        <svg
+                          className="w-5 h-5 text-purple-600 dark:text-purple-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    )}
+                    {/* Expand arrow */}
+                    <svg
+                      className="w-5 h-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </button>
               ) : (
                 /* Expanded view */
@@ -558,7 +586,20 @@ const MyEditsPage = () => {
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
                           {pr.title}
                         </h3>
-                        {getStatusBadge(pr.state)}
+                        {getStatusBadge(pr)}
+                        {/* Merged checkmark icon */}
+                        {isMerged && (
+                          <div className="flex items-center justify-center w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-full">
+                            <svg
+                              className="w-5 h-5 text-purple-600 dark:text-purple-400"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )}
                         {isClosed && (
                           <button
                             onClick={() => togglePRExpanded(pr.number)}

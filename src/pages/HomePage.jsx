@@ -1,18 +1,103 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import matter from 'gray-matter';
 import { useWikiConfig } from '../hooks/useWikiConfig';
+import PageViewer from '../components/wiki/PageViewer';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 /**
  * Home page component
+ * Supports custom markdown page or default home page
  */
 const HomePage = () => {
   const { config } = useWikiConfig();
+  const [loading, setLoading] = useState(false);
+  const [content, setContent] = useState('');
+  const [metadata, setMetadata] = useState(null);
+  const [error, setError] = useState(null);
+
+  const customHomePageEnabled = config?.features?.customHomePage?.enabled ?? false;
+  const customHomePagePath = config?.features?.customHomePage?.path ?? 'home.md';
+
+  // Load custom home page markdown if enabled
+  useEffect(() => {
+    const loadCustomHomePage = async () => {
+      if (!customHomePageEnabled || !config) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Load markdown file from public/content/
+        const response = await fetch(`${import.meta.env.BASE_URL}content/${customHomePagePath}`);
+
+        if (!response.ok) {
+          throw new Error('Custom home page not found');
+        }
+
+        const markdownText = await response.text();
+        const { data, content: markdownContent } = matter(markdownText);
+
+        setMetadata(data);
+        setContent(markdownContent);
+      } catch (err) {
+        console.error('Error loading custom home page:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCustomHomePage();
+  }, [customHomePageEnabled, customHomePagePath, config]);
 
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  if (!config) return null;
+
+  // Show custom markdown home page if enabled
+  if (customHomePageEnabled) {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center min-h-[400px]">
+          <div className="text-center">
+            <LoadingSpinner size="lg" />
+            <p className="mt-4 text-gray-600 dark:text-gray-400">Loading home page...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="max-w-2xl mx-auto text-center py-12">
+          <div className="text-gray-400 text-6xl mb-4">📄</div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Home Page Not Found
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            The custom home page could not be loaded. Please check the configuration.
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-500">
+            Error: {error}
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-4xl mx-auto">
+        <PageViewer content={content} metadata={metadata} />
+      </div>
+    );
+  }
+
+  // Default home page
   if (!config) return null;
 
   return (

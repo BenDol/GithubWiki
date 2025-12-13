@@ -235,7 +235,18 @@ const PageViewerPage = ({ sectionId }) => {
       <div className="flex gap-8">
         {/* Main content */}
         <div className="flex-1 min-w-0 space-y-12">
-          <PageViewer content={content} metadata={metadata} />
+          <div>
+            <PageViewer content={content} metadata={metadata} />
+
+            {/* Page ID display - subtle identifier at bottom of content */}
+            {metadata?.id && (
+              <div className="mt-8 pt-4 border-t border-gray-100 dark:border-gray-800">
+                <p className="text-xs text-gray-400 dark:text-gray-600 font-mono">
+                  Page ID: {metadata.id}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* Comments section */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-8">

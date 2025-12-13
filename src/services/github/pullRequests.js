@@ -1,11 +1,12 @@
 import { getOctokit, getAuthenticatedUser } from './api';
+import { updateFileContent } from './content';
 
 /**
  * GitHub Pull Request operations
  */
 
 /**
- * Create a pull request
+ * Create a pull request (same repository)
  */
 export const createPullRequest = async (
   owner,
@@ -39,6 +40,61 @@ export const createPullRequest = async (
       url: data.user.html_url,
     },
   };
+};
+
+/**
+ * Create a cross-repository pull request (fork to upstream)
+ * @param {string} upstreamOwner - Upstream repository owner
+ * @param {string} upstreamRepo - Upstream repository name
+ * @param {string} forkOwner - Fork owner (username)
+ * @param {string} headBranch - Branch name on fork
+ * @param {string} title - PR title
+ * @param {string} body - PR body
+ * @param {string} baseBranch - Base branch on upstream (default: 'main')
+ * @returns {Promise<Object>} PR object
+ */
+export const createCrossRepoPR = async (
+  upstreamOwner,
+  upstreamRepo,
+  forkOwner,
+  headBranch,
+  title,
+  body,
+  baseBranch = 'main'
+) => {
+  const octokit = getOctokit();
+
+  console.log(`[PR] Creating cross-repo PR from ${forkOwner}:${headBranch} to ${upstreamOwner}/${upstreamRepo}:${baseBranch}`);
+
+  try {
+    const { data } = await octokit.rest.pulls.create({
+      owner: upstreamOwner,
+      repo: upstreamRepo,
+      title,
+      body,
+      head: `${forkOwner}:${headBranch}`, // Format: "username:branch-name"
+      base: baseBranch,
+    });
+
+    console.log(`[PR] Cross-repo PR created successfully: #${data.number}`);
+
+    return {
+      number: data.number,
+      url: data.html_url,
+      state: data.state,
+      title: data.title,
+      body: data.body,
+      createdAt: data.created_at,
+      user: {
+        login: data.user.login,
+        avatar: data.user.avatar_url,
+        url: data.user.html_url,
+      },
+    };
+  } catch (error) {
+    console.error('[PR] Failed to create cross-repo PR:', error);
+    throw error;
+  }
 };
 
 /**
@@ -285,4 +341,164 @@ export const createWikiEditPR = async (
   }
 
   return pr;
+};
+
+/**
+ * Find existing open PR for a page ID
+ * Searches for PRs with branch name matching pattern: wiki-edit/<section>/<page-id>-*
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} sectionId - Section ID
+ * @param {string} pageIdFromMetadata - Page ID from metadata
+ * @param {string} username - Current user's username
+ * @returns {Promise<Object|null>} PR object if found, null otherwise
+ */
+export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMetadata, username, currentPageId = null) => {
+  const octokit = getOctokit();
+
+  try {
+    // Get all open PRs
+    const { data: prs } = await octokit.rest.pulls.list({
+      owner,
+      repo,
+      state: 'open',
+      per_page: 100,
+    });
+
+    console.log(`[PR Search] Looking for existing PR by user: ${username}`);
+    console.log(`[PR Search] Section: ${sectionId}, Page ID: ${pageIdFromMetadata}, Filename: ${currentPageId}`);
+    console.log(`[PR Search] Found ${prs.length} total open PRs`);
+
+    // Filter to PRs created by current user
+    const userPRs = prs.filter(pr => pr.user.login === username);
+    console.log(`[PR Search] Found ${userPRs.length} PRs by user ${username}`);
+
+    if (userPRs.length > 0) {
+      console.log('[PR Search] User PRs:', userPRs.map(pr => ({ number: pr.number, branch: pr.head.ref })));
+    }
+
+    // Try multiple patterns to find matching PR
+    // Need to check both direct branches and fork branches (username:branch-name)
+    const patterns = [
+      // Direct branch patterns (for users with write access)
+      `wiki-edit/${sectionId}/${pageIdFromMetadata}-`,
+      currentPageId && currentPageId !== pageIdFromMetadata ? `wiki-edit/${sectionId}/${currentPageId}-` : null,
+
+      // Fork branch patterns (for users without write access)
+      `${username}:wiki-edit/${sectionId}/${pageIdFromMetadata}-`,
+      currentPageId && currentPageId !== pageIdFromMetadata ? `${username}:wiki-edit/${sectionId}/${currentPageId}-` : null,
+    ].filter(Boolean);
+
+    console.log('[PR Search] Trying patterns:', patterns);
+
+    let matchingPR = null;
+    let matchedPattern = null;
+
+    for (const pattern of patterns) {
+      matchingPR = userPRs.find(pr => pr.head.ref.startsWith(pattern));
+      if (matchingPR) {
+        matchedPattern = pattern;
+        console.log(`[PR Search] Found match with pattern "${pattern}": PR #${matchingPR.number} (branch: ${matchingPR.head.ref})`);
+        break;
+      } else {
+        console.log(`[PR Search] No match found for pattern: ${pattern}`);
+      }
+    }
+
+    if (!matchingPR) {
+      console.log('[PR Search] No existing PR found for this page');
+      return null;
+    }
+
+    // Get full PR details
+    const { data: fullPR } = await octokit.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: matchingPR.number,
+    });
+
+    console.log(`[PR Search] Returning PR #${fullPR.number}: ${fullPR.title}`);
+
+    return {
+      number: fullPR.number,
+      url: fullPR.html_url,
+      state: fullPR.state,
+      title: fullPR.title,
+      body: fullPR.body,
+      head: {
+        ref: fullPR.head.ref,
+        sha: fullPR.head.sha,
+      },
+      base: {
+        ref: fullPR.base.ref,
+        sha: fullPR.base.sha,
+      },
+    };
+  } catch (error) {
+    console.error('[PR Search] Failed to find existing PR:', error);
+    return null;
+  }
+};
+
+/**
+ * Commit changes to an existing PR's branch
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branchName - Branch name to commit to
+ * @param {string} filePath - Path to file
+ * @param {string} content - New file content
+ * @param {string} commitMessage - Commit message
+ * @param {string} fileSha - Current file SHA (null for new files)
+ * @returns {Promise<Object>} Commit result
+ */
+export const commitToExistingBranch = async (
+  owner,
+  repo,
+  branchName,
+  filePath,
+  content,
+  commitMessage,
+  fileSha = null
+) => {
+  try {
+    console.log(`[PR] Committing to existing branch: ${branchName}`);
+    console.log(`[PR] File path: ${filePath}`);
+    console.log(`[PR] Provided file SHA: ${fileSha || 'none (new file)'}`);
+
+    // Get the current file SHA from the PR branch (not main branch)
+    // This is important because the file in the PR branch might be different from main
+    const { getFileContent } = await import('./content.js');
+
+    let branchFileSha = fileSha;
+
+    try {
+      console.log(`[PR] Fetching current file SHA from branch: ${branchName}`);
+      const fileData = await getFileContent(owner, repo, filePath, branchName);
+      if (fileData?.sha) {
+        branchFileSha = fileData.sha;
+        console.log(`[PR] Using file SHA from branch: ${branchFileSha}`);
+      }
+    } catch (error) {
+      // File might not exist in the branch yet (new file)
+      console.log('[PR] File does not exist in branch (new file or error):', error.message);
+      branchFileSha = null;
+    }
+
+    // Use the existing updateFileContent function to commit to the branch
+    const result = await updateFileContent(
+      owner,
+      repo,
+      filePath,
+      content,
+      commitMessage,
+      branchName,
+      branchFileSha
+    );
+
+    console.log('[PR] Successfully committed to existing branch');
+    return result;
+  } catch (error) {
+    console.error('[PR] Failed to commit to existing branch:', error);
+    throw error;
+  }
 };
