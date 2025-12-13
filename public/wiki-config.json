@@ -1,0 +1,54 @@
+{
+  "wiki": {
+    "title": "My GitHub Wiki",
+    "description": "A powerful, customizable wiki framework powered by GitHub",
+    "logo": null,
+    "baseUrl": "/wiki",
+    "repository": {
+      "owner": "BenDol",
+      "repo": "SlayerLegendWiki",
+      "branch": "main",
+      "contentPath": "public/content"
+    }
+  },
+  "sections": [
+    {
+      "id": "getting-started",
+      "title": "Getting Started",
+      "path": "getting-started",
+      "icon": "rocket",
+      "showInHeader": true,
+      "allowContributions": true,
+      "order": 1
+    },
+    {
+      "id": "guides",
+      "title": "Guides",
+      "path": "guides",
+      "icon": "book",
+      "showInHeader": true,
+      "allowContributions": true,
+      "order": 2
+    },
+    {
+      "id": "reference",
+      "title": "Reference",
+      "path": "reference",
+      "icon": "file-text",
+      "showInHeader": true,
+      "allowContributions": false,
+      "order": 3
+    }
+  ],
+  "features": {
+    "search": true,
+    "tableOfContents": true,
+    "pageHistory": true,
+    "editPages": true,
+    "darkMode": true,
+    "tags": true
+  },
+  "theme": {
+    "primaryColor": "#3b82f6"
+  }
+}
