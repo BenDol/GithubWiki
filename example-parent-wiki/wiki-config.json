@@ -1,0 +1,53 @@
+{
+  "wiki": {
+    "title": "My Custom Wiki",
+    "description": "Documentation powered by GitHub Wiki Framework",
+    "logo": "/logo.svg",
+    "repository": {
+      "owner": "yourusername",
+      "repo": "my-wiki",
+      "branch": "main",
+      "contentPath": "content"
+    }
+  },
+  "sections": [
+    {
+      "id": "getting-started",
+      "title": "Getting Started",
+      "path": "getting-started",
+      "icon": "🚀",
+      "showInHeader": true,
+      "allowContributions": true,
+      "order": 1
+    },
+    {
+      "id": "guides",
+      "title": "Guides",
+      "path": "guides",
+      "icon": "📚",
+      "showInHeader": true,
+      "allowContributions": true,
+      "order": 2
+    },
+    {
+      "id": "reference",
+      "title": "Reference",
+      "path": "reference",
+      "icon": "📖",
+      "showInHeader": true,
+      "allowContributions": true,
+      "order": 3
+    }
+  ],
+  "features": {
+    "search": true,
+    "tableOfContents": true,
+    "pageHistory": true,
+    "editPages": true,
+    "darkMode": true,
+    "tags": true
+  },
+  "theme": {
+    "primaryColor": "#3b82f6"
+  }
+}
