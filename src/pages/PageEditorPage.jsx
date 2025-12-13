@@ -9,6 +9,7 @@ import { updateFileContent } from '../services/github/content';
 import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExistingBranch, getUserPullRequests } from '../services/github/pullRequests';
 import { hasWriteAccess } from '../services/github/permissions';
 import { getOrCreateFork } from '../services/github/forks';
+import { submitAnonymousEdit } from '../services/github/anonymousEdits';
 import PageEditor from '../components/wiki/PageEditor';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
@@ -40,12 +41,17 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const [prestigeTier, setPrestigeTier] = useState(null);
   const [isUpdatingExistingPR, setIsUpdatingExistingPR] = useState(false);
   const [savingStatus, setSavingStatus] = useState(''); // For showing fork operation progress
+  const [isAnonymousMode, setIsAnonymousMode] = useState(false); // Track if user chose anonymous mode
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
 
-  // Check permissions
-  const canEdit = section?.allowContributions && isAuthenticated;
+  // Check if anonymous mode is enabled
+  const anonymousEnabled = config?.features?.editRequestCreator?.anonymous?.enabled ?? false;
+  const requireAuth = config?.features?.editRequestCreator?.permissions?.requireAuth ?? true;
+
+  // Check permissions - allow editing if authenticated OR anonymous mode is enabled
+  const canEdit = section?.allowContributions && (isAuthenticated || (anonymousEnabled && !requireAuth));
 
   useEffect(() => {
     const loadPage = async () => {
@@ -147,7 +153,119 @@ Write your content here...
     loadPage();
   }, [config, section, sectionId, pageId, isAuthenticated, isNewPage]);
 
+  /**
+   * Handle anonymous edit submission
+   * Supports both server and serverless modes
+   */
+  const handleAnonymousSave = async (newContent, editSummary) => {
+    if (!config) return;
+
+    // For new pages, validate that pageId is set
+    if (isNewPage && !newPageId.trim()) {
+      setError('Please enter a page filename (e.g., "my-new-page")');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError(null);
+
+      const { owner, repo, contentPath } = config.wiki.repository;
+      const currentPageId = isNewPage ? newPageId : pageId;
+      const filePath = `${contentPath}/${sectionId}/${currentPageId}.md`;
+
+      // Parse content to extract metadata
+      const { data: parsedMetadata } = matter(newContent);
+
+      // Generate page ID from title if not present
+      let pageIdFromMetadata = parsedMetadata.id?.trim() || '';
+      if (!pageIdFromMetadata) {
+        const title = parsedMetadata.title?.trim();
+        if (title) {
+          pageIdFromMetadata = generatePageId(title);
+        } else {
+          pageIdFromMetadata = currentPageId;
+        }
+      }
+
+      // Prepare payload
+      const payload = {
+        section: sectionId,
+        pageId: pageIdFromMetadata,
+        content: newContent,
+        editSummary: editSummary || `Update ${parsedMetadata?.title || currentPageId}`,
+        filePath,
+        metadata: {
+          id: pageIdFromMetadata,
+          title: parsedMetadata?.title || currentPageId,
+          ...parsedMetadata,
+        },
+      };
+
+      // Check if using server or serverless mode
+      const anonymousConfig = config.features?.editRequestCreator?.anonymous;
+      const mode = anonymousConfig?.mode || 'server'; // 'server' or 'serverless'
+
+      let result;
+
+      if (mode === 'serverless') {
+        // Serverless mode: GitHub Issues + Actions
+        console.log('[Anonymous Edit] Using serverless mode (GitHub Issues + Actions)');
+
+        result = await submitAnonymousEdit(
+          owner,
+          repo,
+          payload,
+          (status) => setSavingStatus(status)
+        );
+
+        console.log(`[Anonymous Edit - Serverless] Success! PR #${result.prNumber}`);
+      } else {
+        // Server mode: External backend
+        const serverEndpoint = anonymousConfig?.serverEndpoint;
+        if (!serverEndpoint) {
+          throw new Error('Anonymous edit endpoint not configured');
+        }
+
+        console.log(`[Anonymous Edit - Server] Submitting to: ${serverEndpoint}`);
+        setSavingStatus('Submitting anonymous edit...');
+
+        const response = await fetch(serverEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || result.message || 'Failed to submit anonymous edit');
+        }
+
+        console.log(`[Anonymous Edit - Server] Success! PR #${result.prNumber}`);
+      }
+
+      setSavingStatus('');
+      setPrUrl(result.prUrl);
+      setIsUpdatingExistingPR(false); // Anonymous edits always create new PRs
+      setIsFirstContribution(false); // Anonymous edits don't count for prestige
+
+    } catch (err) {
+      console.error('[Anonymous Edit] Failed:', err);
+      setError(err.message || 'Failed to submit anonymous edit. Please try again.');
+      setIsSaving(false);
+      setSavingStatus('');
+    }
+  };
+
   const handleSave = async (newContent, editSummary) => {
+    // If in anonymous mode, use anonymous submission
+    if (isAnonymousMode && !isAuthenticated) {
+      return handleAnonymousSave(newContent, editSummary);
+    }
+
     if (!config || !user) return;
 
     // For new pages, validate that pageId is set
@@ -454,8 +572,66 @@ Write your content here...
     );
   }
 
-  // Redirect if not authenticated
-  if (!isAuthenticated) {
+  // Show edit mode selection if not authenticated but anonymous mode is available
+  if (!isAuthenticated && anonymousEnabled && !requireAuth && !isAnonymousMode) {
+    return (
+      <div className="max-w-2xl mx-auto text-center py-12">
+        <div className="text-gray-400 text-6xl mb-4">✏️</div>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
+          Choose Edit Mode
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mb-8">
+          You can edit this page with or without signing in.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto">
+          {/* Authenticated Edit */}
+          <div className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
+            <div className="text-4xl mb-3">👤</div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Sign In to Edit
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Get credited for your contributions and earn prestige
+            </p>
+            <Link
+              to="/auth/github"
+              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium w-full justify-center"
+            >
+              Sign In with GitHub
+            </Link>
+          </div>
+
+          {/* Anonymous Edit */}
+          <div className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-green-500 dark:hover:border-green-400 transition-colors">
+            <div className="text-4xl mb-3">🕶️</div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+              Edit Anonymously
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Quick edits without signing in (no prestige earned)
+            </p>
+            <button
+              onClick={() => setIsAnonymousMode(true)}
+              className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium w-full justify-center"
+            >
+              Continue Anonymously
+            </button>
+          </div>
+        </div>
+
+        <Link
+          to={`/${sectionId}/${pageId}`}
+          className="inline-flex items-center mt-6 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+        >
+          ← Back to Page
+        </Link>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated and anonymous mode not enabled
+  if (!isAuthenticated && (!anonymousEnabled || requireAuth)) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
         <div className="text-gray-400 text-6xl mb-4">🔒</div>
@@ -746,6 +922,29 @@ Write your content here...
           {isNewPage ? 'Enter a filename and create your new page' : 'Make your changes and submit a pull request for review'}
         </p>
       </div>
+
+      {/* Anonymous Mode Banner */}
+      {isAnonymousMode && !isAuthenticated && (
+        <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 text-2xl">🕶️</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
+                Editing Anonymously
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Your edit will be submitted without attribution. You will not earn prestige for this contribution.
+              </p>
+              <button
+                onClick={() => setIsAnonymousMode(false)}
+                className="mt-2 text-sm text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 underline"
+              >
+                Go back to sign in instead
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filename input for new pages */}
       {isNewPage && (
