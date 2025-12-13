@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @param {Object} options.alias - Additional path aliases
  * @returns {Object} Vite configuration
  */
-export function createWikiConfig(options = {}) {
+export async function createWikiConfig(options = {}) {
   const {
     base = '/',
     contentPath = '../content',
