@@ -319,9 +319,16 @@ const Sidebar = () => {
     return acc;
   }, {});
 
-  // Sort pages within each section
+  // Sort pages within each section by order, then title
   Object.keys(pagesBySection).forEach(sectionId => {
-    pagesBySection[sectionId].sort((a, b) => a.title.localeCompare(b.title));
+    pagesBySection[sectionId].sort((a, b) => {
+      const orderA = a.order ?? 0;
+      const orderB = b.order ?? 0;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return a.title.localeCompare(b.title);
+    });
   });
 
   return (

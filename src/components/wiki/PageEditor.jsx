@@ -37,6 +37,7 @@ const PageEditor = ({
     tags: [],
     category: '',
     date: '',
+    order: 0,
   });
 
   const { darkMode } = useUIStore();
@@ -87,6 +88,7 @@ const PageEditor = ({
           tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
           category: parsed.data.category || '',
           date: parsed.data.date || '',
+          order: parsed.data.order ?? 0,
         });
       } catch (err) {
         console.error('Failed to parse frontmatter:', err);
@@ -194,7 +196,7 @@ const PageEditor = ({
     // Check for unknown/invalid metadata fields in the raw content
     try {
       const parsed = matter(content);
-      const allowedFields = ['id', 'title', 'description', 'tags', 'category', 'date'];
+      const allowedFields = ['id', 'title', 'description', 'tags', 'category', 'date', 'order'];
       const actualFields = Object.keys(parsed.data);
 
       const unknownFields = actualFields.filter(field => !allowedFields.includes(field));
@@ -342,6 +344,18 @@ const PageEditor = ({
       }
     }
 
+    // Order validation (optional field)
+    if (metadata.order !== undefined && metadata.order !== null && metadata.order !== '') {
+      const orderNum = Number(metadata.order);
+      if (isNaN(orderNum)) {
+        errors.push('Order must be a number');
+      } else if (!Number.isInteger(orderNum)) {
+        errors.push('Order must be an integer');
+      } else if (orderNum < -1000 || orderNum > 1000) {
+        errors.push('Order must be between -1000 and 1000');
+      }
+    }
+
     // Validate that frontmatter can be properly serialized
     try {
       matter.stringify('', metadata);
@@ -416,6 +430,7 @@ const PageEditor = ({
             tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
             category: parsed.data.category || '',
             date: parsed.data.date || '',
+            order: parsed.data.order ?? 0,
           });
         }
       } catch (err) {
@@ -672,6 +687,25 @@ const PageEditor = ({
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Automatically set on page creation
+                </p>
+              </div>
+
+              {/* Order */}
+              <div className="space-y-1.5 md:col-span-1">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Sort Order
+                </label>
+                <input
+                  type="number"
+                  value={metadata.order ?? 0}
+                  onChange={(e) => handleMetadataChange('order', e.target.value === '' ? 0 : parseInt(e.target.value, 10))}
+                  className="block w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="-1000"
+                  max="1000"
+                  step="1"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Controls page position in section list (lower numbers appear first)
                 </p>
               </div>
             </div>

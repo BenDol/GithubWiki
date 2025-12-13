@@ -34,7 +34,15 @@ const SectionPage = ({ sectionId }) => {
           console.log('Total pages in search index:', searchIndex.length);
           const sectionPages = searchIndex
             .filter(page => page.section === sectionId && page.pageId !== 'index')
-            .sort((a, b) => a.title.localeCompare(b.title));
+            .sort((a, b) => {
+              // Sort by order first (default to 0 if not specified), then by title
+              const orderA = a.order ?? 0;
+              const orderB = b.order ?? 0;
+              if (orderA !== orderB) {
+                return orderA - orderB;
+              }
+              return a.title.localeCompare(b.title);
+            });
           console.log(`Pages found for section "${sectionId}":`, sectionPages.length, sectionPages);
           setPages(sectionPages);
         } else {

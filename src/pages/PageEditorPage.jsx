@@ -79,6 +79,7 @@ description:
 tags: []
 category: ${section?.title || ''}
 date: ${today}
+order: 0
 ---
 
 # Page Title
@@ -110,6 +111,7 @@ Include any supplementary details, notes, or related information.
             tags: [],
             category: section?.title || '',
             date: today,
+            order: 0,
           });
           setContent(defaultContent);
           setFileSha(null);
@@ -617,12 +619,16 @@ Include any supplementary details, notes, or related information.
     // Confirm deletion
     const pageTitle = metadata?.title || pageId;
 
-    // Check if direct commit is allowed
+    // Check if direct commit is allowed for deletes
     const editRequestConfig = config.features?.editRequestCreator;
     const allowDirectCommit = editRequestConfig?.permissions?.allowDirectCommit ?? false;
+    const allowDirectCommitDelete = editRequestConfig?.permissions?.allowDirectCommitDelete ?? false;
     const userHasWriteAccess = await hasWriteAccess(config.wiki.repository.owner, config.wiki.repository.repo, user.login);
 
-    const confirmMessage = allowDirectCommit && userHasWriteAccess
+    // For deletes, require both allowDirectCommit AND allowDirectCommitDelete to be true
+    const canDirectDelete = allowDirectCommit && allowDirectCommitDelete && userHasWriteAccess;
+
+    const confirmMessage = canDirectDelete
       ? `Are you sure you want to delete "${pageTitle}"?\n\nThis will immediately delete the page from the main branch.`
       : `Are you sure you want to delete "${pageTitle}"?\n\nThis will create a pull request to remove this page. The deletion will not take effect until the PR is merged.`;
 
@@ -645,8 +651,8 @@ Include any supplementary details, notes, or related information.
       setSavingStatus('Checking permissions...');
       console.log(`[PageEditor] User ${user.login} has write access: ${userHasWriteAccess}`);
 
-      // If direct commit is enabled and user has write access, delete directly from main
-      if (allowDirectCommit && userHasWriteAccess) {
+      // If direct commit is enabled for deletes, delete directly from main
+      if (canDirectDelete) {
         console.log(`\n${'='.repeat(60)}`);
         console.log(`[PageEditor] DIRECT DELETE MODE - Deleting from main branch`);
         console.log(`[PageEditor] User: ${user.login}`);
