@@ -12,6 +12,7 @@ import { hasWriteAccess } from '../services/github/permissions';
 import { getOrCreateFork } from '../services/github/forks';
 import { submitAnonymousEdit } from '../services/github/anonymousEdits';
 import PageEditor from '../components/wiki/PageEditor';
+import PendingEditRequests from '../components/wiki/PendingEditRequests';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
@@ -1397,6 +1398,13 @@ Include any supplementary details, notes, or related information.
               </a>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Pending Edit Requests */}
+      {!isNewPage && (
+        <div className="mb-6">
+          <PendingEditRequests sectionId={sectionId} pageId={pageId} />
         </div>
       )}
 

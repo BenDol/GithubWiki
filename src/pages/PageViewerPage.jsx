@@ -5,6 +5,7 @@ import PageViewer from '../components/wiki/PageViewer';
 import TableOfContents from '../components/wiki/TableOfContents';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import StarContributor from '../components/wiki/StarContributor';
+import PendingEditRequests from '../components/wiki/PendingEditRequests';
 import Comments from '../components/wiki/Comments';
 import { useWikiStore } from '../store/wikiStore';
 import { useSection, useWikiConfig } from '../hooks/useWikiConfig';
@@ -297,6 +298,11 @@ const PageViewerPage = ({ sectionId }) => {
           {/* Star contributor - only show for user content pages */}
           {!isFrameworkPage && (
             <StarContributor sectionId={sectionId} pageId={pageId} />
+          )}
+
+          {/* Pending edit requests */}
+          {!isFrameworkPage && (
+            <PendingEditRequests sectionId={sectionId} pageId={pageId} />
           )}
 
           {/* Table of Contents */}
