@@ -20,6 +20,7 @@ const ContributorHighscorePage = () => {
   const [highscoreData, setHighscoreData] = useState(null);
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(0);
   const [showLimitedOnly, setShowLimitedOnly] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('allTime');
 
   const enabled = config?.features?.contributorHighscore?.enabled ?? false;
   const cacheMinutes = config?.features?.contributorHighscore?.cacheMinutes ?? 30;
@@ -51,7 +52,8 @@ const ContributorHighscorePage = () => {
         const data = await getContributorHighscore(
           config.wiki.repository.owner,
           config.wiki.repository.repo,
-          config
+          config,
+          selectedCategory
         );
 
         setHighscoreData(data);
@@ -64,7 +66,7 @@ const ContributorHighscorePage = () => {
     };
 
     loadHighscore();
-  }, [config, enabled]);
+  }, [config, enabled, selectedCategory]);
 
   // Update countdown timer
   useEffect(() => {
@@ -96,7 +98,8 @@ const ContributorHighscorePage = () => {
       const data = await refreshHighscoreCache(
         config.wiki.repository.owner,
         config.wiki.repository.repo,
-        config
+        config,
+        selectedCategory
       );
 
       setHighscoreData(data);
@@ -107,6 +110,13 @@ const ContributorHighscorePage = () => {
       setRefreshing(false);
     }
   };
+
+  // Category tabs
+  const categories = [
+    { id: 'allTime', label: 'All Time' },
+    { id: 'thisMonth', label: 'This Month' },
+    { id: 'thisWeek', label: 'This Week' },
+  ];
 
   // Format time remaining
   const formatTimeRemaining = (ms) => {
@@ -188,7 +198,7 @@ const ContributorHighscorePage = () => {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 py-6 sm:py-8 mb-6 sm:mb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2 truncate">
                 Contributor Highscore
@@ -246,6 +256,25 @@ const ContributorHighscorePage = () => {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Category Tabs */}
+          <div className="flex justify-center mt-4 sm:mt-6">
+            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-1">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-4 sm:px-6 py-2 sm:py-2.5 rounded-md text-sm sm:text-base font-medium transition-all ${
+                    selectedCategory === cat.id
+                      ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

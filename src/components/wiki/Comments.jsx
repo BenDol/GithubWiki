@@ -13,6 +13,7 @@ import {
   deleteCommentReaction,
   getCommentReactions,
 } from '../../services/github/comments';
+import { detectCurrentBranch } from '../../services/github/branchNamespace';
 
 /**
  * Comments component using GitHub Issues
@@ -36,7 +37,27 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
 
+  // Rate limiting state
+  const reactionTimestamps = useRef([]);
+  const commentTimestamps = useRef([]);
+
+  const REACTION_RATE_LIMIT = {
+    perSecond: 1,       // Max 1 reaction per second
+    perMinute: 10,      // Max 10 reactions per minute
+    cooldownMs: 1000,   // 1 second cooldown between reactions
+  };
+
+  const COMMENT_RATE_LIMIT = {
+    perMinute: 5,       // Max 5 comments per minute
+    per5Minutes: 10,    // Max 10 comments per 5 minutes
+    cooldownMs: 5000,   // 5 second cooldown between comments
+  };
+
   const pageUrl = `${window.location.origin}${window.location.pathname}#/${sectionId}/${pageId}`;
+
+  // DEV: Enable fake comments for testing lazy loading (development only)
+  const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data
+  const FAKE_COMMENT_ID_START = 8000000; // Fake comment IDs start from this number
 
   // Load issue and comments
   useEffect(() => {
@@ -49,8 +70,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
         const { owner, repo } = config.wiki.repository;
 
+        // Detect current branch for namespace isolation
+        const branch = await detectCurrentBranch(config);
+
         // Always try to find existing issue (read-only, works without auth for public repos)
-        const pageIssue = await findPageIssue(owner, repo, pageTitle);
+        const pageIssue = await findPageIssue(owner, repo, pageTitle, branch);
 
         if (pageIssue) {
           setIssue(pageIssue);
@@ -59,7 +83,6 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           let issueComments = await getIssueComments(owner, repo, pageIssue.number);
 
           // DEV: Add 100 fake comments for testing lazy loading
-          const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data
           if (import.meta.env.DEV && ENABLE_FAKE_COMMENTS) {
             const fakeComments = Array.from({ length: 100 }, (_, i) => ({
               id: 8000000 + i,
@@ -95,8 +118,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           const reactions = {};
           const initialComments = issueComments.slice(0, 10);
           for (const comment of initialComments) {
-            // Skip loading reactions for fake comments
-            if (comment.id < 8000000) {
+            // Skip loading reactions for fake test comments (dev only)
+            const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
+            if (!isFakeComment) {
               const commentReactionList = await getCommentReactions(owner, repo, comment.id);
               reactions[comment.id] = commentReactionList;
             } else {
@@ -133,8 +157,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
       for (const comment of newComments) {
         if (!newReactions[comment.id]) {
-          // Skip loading reactions for fake comments
-          if (comment.id < 8000000) {
+          // Skip loading reactions for fake test comments (dev only)
+          const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
+          if (!isFakeComment) {
             const commentReactionList = await getCommentReactions(owner, repo, comment.id);
             newReactions[comment.id] = commentReactionList;
           } else {
@@ -179,18 +204,33 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return;
 
+    // Check client-side rate limiting
+    const rateLimitCheck = checkCommentRateLimit();
+    if (rateLimitCheck.isLimited) {
+      console.warn('[Comments] Rate limited:', rateLimitCheck.reason);
+      alert(`⏱️ ${rateLimitCheck.reason}`);
+      return;
+    }
+
     try {
       setIsSubmitting(true);
+
+      // Record comment timestamp for rate limiting
+      commentTimestamps.current.push(Date.now());
+
       const { owner, repo } = config.wiki.repository;
 
       console.log('[Comments] Submitting comment...');
       console.log('[Comments] Current issue:', issue);
 
+      // Detect current branch for namespace isolation
+      const branch = await detectCurrentBranch(config);
+
       // If no issue exists yet, create it (first comment on the page)
       let pageIssue = issue;
       if (!pageIssue) {
         console.log('[Comments] No issue exists, creating new issue...');
-        pageIssue = await getOrCreatePageIssue(owner, repo, pageTitle, pageUrl);
+        pageIssue = await getOrCreatePageIssue(owner, repo, pageTitle, pageUrl, branch);
         console.log('[Comments] Created/found issue:', pageIssue);
         setIssue(pageIssue);
       }
@@ -232,8 +272,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       const visibleComments = updatedComments.slice(0, newVisibleCount);
       console.log('[Comments] Loading reactions for', visibleComments.length, 'comments');
       for (const comment of visibleComments) {
-        // Skip loading reactions for fake comments
-        if (comment.id < 8000000) {
+        // Skip loading reactions for fake test comments (dev only)
+        const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
+        if (!isFakeComment) {
           const commentReactionList = await getCommentReactions(owner, repo, comment.id);
           newReactions[comment.id] = commentReactionList;
         } else {
@@ -245,10 +286,105 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       console.log('[Comments] Comment submission complete!');
     } catch (err) {
       console.error('Failed to submit comment:', err);
-      alert('Failed to submit comment: ' + err.message);
+
+      // Handle GitHub API rate limit errors
+      if (err.status === 403 && err.message?.includes('rate limit')) {
+        alert('⏱️ GitHub API rate limit exceeded. Please wait a moment and try again.');
+      } else if (err.status === 403) {
+        alert('❌ Permission denied. You may need to sign in again.');
+      } else if (err.status === 422) {
+        alert('❌ Invalid comment. Please check your input.');
+      } else {
+        alert('❌ Failed to submit comment: ' + err.message);
+      }
+
+      // Remove the timestamp we just added since the comment failed
+      commentTimestamps.current.pop();
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  /**
+   * Check if user is rate limited for reactions
+   * @returns {Object} { isLimited: boolean, reason: string, retryAfter: number }
+   */
+  const checkReactionRateLimit = () => {
+    const now = Date.now();
+    const timestamps = reactionTimestamps.current;
+
+    // Clean up old timestamps (older than 1 minute)
+    reactionTimestamps.current = timestamps.filter(ts => now - ts < 60000);
+
+    // Check per-second limit
+    const lastReaction = timestamps[timestamps.length - 1] || 0;
+    const timeSinceLastReaction = now - lastReaction;
+    if (timeSinceLastReaction < REACTION_RATE_LIMIT.cooldownMs) {
+      const retryAfter = Math.ceil((REACTION_RATE_LIMIT.cooldownMs - timeSinceLastReaction) / 1000);
+      return {
+        isLimited: true,
+        reason: 'Too fast! Please wait a moment between reactions.',
+        retryAfter,
+      };
+    }
+
+    // Check per-minute limit
+    const recentReactions = timestamps.filter(ts => now - ts < 60000);
+    if (recentReactions.length >= REACTION_RATE_LIMIT.perMinute) {
+      return {
+        isLimited: true,
+        reason: `Rate limit: Maximum ${REACTION_RATE_LIMIT.perMinute} reactions per minute.`,
+        retryAfter: 60,
+      };
+    }
+
+    return { isLimited: false };
+  };
+
+  /**
+   * Check if user is rate limited for comments
+   * @returns {Object} { isLimited: boolean, reason: string, retryAfter: number }
+   */
+  const checkCommentRateLimit = () => {
+    const now = Date.now();
+    const timestamps = commentTimestamps.current;
+
+    // Clean up old timestamps (older than 5 minutes)
+    commentTimestamps.current = timestamps.filter(ts => now - ts < 300000);
+
+    // Check cooldown period since last comment
+    const lastComment = timestamps[timestamps.length - 1] || 0;
+    const timeSinceLastComment = now - lastComment;
+    if (timeSinceLastComment < COMMENT_RATE_LIMIT.cooldownMs) {
+      const retryAfter = Math.ceil((COMMENT_RATE_LIMIT.cooldownMs - timeSinceLastComment) / 1000);
+      return {
+        isLimited: true,
+        reason: `Please wait ${retryAfter} seconds before posting another comment.`,
+        retryAfter,
+      };
+    }
+
+    // Check per-minute limit
+    const recentComments1min = timestamps.filter(ts => now - ts < 60000);
+    if (recentComments1min.length >= COMMENT_RATE_LIMIT.perMinute) {
+      return {
+        isLimited: true,
+        reason: `Rate limit: Maximum ${COMMENT_RATE_LIMIT.perMinute} comments per minute.`,
+        retryAfter: 60,
+      };
+    }
+
+    // Check per-5-minutes limit
+    const recentComments5min = timestamps.filter(ts => now - ts < 300000);
+    if (recentComments5min.length >= COMMENT_RATE_LIMIT.per5Minutes) {
+      return {
+        isLimited: true,
+        reason: `Rate limit: Maximum ${COMMENT_RATE_LIMIT.per5Minutes} comments per 5 minutes.`,
+        retryAfter: 300,
+      };
+    }
+
+    return { isLimited: false };
   };
 
   const handleReaction = async (commentId, reactionType) => {
@@ -257,9 +393,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       return;
     }
 
-    // Skip reactions on fake test comments
-    if (commentId >= 8000000) {
-      console.log('[Comments] Skipping reaction on fake comment');
+    // Check client-side rate limiting
+    const rateLimitCheck = checkReactionRateLimit();
+    if (rateLimitCheck.isLimited) {
+      console.warn('[Comments] Rate limited:', rateLimitCheck.reason);
+      alert(`⏱️ ${rateLimitCheck.reason}`);
       return;
     }
 
@@ -268,6 +406,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     try {
       // Set loading state for this specific button
       setReactionLoading(prev => ({ ...prev, [loadingKey]: true }));
+
+      // Record reaction timestamp for rate limiting
+      reactionTimestamps.current.push(Date.now());
 
       const { owner, repo } = config.wiki.repository;
       const reactions = commentReactions[commentId] || [];
@@ -303,7 +444,18 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       }));
     } catch (err) {
       console.error('Failed to handle reaction:', err);
-      alert('Failed to update reaction: ' + err.message);
+
+      // Handle GitHub API rate limit (HTTP 403 with specific message)
+      if (err.status === 403 && err.message?.includes('rate limit')) {
+        alert('⏱️ GitHub API rate limit exceeded. Please wait a moment and try again.');
+      } else if (err.status === 403) {
+        alert('❌ Permission denied. You may need to sign in again.');
+      } else {
+        alert('❌ Failed to update reaction: ' + err.message);
+      }
+
+      // Remove the timestamp we just added since the reaction failed
+      reactionTimestamps.current.pop();
     } finally {
       // Clear loading state
       setReactionLoading(prev => {

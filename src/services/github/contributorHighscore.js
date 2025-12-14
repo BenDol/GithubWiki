@@ -134,7 +134,77 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
 }
 
 /**
- * Fetch fresh contributor statistics from GitHub API
+ * Fetch commits within a date range and aggregate by author
+ */
+async function fetchCommitsInDateRange(owner, repo, since, until) {
+  const octokit = getOctokit();
+
+  try {
+    console.log(`[Highscore] Fetching commits from ${since} to ${until}...`);
+
+    const commits = [];
+    let page = 1;
+    const perPage = 100;
+
+    // Fetch all commits in date range (with pagination)
+    while (true) {
+      const { data } = await octokit.rest.repos.listCommits({
+        owner,
+        repo,
+        since,
+        until,
+        per_page: perPage,
+        page,
+      });
+
+      if (data.length === 0) break;
+      commits.push(...data);
+
+      // If we got fewer than perPage, we've reached the end
+      if (data.length < perPage) break;
+      page++;
+    }
+
+    console.log(`[Highscore] Found ${commits.length} commits in date range`);
+
+    // Aggregate commits by author
+    const contributorMap = new Map();
+
+    for (const commit of commits) {
+      const author = commit.author || commit.commit.author;
+      const login = author?.login;
+
+      // Skip commits without a GitHub user (e.g., local git commits)
+      if (!login) continue;
+
+      if (contributorMap.has(login)) {
+        contributorMap.get(login).contributions++;
+      } else {
+        contributorMap.set(login, {
+          login,
+          avatarUrl: author.avatar_url,
+          contributions: 1,
+          profileUrl: author.html_url,
+          prestige: 0,
+          type: author.type || 'User',
+        });
+      }
+    }
+
+    // Convert map to array and sort by contributions
+    const contributors = Array.from(contributorMap.values());
+    contributors.sort((a, b) => b.contributions - a.contributions);
+
+    console.log(`[Highscore] Found ${contributors.length} unique contributors in date range`);
+    return contributors;
+  } catch (error) {
+    console.error('[Highscore] Failed to fetch commits in date range:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch fresh contributor statistics from GitHub API (all-time)
  */
 async function fetchFreshContributorStats(owner, repo, config = {}) {
   const octokit = getOctokit();
@@ -169,17 +239,49 @@ async function fetchFreshContributorStats(owner, repo, config = {}) {
 }
 
 /**
+ * Fetch all category data (all-time, this month, this week)
+ */
+async function fetchAllCategoryData(owner, repo, config = {}) {
+  console.log('[Highscore] Fetching all category data...');
+
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  // Fetch all three categories in parallel
+  const [allTimeContributors, thisMonthContributors, thisWeekContributors] = await Promise.all([
+    fetchFreshContributorStats(owner, repo, config),
+    fetchCommitsInDateRange(owner, repo, oneMonthAgo.toISOString(), now.toISOString()),
+    fetchCommitsInDateRange(owner, repo, oneWeekAgo.toISOString(), now.toISOString()),
+  ]);
+
+  return {
+    lastUpdated: now.toISOString(),
+    categories: {
+      allTime: {
+        contributors: allTimeContributors,
+      },
+      thisMonth: {
+        startDate: oneMonthAgo.toISOString(),
+        endDate: now.toISOString(),
+        contributors: thisMonthContributors,
+      },
+      thisWeek: {
+        startDate: oneWeekAgo.toISOString(),
+        endDate: now.toISOString(),
+        contributors: thisWeekContributors,
+      },
+    },
+  };
+}
+
+/**
  * Update the cache issue with fresh data
  */
-async function updateCacheIssue(owner, repo, issueNumber, contributors) {
+async function updateCacheIssue(owner, repo, issueNumber, cacheData) {
   const octokit = getOctokit();
 
   try {
-    const cacheData = {
-      lastUpdated: new Date().toISOString(),
-      contributors,
-    };
-
     await octokit.rest.issues.update({
       owner,
       repo,
@@ -193,6 +295,38 @@ async function updateCacheIssue(owner, repo, issueNumber, contributors) {
     console.error('[Highscore] Failed to update cache issue:', error);
     throw error;
   }
+}
+
+/**
+ * Detect if cache data is old format (pre-categories)
+ */
+function isOldCacheFormat(cacheData) {
+  return cacheData && cacheData.contributors && !cacheData.categories;
+}
+
+/**
+ * Migrate old cache format to new format
+ */
+function migrateOldCacheFormat(oldData) {
+  console.log('[Highscore] Migrating old cache format to new format...');
+  return {
+    lastUpdated: oldData.lastUpdated,
+    categories: {
+      allTime: {
+        contributors: oldData.contributors || [],
+      },
+      thisMonth: {
+        startDate: null,
+        endDate: null,
+        contributors: [],
+      },
+      thisWeek: {
+        startDate: null,
+        endDate: null,
+        contributors: [],
+      },
+    },
+  };
 }
 
 /**
@@ -214,7 +348,7 @@ function isCacheValid(lastUpdated, cacheMinutes) {
  * 2. If expired, check GitHub issue cache
  * 3. If expired, fetch fresh data and update both caches
  */
-export async function getContributorHighscore(owner, repo, config) {
+export async function getContributorHighscore(owner, repo, config, category = 'allTime') {
   const cacheMinutes = config?.features?.contributorHighscore?.cacheMinutes ?? 30;
   const enabled = config?.features?.contributorHighscore?.enabled ?? false;
 
@@ -222,146 +356,154 @@ export async function getContributorHighscore(owner, repo, config) {
     throw new Error('Contributor highscore feature is not enabled');
   }
 
-  console.log('[Highscore] Fetching contributor highscore (cache: ' + cacheMinutes + ' minutes)');
+  console.log(`[Highscore] Fetching contributor highscore for category: ${category} (cache: ${cacheMinutes} minutes)`);
 
   // Step 1: Check browser localStorage cache
   const localCache = localStorage.getItem(HIGHSCORE_CACHE_KEY);
   if (localCache) {
-    const localData = JSON.parse(localCache);
+    let localData = JSON.parse(localCache);
+
+    // Migrate old format if needed
+    if (isOldCacheFormat(localData)) {
+      localData = migrateOldCacheFormat(localData);
+    }
+
     if (isCacheValid(localData.lastUpdated, cacheMinutes)) {
       console.log('[Highscore] Using browser cache (age: ' +
         Math.round((new Date() - new Date(localData.lastUpdated)) / 1000 / 60) + ' minutes)');
 
-      // Apply filters to cached data before returning
-      const filteredContributors = await applyContributorFilters(localData.contributors, owner, repo, config);
-      return {
-        ...localData,
-        contributors: filteredContributors
-      };
+      // Get contributors for the requested category
+      const categoryData = localData.categories?.[category];
+      if (categoryData && categoryData.contributors) {
+        // Apply filters to cached data before returning
+        const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
+        return {
+          lastUpdated: localData.lastUpdated,
+          category,
+          contributors: filteredContributors,
+          allCategories: localData.categories,
+        };
+      }
     }
-    console.log('[Highscore] Browser cache expired');
+    console.log('[Highscore] Browser cache expired or category missing');
   }
 
   // Step 2: Check GitHub issue cache (if accessible)
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
 
   if (cacheIssue) {
-    const githubCacheData = parseCacheData(cacheIssue.body);
+    let githubCacheData = parseCacheData(cacheIssue.body);
+
+    // Migrate old format if needed
+    if (isOldCacheFormat(githubCacheData)) {
+      githubCacheData = migrateOldCacheFormat(githubCacheData);
+    }
 
     if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, cacheMinutes)) {
       console.log('[Highscore] Using GitHub cache (age: ' +
         Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60) + ' minutes)');
 
-      // Apply filters to cached data before returning
-      const filteredContributors = await applyContributorFilters(githubCacheData.contributors, owner, repo, config);
-      const filteredData = {
-        ...githubCacheData,
-        contributors: filteredContributors
-      };
+      // Get contributors for the requested category
+      const categoryData = githubCacheData.categories?.[category];
+      if (categoryData && categoryData.contributors) {
+        // Apply filters to cached data before returning
+        const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
+        const filteredData = {
+          lastUpdated: githubCacheData.lastUpdated,
+          category,
+          contributors: filteredContributors,
+          allCategories: githubCacheData.categories,
+        };
 
-      // Update browser cache with unfiltered data (filters are applied at read time)
-      localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
-      return filteredData;
+        // Update browser cache with unfiltered data (filters are applied at read time)
+        localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
+        return filteredData;
+      }
     }
 
-    console.log('[Highscore] GitHub cache expired, fetching fresh data...');
+    console.log('[Highscore] GitHub cache expired or category missing, fetching fresh data...');
   } else {
     console.log('[Highscore] No access to GitHub cache, fetching fresh data...');
   }
 
-  // Step 3: Fetch fresh data
-  const freshContributors = await fetchFreshContributorStats(owner, repo, config);
+  // Step 3: Fetch fresh data for all categories
+  const freshData = await fetchAllCategoryData(owner, repo, config);
 
   // Try to update GitHub cache if we have access (requires write permissions)
-  let freshData;
   if (cacheIssue) {
     try {
-      freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+      await updateCacheIssue(owner, repo, cacheIssue.number, freshData);
     } catch (error) {
       // If permission denied (403), continue without updating GitHub cache
       // Only repo admins can update the cache issue
       if (error.status === 403) {
         console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
         console.log('[Highscore] Using fresh data without updating GitHub cache');
-
-        freshData = {
-          lastUpdated: new Date().toISOString(),
-          contributors: freshContributors,
-        };
       } else {
         throw error;
       }
     }
-  } else {
-    // No cache issue available, just use fresh data
-    freshData = {
-      lastUpdated: new Date().toISOString(),
-      contributors: freshContributors,
-    };
   }
 
   // Update browser cache with unfiltered data
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
 
-  // Apply filters before returning
-  const filteredContributors = await applyContributorFilters(freshData.contributors, owner, repo, config);
+  // Get contributors for the requested category
+  const categoryData = freshData.categories[category];
+  const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
+
   return {
-    ...freshData,
-    contributors: filteredContributors
+    lastUpdated: freshData.lastUpdated,
+    category,
+    contributors: filteredContributors,
+    allCategories: freshData.categories,
   };
 }
 
 /**
- * Force refresh the highscore cache
+ * Force refresh the highscore cache (fetches all categories)
  */
-export async function refreshHighscoreCache(owner, repo, config = {}) {
-  console.log('[Highscore] Force refreshing cache...');
+export async function refreshHighscoreCache(owner, repo, config = {}, category = 'allTime') {
+  console.log('[Highscore] Force refreshing cache for all categories...');
 
   // Clear browser cache
   localStorage.removeItem(HIGHSCORE_CACHE_KEY);
 
-  // Fetch fresh data
-  const freshContributors = await fetchFreshContributorStats(owner, repo, config);
+  // Fetch fresh data for all categories
+  const freshData = await fetchAllCategoryData(owner, repo, config);
 
   // Try to update GitHub cache if we have access (requires write permissions)
-  let freshData;
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
 
   if (cacheIssue) {
     try {
-      freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+      await updateCacheIssue(owner, repo, cacheIssue.number, freshData);
     } catch (error) {
       // If permission denied (403), continue without updating GitHub cache
       // Only repo admins can update the cache issue
       if (error.status === 403) {
         console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
         console.log('[Highscore] Using fresh data without updating GitHub cache');
-
-        freshData = {
-          lastUpdated: new Date().toISOString(),
-          contributors: freshContributors,
-        };
       } else {
         throw error;
       }
     }
   } else {
-    // No cache issue available, just use fresh data
     console.log('[Highscore] No access to GitHub cache');
-    freshData = {
-      lastUpdated: new Date().toISOString(),
-      contributors: freshContributors,
-    };
   }
 
   // Update browser cache with unfiltered data
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
 
-  // Apply filters before returning
-  const filteredContributors = await applyContributorFilters(freshData.contributors, owner, repo, config);
+  // Get contributors for the requested category and apply filters
+  const categoryData = freshData.categories[category];
+  const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
+
   return {
-    ...freshData,
-    contributors: filteredContributors
+    lastUpdated: freshData.lastUpdated,
+    category,
+    contributors: filteredContributors,
+    allCategories: freshData.categories,
   };
 }
 
