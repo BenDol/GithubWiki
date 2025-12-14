@@ -105,6 +105,58 @@ export const generatePRTitle = (pageTitle, sectionTitle) => {
 };
 
 /**
+ * Get content from a PR's branch
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name (can be fork branch like "user:branch-name")
+ * @param {string} filePath - File path to fetch
+ * @returns {Promise<Object>} File content and metadata
+ */
+export const getPRBranchContent = async (owner, repo, branch, filePath) => {
+  const octokit = getOctokit();
+
+  try {
+    console.log(`[PR Branch] Fetching content from branch: ${branch}, file: ${filePath}`);
+
+    // Handle fork branches (format: "username:branch-name")
+    let targetOwner = owner;
+    let targetBranch = branch;
+
+    if (branch.includes(':')) {
+      const [forkOwner, forkBranch] = branch.split(':');
+      targetOwner = forkOwner;
+      targetBranch = forkBranch;
+      console.log(`[PR Branch] Using fork: ${targetOwner}/${repo}:${targetBranch}`);
+    }
+
+    const { data } = await octokit.rest.repos.getContent({
+      owner: targetOwner,
+      repo,
+      path: filePath,
+      ref: targetBranch,
+    });
+
+    if (data.type !== 'file') {
+      throw new Error('Path is not a file');
+    }
+
+    // Decode base64 content
+    const content = Buffer.from(data.content, 'base64').toString('utf-8');
+
+    console.log(`[PR Branch] Successfully fetched content (${content.length} bytes)`);
+
+    return {
+      content,
+      sha: data.sha,
+      branch: branch,
+    };
+  } catch (error) {
+    console.error('[PR Branch] Failed to fetch content:', error);
+    throw error;
+  }
+};
+
+/**
  * Get all pull requests for a user in a repository
  */
 export const getUserPullRequests = async (owner, repo, username, baseBranch = null) => {

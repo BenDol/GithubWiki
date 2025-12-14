@@ -7,7 +7,7 @@ import { useBranchNamespace } from '../hooks/useBranchNamespace';
 import { getFileContent, hasFileChanged, deleteFileContent } from '../services/github/content';
 import { createBranch, generateEditBranchName } from '../services/github/branches';
 import { updateFileContent } from '../services/github/content';
-import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExistingBranch, getUserPullRequests } from '../services/github/pullRequests';
+import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExistingBranch, getUserPullRequests, getPRBranchContent } from '../services/github/pullRequests';
 import { hasWriteAccess } from '../services/github/permissions';
 import { getOrCreateFork } from '../services/github/forks';
 import { submitAnonymousEdit } from '../services/github/anonymousEdits';
@@ -47,6 +47,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const [isUpdatingExistingPR, setIsUpdatingExistingPR] = useState(false);
   const [savingStatus, setSavingStatus] = useState(''); // For showing fork operation progress
   const [isAnonymousMode, setIsAnonymousMode] = useState(false); // Track if user chose anonymous mode
+  const [editingPR, setEditingPR] = useState(null); // Track if editing content from an existing PR
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -142,8 +143,43 @@ Include any supplementary details, notes, or related information.
         const { owner, repo, contentPath } = config.wiki.repository;
         const filePath = `${contentPath}/${sectionId}/${pageId}.md`;
 
-        // Fetch current file content from GitHub
-        const fileData = await getFileContent(owner, repo, filePath);
+        // Check if user has an existing PR for this page (only if authenticated)
+        let existingPR = null;
+        if (user?.login) {
+          console.log(`[PageEditor] Checking for existing PR for page: ${pageId}`);
+          try {
+            existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+            if (existingPR) {
+              console.log(`[PageEditor] Found existing PR #${existingPR.number}: ${existingPR.title}`);
+              console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
+            }
+          } catch (err) {
+            console.warn('[PageEditor] Failed to check for existing PR (will load from main branch):', err);
+            // Continue loading from main branch
+          }
+        }
+
+        let fileData;
+
+        // If PR exists, load content from PR branch
+        if (existingPR) {
+          try {
+            console.log(`[PageEditor] Loading content from PR branch: ${existingPR.head.ref}`);
+            fileData = await getPRBranchContent(owner, repo, existingPR.head.ref, filePath);
+            setEditingPR(existingPR);
+            console.log(`[PageEditor] Successfully loaded content from PR branch`);
+          } catch (err) {
+            console.error('[PageEditor] Failed to load from PR branch, falling back to main:', err);
+            // Fall back to loading from main branch
+            fileData = await getFileContent(owner, repo, filePath);
+            setEditingPR(null);
+          }
+        } else {
+          // No PR found, load from main branch
+          console.log(`[PageEditor] No existing PR found, loading from main branch`);
+          fileData = await getFileContent(owner, repo, filePath);
+          setEditingPR(null);
+        }
 
         if (!fileData) {
           throw new Error('Page not found');
@@ -1287,6 +1323,34 @@ Include any supplementary details, notes, or related information.
           </button>
         )}
       </div>
+
+      {/* Editing PR Banner */}
+      {editingPR && (
+        <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 text-2xl">📝</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-1">
+                Editing Your Pending Changes
+              </h3>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                You're editing content from your existing edit request (PR #{editingPR.number}). Any changes you save will update that edit request instead of creating a new one.
+              </p>
+              <a
+                href={editingPR.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline"
+              >
+                View your edit request on GitHub
+                <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Anonymous Mode Banner */}
       {isAnonymousMode && !isAuthenticated && (
