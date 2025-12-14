@@ -41,16 +41,12 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
     if (special && action === 'color') {
       onColorPicker?.();
     } else if (special && action === 'align') {
-      console.log('[MarkdownFormatToolbar] Alignment button clicked, current state:', showAlignmentPicker);
       const newState = !showAlignmentPicker;
-      console.log('[MarkdownFormatToolbar] Setting showAlignmentPicker to:', newState);
       setShowAlignmentPicker(newState);
       if (newState) {
         // Delay backdrop to prevent immediate closure
         setBackdropReady(false);
-        console.log('[MarkdownFormatToolbar] Starting 100ms timeout for backdrop');
         setTimeout(() => {
-          console.log('[MarkdownFormatToolbar] Setting backdropReady to true');
           setBackdropReady(true);
         }, 100);
       }
@@ -60,9 +56,9 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
   };
 
   const handleAlignmentSelect = (alignment) => {
-    console.log('[MarkdownFormatToolbar] Alignment selected:', alignment);
     onFormat?.('align', alignment);
     setShowAlignmentPicker(false);
+    setBackdropReady(false);
   };
 
   return (
@@ -115,22 +111,15 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
       {/* Alignment Picker Dropdown - Outside scrollable container */}
       {showAlignmentPicker && (
         <>
-          {console.log('[MarkdownFormatToolbar] Rendering alignment picker dropdown')}
           {/* Alignment options - MUST render before backdrop */}
-          {console.log('[MarkdownFormatToolbar] Rendering alignment options div')}
           <div
-            className="rounded-lg shadow-xl p-2 border-4"
+            className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-2"
             style={{
               position: 'fixed',
-              top: '200px',
-              left: '50%',
-              transform: 'translateX(-50%)',
+              top: alignButtonRef.current ? alignButtonRef.current.getBoundingClientRect().bottom + 4 : '100px',
+              left: alignButtonRef.current ? alignButtonRef.current.getBoundingClientRect().left : '12px',
               zIndex: 9999,
-              pointerEvents: 'auto',
-              backgroundColor: '#ff0000', // Bright red to see if it renders
-              borderColor: '#00ff00', // Green border
-              minWidth: '200px',
-              minHeight: '100px'
+              pointerEvents: 'auto'
             }}
           >
             <div className="flex flex-col gap-1 min-w-[140px]">
@@ -179,20 +168,16 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
 
           {/* Backdrop to close on click - renders AFTER dropdown to not block it */}
           {backdropReady && (
-            <>
-              {console.log('[MarkdownFormatToolbar] Rendering backdrop')}
-              <div
-                className="fixed inset-0 z-[100]"
-                style={{
-                  pointerEvents: 'auto'
-                }}
-                onClick={(e) => {
-                  console.log('[MarkdownFormatToolbar] Backdrop clicked at:', e.clientX, e.clientY);
-                  setShowAlignmentPicker(false);
-                  setBackdropReady(false);
-                }}
-              />
-            </>
+            <div
+              className="fixed inset-0 z-[100]"
+              style={{
+                pointerEvents: 'auto'
+              }}
+              onClick={() => {
+                setShowAlignmentPicker(false);
+                setBackdropReady(false);
+              }}
+            />
           )}
         </>
       )}
