@@ -107,22 +107,22 @@ const DataBrowserModal = ({ isOpen, onClose }) => {
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[90vw] h-[85vh] max-w-7xl border border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className="relative bg-white dark:bg-gray-800 rounded-none md:rounded-lg shadow-2xl w-full h-full md:w-[90vw] md:h-[85vh] md:max-w-7xl border-0 md:border border-gray-200 dark:border-gray-700 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-3">
-            <Database className="w-6 h-6 text-blue-600" />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <Database className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 flex-shrink-0" />
+            <div className="min-w-0">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white truncate">
                 Data Browser
               </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="hidden sm:block text-sm text-gray-600 dark:text-gray-400">
                 Explore and query JSON data files
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-1 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <kbd className="hidden md:inline-block px-2 py-1 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded">
               Ctrl+Shift+B
             </kbd>
             <button
@@ -150,14 +150,14 @@ const DataBrowserModal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
-          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-            <div className="flex items-center gap-4">
-              <span>{dataFiles.length} data files available</span>
-              <span>•</span>
-              <span>Press <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> to close</span>
+        <div className="p-2 sm:p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <span>{dataFiles.length} data files</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">Press <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> to close</span>
             </div>
-            <div>
+            <div className="hidden sm:block">
               Click any value to copy to clipboard
             </div>
           </div>
