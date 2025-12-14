@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { getOctokit } from '../../services/github/api';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * PendingEditRequests component
@@ -28,17 +29,35 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        const octokit = getOctokit();
+        const store = useGitHubDataStore.getState();
+        const cacheKey = `${owner}/${repo}/open-prs`;
 
         console.log(`[PendingEditRequests] Fetching PRs for ${sectionId}/${pageId}`);
 
-        // Get all open PRs
-        const { data: allPRs } = await octokit.rest.pulls.list({
-          owner,
-          repo,
-          state: 'open',
-          per_page: 100,
-        });
+        // Check cache first
+        let allPRs = store.getCachedPR(cacheKey);
+
+        if (!allPRs) {
+          // Cache miss - fetch from API
+          console.log('[PendingEditRequests] Cache miss - fetching from GitHub API');
+          const octokit = getOctokit();
+          store.incrementAPICall();
+
+          const { data } = await octokit.rest.pulls.list({
+            owner,
+            repo,
+            state: 'open',
+            per_page: 100,
+          });
+
+          allPRs = data;
+
+          // Cache the results
+          store.cachePR(cacheKey, allPRs);
+          console.log(`[PendingEditRequests] Cached ${allPRs.length} open PRs`);
+        } else {
+          console.log(`[PendingEditRequests] ✓ Cache hit - using cached PRs (${allPRs.length} PRs)`);
+        }
 
         console.log(`[PendingEditRequests] Found ${allPRs.length} total open PRs`);
 
@@ -54,7 +73,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           return patterns.some(pattern => branchRef.includes(pattern));
         });
 
-        console.log(`[PendingEditRequests] Found ${matchingPRs.length} matching PRs`);
+        console.log(`[PendingEditRequests] Found ${matchingPRs.length} matching PRs for this page`);
 
         // Format PR data
         const formattedPRs = matchingPRs.map(pr => ({
@@ -94,9 +113,11 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
     try {
       setClosingPR(pr.number);
       const { owner, repo } = config.wiki.repository;
+      const store = useGitHubDataStore.getState();
       const octokit = getOctokit();
 
       console.log(`[PendingEditRequests] Closing PR #${pr.number}`);
+      store.incrementAPICall();
 
       // Close the PR
       await octokit.rest.pulls.update({
@@ -107,6 +128,14 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
       });
 
       console.log(`[PendingEditRequests] PR #${pr.number} closed successfully`);
+
+      // Invalidate open PRs cache
+      const cacheKey = `${owner}/${repo}/open-prs`;
+      store.invalidatePRCache(cacheKey);
+      console.log('[PendingEditRequests] Invalidated open PRs cache');
+
+      // Also invalidate user's PR cache
+      store.invalidatePRsForUser(pr.author);
 
       // Remove from list
       setPrs(prevPrs => prevPrs.filter(p => p.number !== pr.number));

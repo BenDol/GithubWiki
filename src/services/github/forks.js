@@ -1,4 +1,5 @@
-import { getOctokit } from './api';
+import { getOctokit, deduplicatedRequest } from './api';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub fork management operations
@@ -6,51 +7,91 @@ import { getOctokit } from './api';
 
 /**
  * Check if user has a fork of the repository
+ * OPTIMIZED: Uses cache with 30-minute TTL and de-duplicates concurrent requests
  * @param {string} owner - Upstream repository owner
  * @param {string} repo - Upstream repository name
  * @param {string} username - Username to check
  * @returns {Promise<Object|null>} Fork repository object if exists, null otherwise
  */
 export const getUserFork = async (owner, repo, username) => {
-  const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  const cacheKey = `${username}/${repo}`;
 
-  try {
-    console.log(`[Forks] Checking if ${username} has a fork of ${owner}/${repo}`);
-
-    // Try to get the fork directly
-    const { data } = await octokit.rest.repos.get({
-      owner: username,
-      repo: repo,
-    });
-
-    // Verify it's actually a fork of the upstream repo
-    if (data.fork && data.parent) {
-      const isCorrectFork =
-        data.parent.owner.login.toLowerCase() === owner.toLowerCase() &&
-        data.parent.name.toLowerCase() === repo.toLowerCase();
-
-      if (isCorrectFork) {
-        console.log(`[Forks] Found fork: ${data.full_name}`);
-        return {
-          owner: data.owner.login,
-          repo: data.name,
-          fullName: data.full_name,
-          defaultBranch: data.default_branch,
-          htmlUrl: data.html_url,
-          cloneUrl: data.clone_url,
-        };
-      }
-    }
-
-    console.log(`[Forks] Repository ${username}/${repo} exists but is not a fork of ${owner}/${repo}`);
-    return null;
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`[Forks] No fork found for ${username}`);
-      return null;
-    }
-    throw error;
+  // Check cache first
+  const cached = store.getCachedFork(cacheKey);
+  if (cached) {
+    console.log(`[Forks] ✓ Cache hit for fork: ${username}/${repo}`);
+    return cached;
   }
+
+  console.log(`[Forks] ✗ Cache miss for fork - checking API`);
+
+  // Use de-duplication to prevent concurrent duplicate requests
+  const dedupKey = `getUserFork:${cacheKey}`;
+
+  return deduplicatedRequest(dedupKey, async () => {
+    // Double-check cache in case another request completed while we were waiting
+    const recentCache = store.getCachedFork(cacheKey);
+    if (recentCache) {
+      console.log(`[Forks] ✓ Cache populated by concurrent request`);
+      return recentCache;
+    }
+
+    const octokit = getOctokit();
+    store.incrementAPICall();
+
+    try {
+      console.log(`[Forks] Checking if ${username} has a fork of ${owner}/${repo}`);
+
+      // Try to get the fork directly
+      const { data } = await octokit.rest.repos.get({
+        owner: username,
+        repo: repo,
+      });
+
+      // Verify it's actually a fork of the upstream repo
+      if (data.fork && data.parent) {
+        const isCorrectFork =
+          data.parent.owner.login.toLowerCase() === owner.toLowerCase() &&
+          data.parent.name.toLowerCase() === repo.toLowerCase();
+
+        if (isCorrectFork) {
+          console.log(`[Forks] Found fork: ${data.full_name}`);
+          const forkData = {
+            owner: data.owner.login,
+            repo: data.name,
+            fullName: data.full_name,
+            defaultBranch: data.default_branch,
+            htmlUrl: data.html_url,
+            cloneUrl: data.clone_url,
+          };
+
+          // Cache the fork data
+          store.cacheFork(cacheKey, forkData);
+          console.log(`[Forks] Cached fork data for ${username}/${repo}`);
+
+          return forkData;
+        }
+      }
+
+      console.log(`[Forks] Repository ${username}/${repo} exists but is not a fork of ${owner}/${repo}`);
+
+      // Cache null result to avoid repeated checks
+      store.cacheFork(cacheKey, null);
+
+      return null;
+    } catch (error) {
+      if (error.status === 404) {
+        console.log(`[Forks] No fork found for ${username}`);
+
+        // Cache null result to avoid repeated checks
+        store.cacheFork(cacheKey, null);
+
+        return null;
+      }
+      throw error;
+    }
+  });
 };
 
 /**
@@ -61,6 +102,8 @@ export const getUserFork = async (owner, repo, username) => {
  */
 export const createFork = async (owner, repo) => {
   const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  store.incrementAPICall();
 
   try {
     console.log(`[Forks] Creating fork of ${owner}/${repo}`);
@@ -76,7 +119,7 @@ export const createFork = async (owner, repo) => {
     // Wait a bit before returning
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    return {
+    const forkData = {
       owner: data.owner.login,
       repo: data.name,
       fullName: data.full_name,
@@ -84,6 +127,13 @@ export const createFork = async (owner, repo) => {
       htmlUrl: data.html_url,
       cloneUrl: data.clone_url,
     };
+
+    // Cache the newly created fork
+    const cacheKey = `${data.owner.login}/${repo}`;
+    store.cacheFork(cacheKey, forkData);
+    console.log(`[Forks] Cached new fork: ${cacheKey}`);
+
+    return forkData;
   } catch (error) {
     console.error('[Forks] Failed to create fork:', error);
     throw error;

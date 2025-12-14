@@ -10,6 +10,7 @@ const HIGHSCORE_CACHE_KEY = 'contributor_highscore_cache';
 
 /**
  * Get or create the highscore cache issue
+ * Returns null if user doesn't have permission to access issues
  */
 async function getHighscoreCacheIssue(owner, repo) {
   const octokit = getOctokit();
@@ -28,7 +29,7 @@ async function getHighscoreCacheIssue(owner, repo) {
       return issues[0];
     }
 
-    // Create cache issue if it doesn't exist
+    // Create cache issue if it doesn't exist (requires write permissions)
     console.log('[Highscore] Creating highscore cache issue...');
     const { data: newIssue } = await octokit.rest.issues.create({
       owner,
@@ -43,6 +44,10 @@ async function getHighscoreCacheIssue(owner, repo) {
 
     return newIssue;
   } catch (error) {
+    if (error.status === 403 || error.status === 401) {
+      console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
+      return null;
+    }
     console.error('[Highscore] Failed to get/create cache issue:', error);
     throw error;
   }
@@ -163,24 +168,56 @@ export async function getContributorHighscore(owner, repo, config) {
     console.log('[Highscore] Browser cache expired');
   }
 
-  // Step 2: Check GitHub issue cache
+  // Step 2: Check GitHub issue cache (if accessible)
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
-  const githubCacheData = parseCacheData(cacheIssue.body);
 
-  if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, cacheMinutes)) {
-    console.log('[Highscore] Using GitHub cache (age: ' +
-      Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60) + ' minutes)');
+  if (cacheIssue) {
+    const githubCacheData = parseCacheData(cacheIssue.body);
 
-    // Update browser cache
-    localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
-    return githubCacheData;
+    if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, cacheMinutes)) {
+      console.log('[Highscore] Using GitHub cache (age: ' +
+        Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60) + ' minutes)');
+
+      // Update browser cache
+      localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
+      return githubCacheData;
+    }
+
+    console.log('[Highscore] GitHub cache expired, fetching fresh data...');
+  } else {
+    console.log('[Highscore] No access to GitHub cache, fetching fresh data...');
   }
-
-  console.log('[Highscore] GitHub cache expired, fetching fresh data...');
 
   // Step 3: Fetch fresh data
   const freshContributors = await fetchFreshContributorStats(owner, repo);
-  const freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+
+  // Try to update GitHub cache if we have access (requires write permissions)
+  let freshData;
+  if (cacheIssue) {
+    try {
+      freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+    } catch (error) {
+      // If permission denied (403), continue without updating GitHub cache
+      // Only repo admins can update the cache issue
+      if (error.status === 403) {
+        console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
+        console.log('[Highscore] Using fresh data without updating GitHub cache');
+
+        freshData = {
+          lastUpdated: new Date().toISOString(),
+          contributors: freshContributors,
+        };
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    // No cache issue available, just use fresh data
+    freshData = {
+      lastUpdated: new Date().toISOString(),
+      contributors: freshContributors,
+    };
+  }
 
   // Update browser cache
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
@@ -200,9 +237,36 @@ export async function refreshHighscoreCache(owner, repo) {
   // Fetch fresh data
   const freshContributors = await fetchFreshContributorStats(owner, repo);
 
-  // Update GitHub cache
+  // Try to update GitHub cache if we have access (requires write permissions)
+  let freshData;
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
-  const freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+
+  if (cacheIssue) {
+    try {
+      freshData = await updateCacheIssue(owner, repo, cacheIssue.number, freshContributors);
+    } catch (error) {
+      // If permission denied (403), continue without updating GitHub cache
+      // Only repo admins can update the cache issue
+      if (error.status === 403) {
+        console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
+        console.log('[Highscore] Using fresh data without updating GitHub cache');
+
+        freshData = {
+          lastUpdated: new Date().toISOString(),
+          contributors: freshContributors,
+        };
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    // No cache issue available, just use fresh data
+    console.log('[Highscore] No access to GitHub cache');
+    freshData = {
+      lastUpdated: new Date().toISOString(),
+      contributors: freshContributors,
+    };
+  }
 
   // Update browser cache
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));

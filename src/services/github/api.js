@@ -7,6 +7,10 @@ import { Octokit } from 'octokit';
 
 let octokitInstance = null;
 
+// Request de-duplication tracking
+// Prevents multiple concurrent requests for the same data
+const pendingRequests = new Map();
+
 /**
  * Initialize Octokit with authentication token
  */
@@ -38,6 +42,52 @@ export const getOctokit = () => {
  */
 export const clearOctokit = () => {
   octokitInstance = null;
+};
+
+/**
+ * Request de-duplication wrapper
+ * Prevents multiple concurrent requests for the same data
+ *
+ * If a request with the same key is already in-flight, returns the existing promise
+ * instead of making a duplicate API call.
+ *
+ * @param {string} key - Unique identifier for the request
+ * @param {Function} requestFn - Async function that performs the actual API request
+ * @returns {Promise} The result of the request
+ *
+ * @example
+ * const data = await deduplicatedRequest('user-prs-username', async () => {
+ *   return await octokit.rest.pulls.list({ owner, repo });
+ * });
+ */
+export const deduplicatedRequest = async (key, requestFn) => {
+  // Check if request already in flight
+  if (pendingRequests.has(key)) {
+    console.log(`[Request Dedup] ⏳ Waiting for in-flight request: ${key}`);
+    return pendingRequests.get(key);
+  }
+
+  console.log(`[Request Dedup] ▶️ Starting new request: ${key}`);
+
+  // Execute request and track it
+  const requestPromise = requestFn()
+    .then(result => {
+      console.log(`[Request Dedup] ✓ Request completed: ${key}`);
+      return result;
+    })
+    .catch(error => {
+      console.error(`[Request Dedup] ✗ Request failed: ${key}`, error);
+      throw error;
+    })
+    .finally(() => {
+      // Clean up after completion (success or failure)
+      pendingRequests.delete(key);
+      console.log(`[Request Dedup] 🧹 Cleaned up request: ${key}`);
+    });
+
+  pendingRequests.set(key, requestPromise);
+
+  return requestPromise;
 };
 
 /**

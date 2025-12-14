@@ -19,10 +19,11 @@ const ContributorHighscorePage = () => {
   const [error, setError] = useState(null);
   const [highscoreData, setHighscoreData] = useState(null);
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(0);
-  const [showTop100Only, setShowTop100Only] = useState(true);
+  const [showLimitedOnly, setShowLimitedOnly] = useState(true);
 
   const enabled = config?.features?.contributorHighscore?.enabled ?? false;
   const cacheMinutes = config?.features?.contributorHighscore?.cacheMinutes ?? 30;
+  const displayLimit = config?.features?.contributorHighscore?.displayLimit ?? 100;
 
   // Check if user is repository owner
   const isRepoOwner = isAuthenticated && user?.login === config?.wiki?.repository?.owner;
@@ -30,8 +31,10 @@ const ContributorHighscorePage = () => {
   // Check if cache has expired
   const cacheExpired = timeUntilRefresh === 0;
 
-  // Can force refresh if: repo owner OR cache expired
-  const canForceRefresh = isRepoOwner || cacheExpired;
+  // Can force refresh if: repo owner ONLY
+  // Regular users rely on automated GitHub Action to update the cache
+  // This prevents API waste from every user fetching contributor stats
+  const canForceRefresh = isRepoOwner;
 
   // Load highscore data
   useEffect(() => {
@@ -173,29 +176,29 @@ const ContributorHighscorePage = () => {
 
   const topThree = highscoreData?.contributors?.slice(0, 3) || [];
   const allRemainingContributors = highscoreData?.contributors?.slice(3) || [];
-  const remainingContributors = showTop100Only
-    ? allRemainingContributors.slice(0, 97) // Top 100 total (3 on podium + 97 in list)
+  const remainingContributors = showLimitedOnly
+    ? allRemainingContributors.slice(0, displayLimit - 3) // displayLimit total (3 on podium + remaining in list)
     : allRemainingContributors;
   const totalContributors = highscoreData?.contributors?.length || 0;
-  const hasMoreThan100 = totalContributors > 100;
+  const hasMoreThanLimit = totalContributors > displayLimit;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 pb-12">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 py-8 mb-8">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 py-6 sm:py-8 mb-6 sm:mb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2 truncate">
                 Contributor Highscore
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
                 Celebrating our amazing contributors
               </p>
             </div>
 
             {/* Refresh Button & Timer */}
-            <div className="flex flex-col items-end space-y-2">
+            <div className="flex flex-col items-start sm:items-end space-y-2 flex-shrink-0">
               <button
                 onClick={handleRefresh}
                 disabled={refreshing || !canForceRefresh}
@@ -203,9 +206,7 @@ const ContributorHighscorePage = () => {
                   refreshing
                     ? 'Refreshing...'
                     : !canForceRefresh
-                      ? isRepoOwner
-                        ? 'Cache still valid, wait for expiration'
-                        : 'Only repository owner can force refresh before cache expires'
+                      ? 'Only repository owner can manually refresh (automated updates run daily via GitHub Action)'
                       : 'Force refresh highscore data'
                 }
                 className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
@@ -233,14 +234,13 @@ const ContributorHighscorePage = () => {
                   <div>
                     Updated: {new Date(highscoreData.lastUpdated).toLocaleString()}
                   </div>
-                  <div>
-                    Next refresh in: {formatTimeRemaining(timeUntilRefresh)}
-                  </div>
-                  {!canForceRefresh && (
+                  {isRepoOwner ? (
+                    <div>
+                      Next manual refresh: {formatTimeRemaining(timeUntilRefresh)}
+                    </div>
+                  ) : (
                     <div className="text-amber-600 dark:text-amber-400 font-medium">
-                      {isRepoOwner
-                        ? '⏳ Cache still valid'
-                        : '🔒 Owner-only refresh'}
+                      🤖 Auto-updated daily
                     </div>
                   )}
                 </div>
@@ -259,31 +259,33 @@ const ContributorHighscorePage = () => {
           <HighscoreList contributors={remainingContributors} startRank={4} />
 
           {/* Toggle Button - Show More/Less */}
-          {hasMoreThan100 && (
-            <div className="max-w-4xl mx-auto mt-6 px-4 text-center">
+          {hasMoreThanLimit && (
+            <div className="max-w-4xl mx-auto mt-4 sm:mt-6 px-4 sm:px-6 text-center">
               <button
-                onClick={() => setShowTop100Only(!showTop100Only)}
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium"
+                onClick={() => setShowLimitedOnly(!showLimitedOnly)}
+                className="inline-flex items-center px-4 py-2 sm:px-6 sm:py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 font-medium text-sm sm:text-base"
               >
-                {showTop100Only ? (
+                {showLimitedOnly ? (
                   <>
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
-                    Show All {totalContributors} Contributors
+                    <span className="hidden sm:inline">Show All {totalContributors} Contributors</span>
+                    <span className="sm:hidden">Show All ({totalContributors})</span>
                   </>
                 ) : (
                   <>
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                     </svg>
-                    Show Top 100 Only
+                    <span className="hidden sm:inline">Show Top {displayLimit} Only</span>
+                    <span className="sm:hidden">Show Top {displayLimit}</span>
                   </>
                 )}
               </button>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                {showTop100Only
-                  ? `Showing top 100 of ${totalContributors} contributors`
+              <p className="mt-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                {showLimitedOnly
+                  ? `Showing top ${displayLimit} of ${totalContributors} contributors`
                   : `Showing all ${totalContributors} contributors`}
               </p>
             </div>
@@ -292,30 +294,30 @@ const ContributorHighscorePage = () => {
       )}
 
       {/* Stats Footer */}
-      <div className="max-w-4xl mx-auto mt-12 px-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+      <div className="max-w-4xl mx-auto mt-6 sm:mt-8 md:mt-12 px-4 sm:px-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
             <div>
-              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+              <div className="text-2xl sm:text-3xl font-bold text-blue-600 dark:text-blue-400">
                 {highscoreData?.contributors?.length || 0}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Total Contributors
               </div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+              <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
                 {highscoreData?.contributors?.reduce((sum, c) => sum + c.contributions, 0).toLocaleString() || 0}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Total Contributions
               </div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+              <div className="text-2xl sm:text-3xl font-bold text-purple-600 dark:text-purple-400">
                 {cacheMinutes}m
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Cache Duration
               </div>
             </div>

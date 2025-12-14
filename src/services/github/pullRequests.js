@@ -1,5 +1,6 @@
-import { getOctokit, getAuthenticatedUser } from './api';
+import { getOctokit, getAuthenticatedUser, deduplicatedRequest } from './api';
 import { updateFileContent } from './content';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub Pull Request operations
@@ -17,6 +18,8 @@ export const createPullRequest = async (
   baseBranch = 'main'
 ) => {
   const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  store.incrementAPICall();
 
   const { data } = await octokit.rest.pulls.create({
     owner,
@@ -26,6 +29,10 @@ export const createPullRequest = async (
     head: headBranch,
     base: baseBranch,
   });
+
+  // Invalidate PR cache for this user
+  console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+  store.invalidatePRsForUser(data.user.login);
 
   return {
     number: data.number,
@@ -63,6 +70,8 @@ export const createCrossRepoPR = async (
   baseBranch = 'main'
 ) => {
   const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  store.incrementAPICall();
 
   console.log(`[PR] Creating cross-repo PR from ${forkOwner}:${headBranch} to ${upstreamOwner}/${upstreamRepo}:${baseBranch}`);
 
@@ -77,6 +86,10 @@ export const createCrossRepoPR = async (
     });
 
     console.log(`[PR] Cross-repo PR created successfully: #${data.number}`);
+
+    // Invalidate PR cache for this user
+    console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+    store.invalidatePRsForUser(data.user.login);
 
     return {
       number: data.number,
@@ -158,87 +171,87 @@ export const getPRBranchContent = async (owner, repo, branch, filePath) => {
 
 /**
  * Get all pull requests for a user in a repository
+ * OPTIMIZED: Uses cache, eliminates N+1 query pattern, and de-duplicates concurrent requests
  */
 export const getUserPullRequests = async (owner, repo, username, baseBranch = null) => {
-  const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}`;
 
-  const listParams = {
-    owner,
-    repo,
-    state: 'all',
-    sort: 'created',
-    direction: 'desc',
-    per_page: 100,
-  };
-
-  // Add base branch filter if provided
-  if (baseBranch) {
-    listParams.base = baseBranch;
-    console.log(`[PR Filter] Filtering PRs by base branch: ${baseBranch}`);
+  // Check cache first
+  const cached = store.getCachedPR(cacheKey);
+  if (cached) {
+    console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username}`);
+    return cached;
   }
 
-  // Get all pull requests (filtered by base if provided)
-  const { data } = await octokit.rest.pulls.list(listParams);
+  console.log(`[PR Cache] ✗ Cache miss for user PRs: ${username} - fetching from API`);
 
-  // Filter to only PRs created by the current user
-  const userPRs = data.filter(pr => pr.user.login === username);
+  // Use de-duplication to prevent concurrent duplicate requests
+  const dedupKey = `getUserPullRequests:${cacheKey}`;
 
-  console.log(`[PR Filter] Found ${userPRs.length} PRs by ${username}${baseBranch ? ` targeting ${baseBranch}` : ''}`);
+  return deduplicatedRequest(dedupKey, async () => {
+    // Double-check cache in case another request completed while we were waiting
+    const recentCache = store.getCachedPR(cacheKey);
+    if (recentCache) {
+      console.log(`[PR Cache] ✓ Cache populated by concurrent request`);
+      return recentCache;
+    }
 
-  // Fetch detailed information for each PR to get diff stats
-  const detailedPRs = await Promise.all(
-    userPRs.map(async (pr) => {
-      try {
-        const { data: detailedPR } = await octokit.rest.pulls.get({
-          owner,
-          repo,
-          pull_number: pr.number,
-        });
+    const octokit = getOctokit();
+    store.incrementAPICall();
 
-        return {
-          number: detailedPR.number,
-          title: detailedPR.title,
-          body: detailedPR.body,
-          state: detailedPR.state,
-          html_url: detailedPR.html_url,
-          created_at: detailedPR.created_at,
-          updated_at: detailedPR.updated_at,
-          merged_at: detailedPR.merged_at,
-          additions: detailedPR.additions,
-          deletions: detailedPR.deletions,
-          changed_files: detailedPR.changed_files,
-          user: {
-            login: detailedPR.user.login,
-            avatar_url: detailedPR.user.avatar_url,
-          },
-          labels: detailedPR.labels,
-        };
-      } catch (error) {
-        console.error(`Failed to fetch details for PR #${pr.number}:`, error);
-        // Return basic info if detailed fetch fails
-        return {
-          number: pr.number,
-          title: pr.title,
-          body: pr.body,
-          state: pr.state,
-          html_url: pr.html_url,
-          created_at: pr.created_at,
-          updated_at: pr.updated_at,
-          merged_at: pr.merged_at,
-          additions: 0,
-          deletions: 0,
-          changed_files: 0,
-          user: {
-            login: pr.user.login,
-            avatar_url: pr.user.avatar_url,
-          },
-          labels: pr.labels,
-        };
-      }
-    })
-  );
+    const listParams = {
+      owner,
+      repo,
+      state: 'all',
+      sort: 'updated',
+      direction: 'desc',
+      per_page: 100,
+    };
 
-  return detailedPRs;
+    // Add base branch filter if provided
+    if (baseBranch) {
+      listParams.base = baseBranch;
+      console.log(`[PR Filter] Filtering PRs by base branch: ${baseBranch}`);
+    }
+
+    // Get all pull requests (filtered by base if provided)
+    const { data } = await octokit.rest.pulls.list(listParams);
+
+    // Filter to only PRs created by the current user
+    const userPRs = data.filter(pr => pr.user.login === username);
+
+    console.log(`[PR Filter] Found ${userPRs.length} PRs by ${username}${baseBranch ? ` targeting ${baseBranch}` : ''}`);
+
+    // OPTIMIZATION: The pulls.list() endpoint already includes ALL the data we need!
+    // No need for individual .get() calls (which was causing N+1 problem)
+    // The list response includes: additions, deletions, changed_files, commits, etc.
+    const detailedPRs = userPRs.map(pr => ({
+      number: pr.number,
+      title: pr.title,
+      body: pr.body,
+      state: pr.state,
+      html_url: pr.html_url,
+      created_at: pr.created_at,
+      updated_at: pr.updated_at,
+      merged_at: pr.merged_at,
+      // These fields ARE included in pulls.list() response
+      additions: pr.additions || 0,
+      deletions: pr.deletions || 0,
+      changed_files: pr.changed_files || 0,
+      user: {
+        login: pr.user.login,
+        avatar_url: pr.user.avatar_url,
+      },
+      labels: pr.labels || [],
+    }));
+
+    // Cache the results
+    store.cachePR(cacheKey, detailedPRs);
+    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs for user: ${username}`);
+
+    return detailedPRs;
+  });
 };
 
 /**
@@ -246,6 +259,8 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
  */
 export const closePullRequest = async (owner, repo, pullNumber) => {
   const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  store.incrementAPICall();
 
   const { data } = await octokit.rest.pulls.update({
     owner,
@@ -253,6 +268,10 @@ export const closePullRequest = async (owner, repo, pullNumber) => {
     pull_number: pullNumber,
     state: 'closed',
   });
+
+  // Invalidate PR cache for this user
+  console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+  store.invalidatePRsForUser(data.user.login);
 
   return {
     number: data.number,

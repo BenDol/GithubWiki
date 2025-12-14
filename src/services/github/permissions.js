@@ -1,4 +1,5 @@
-import { getOctokit } from './api';
+import { getOctokit, deduplicatedRequest } from './api';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub permissions and repository access operations
@@ -6,54 +7,89 @@ import { getOctokit } from './api';
 
 /**
  * Check user's permission level on a repository
+ * OPTIMIZED: Uses cache with 10-minute TTL and de-duplicates concurrent requests
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - Username to check
  * @returns {Promise<string>} Permission level: 'admin', 'write', 'read', 'none'
  */
 export const getUserPermission = async (owner, repo, username) => {
-  const octokit = getOctokit();
+  const store = useGitHubDataStore.getState();
+  const cacheKey = `${owner}/${repo}/${username}`;
 
-  try {
-    console.log(`[Permissions] Checking ${username}'s permission on ${owner}/${repo}`);
+  // Check cache first
+  const cached = store.getCachedPermission(cacheKey);
+  if (cached) {
+    console.log(`[Permissions] ✓ Cache hit for ${username}: ${cached}`);
+    return cached;
+  }
 
-    const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
-      owner,
-      repo,
-      username,
-    });
+  console.log(`[Permissions] ✗ Cache miss for ${username} - checking API`);
 
-    console.log(`[Permissions] ${username} has '${data.permission}' permission`);
-    return data.permission; // 'admin', 'write', 'read', 'none'
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`[Permissions] ${username} has no access to ${owner}/${repo} (404)`);
-      return 'none';
+  // Use de-duplication to prevent concurrent duplicate requests
+  const dedupKey = `getUserPermission:${cacheKey}`;
+
+  return deduplicatedRequest(dedupKey, async () => {
+    // Double-check cache in case another request completed while we were waiting
+    const recentCache = store.getCachedPermission(cacheKey);
+    if (recentCache) {
+      console.log(`[Permissions] ✓ Cache populated by concurrent request`);
+      return recentCache;
     }
 
-    if (error.status === 403) {
-      // 403 means user cannot check permissions, which means they don't have push access
-      // This is the expected behavior for users without write access
-      console.log(`[Permissions] ${username} cannot check permissions (no push access) - assuming 'read' or 'none'`);
+    const octokit = getOctokit();
+    store.incrementAPICall();
 
-      // Try to check if repo is accessible at all by getting repo info
-      try {
-        await octokit.rest.repos.get({ owner, repo });
-        console.log(`[Permissions] ${username} can view the repository - has 'read' permission`);
-        return 'read';
-      } catch (repoError) {
-        if (repoError.status === 404) {
-          console.log(`[Permissions] ${username} cannot view the repository - has 'none' permission`);
-          return 'none';
+    let permission;
+
+    try {
+      console.log(`[Permissions] Checking ${username}'s permission on ${owner}/${repo}`);
+
+      const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+        owner,
+        repo,
+        username,
+      });
+
+      permission = data.permission; // 'admin', 'write', 'read', 'none'
+      console.log(`[Permissions] ${username} has '${permission}' permission`);
+    } catch (error) {
+      if (error.status === 404) {
+        console.log(`[Permissions] ${username} has no access to ${owner}/${repo} (404)`);
+        permission = 'none';
+      } else if (error.status === 403) {
+        // 403 means user cannot check permissions, which means they don't have push access
+        // This is the expected behavior for users without write access
+        console.log(`[Permissions] ${username} cannot check permissions (no push access) - assuming 'read' or 'none'`);
+
+        store.incrementAPICall(); // Count the fallback call
+
+        // Try to check if repo is accessible at all by getting repo info
+        try {
+          await octokit.rest.repos.get({ owner, repo });
+          console.log(`[Permissions] ${username} can view the repository - has 'read' permission`);
+          permission = 'read';
+        } catch (repoError) {
+          if (repoError.status === 404) {
+            console.log(`[Permissions] ${username} cannot view the repository - has 'none' permission`);
+            permission = 'none';
+          } else {
+            // If we get another error, assume 'read' (can authenticate but no push access)
+            console.log(`[Permissions] Assuming 'read' permission for ${username}`);
+            permission = 'read';
+          }
         }
-        // If we get another error, assume 'read' (can authenticate but no push access)
-        console.log(`[Permissions] Assuming 'read' permission for ${username}`);
-        return 'read';
+      } else {
+        throw error;
       }
     }
 
-    throw error;
-  }
+    // Cache the permission level
+    store.cachePermission(cacheKey, permission);
+    console.log(`[Permissions] Cached permission for ${username}: ${permission}`);
+
+    return permission;
+  });
 };
 
 /**
