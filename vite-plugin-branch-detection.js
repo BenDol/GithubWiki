@@ -52,14 +52,47 @@ export function branchDetectionPlugin() {
      */
     buildStart() {
       try {
-        const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-          encoding: 'utf-8',
-          cwd: join(__dirname, '..'),
-        }).trim();
+        let branch = null;
+        let source = 'build-time';
+
+        // Try Netlify environment variables first (works in detached HEAD state)
+        if (process.env.BRANCH) {
+          branch = process.env.BRANCH;
+          source = 'netlify-env';
+          console.log(`[Branch Detection] Detected from Netlify env (BRANCH): ${branch}`);
+        } else if (process.env.HEAD) {
+          branch = process.env.HEAD;
+          source = 'netlify-env';
+          console.log(`[Branch Detection] Detected from Netlify env (HEAD): ${branch}`);
+        }
+
+        // Fall back to git command if env vars not available
+        if (!branch) {
+          branch = execSync('git rev-parse --abbrev-ref HEAD', {
+            encoding: 'utf-8',
+            cwd: join(__dirname, '..'),
+          }).trim();
+
+          // If git returns "HEAD" (detached state), try to get the actual branch
+          if (branch === 'HEAD') {
+            try {
+              // Try to get branch from git symbolic-ref
+              branch = execSync('git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --abbrev-ref HEAD', {
+                encoding: 'utf-8',
+                cwd: join(__dirname, '..'),
+              }).trim();
+            } catch (e) {
+              // Still HEAD, use a default
+              console.warn('[Branch Detection] Git in detached HEAD state, defaulting to "main"');
+              branch = 'main';
+              source = 'default-fallback';
+            }
+          }
+        }
 
         const runtimeBranch = {
           branch,
-          source: 'build-time',
+          source,
           detectedAt: new Date().toISOString(),
         };
 
@@ -69,7 +102,7 @@ export function branchDetectionPlugin() {
 
         writeFileSync(runtimeBranchPath, JSON.stringify(runtimeBranch, null, 2));
 
-        console.log(`\n[Branch Detection] Embedded branch at build time: ${branch}`);
+        console.log(`\n[Branch Detection] Embedded branch at build time: ${branch} (source: ${source})`);
         console.log(`[Branch Detection] Written to: ${runtimeBranchPath}\n`);
       } catch (error) {
         console.error('[Branch Detection] Failed to detect branch at build time:', error.message);
