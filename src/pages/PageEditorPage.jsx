@@ -28,7 +28,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const navigate = useNavigate();
   const { config } = useWikiConfig();
   const section = useSection(sectionId);
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
   const { branch: currentBranch, loading: branchLoading } = useBranchNamespace();
   const invalidatePrestige = useInvalidatePrestige();
 
@@ -61,15 +61,29 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
 
   useEffect(() => {
     const loadPage = async () => {
-      // Wait for config, section, and branch to load before checking permissions
+      // Wait for config, section, branch, and auth to load before checking permissions
       if (!config || !section || branchLoading) {
         return; // Keep loading until all are available
+      }
+
+      // Wait for auth to finish loading (restoreSession)
+      if (authLoading) {
+        console.log('[PageEditor] Waiting for auth to complete...');
+        return; // Keep loading until auth is ready
       }
 
       if (!isAuthenticated) {
         setLoading(false);
         return;
       }
+
+      // Wait for user object to be fully loaded
+      if (isAuthenticated && !user) {
+        console.log('[PageEditor] Waiting for user object to load...');
+        return; // Keep loading until user is available
+      }
+
+      console.log(`[PageEditor] Starting page load - User: ${user?.login || 'none'}`);
 
       // For new pages, initialize with blank template
       if (isNewPage) {
@@ -147,16 +161,22 @@ Include any supplementary details, notes, or related information.
         let existingPR = null;
         if (user?.login) {
           console.log(`[PageEditor] Checking for existing PR for page: ${pageId}`);
+          console.log(`[PageEditor] User: ${user.login}`);
+          console.log(`[PageEditor] Full user object:`, user);
           try {
             existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
             if (existingPR) {
               console.log(`[PageEditor] Found existing PR #${existingPR.number}: ${existingPR.title}`);
               console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
+            } else {
+              console.log(`[PageEditor] No existing PR found for user: ${user.login}`);
             }
           } catch (err) {
             console.warn('[PageEditor] Failed to check for existing PR (will load from main branch):', err);
             // Continue loading from main branch
           }
+        } else {
+          console.log(`[PageEditor] No user logged in or user.login is undefined`);
         }
 
         let fileData;
@@ -211,7 +231,7 @@ Include any supplementary details, notes, or related information.
     };
 
     loadPage();
-  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading]);
+  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading, user, authLoading]);
 
   /**
    * Handle anonymous edit submission
@@ -391,7 +411,8 @@ Include any supplementary details, notes, or related information.
       console.log(`[PageEditor] Using page ID: ${pageIdFromMetadata} for file: ${filePath}`);
 
       // For existing pages, check if file has been modified since we loaded it
-      if (!isNewPage) {
+      // Skip this check if we're editing PR content (we'll update the PR branch)
+      if (!isNewPage && !editingPR) {
         const changed = await hasFileChanged(owner, repo, filePath, fileSha, baseBranch);
 
         if (changed) {
@@ -408,6 +429,11 @@ Include any supplementary details, notes, or related information.
           const latestFile = await getFileContent(owner, repo, filePath, baseBranch);
           setFileSha(latestFile.sha);
         }
+      }
+
+      // If editing PR content, log that we're skipping the check
+      if (editingPR) {
+        console.log(`[PageEditor] Editing PR #${editingPR.number} content - skipping main branch change check`);
       }
 
       // Check if this is the user's first contribution
@@ -581,10 +607,21 @@ Include any supplementary details, notes, or related information.
         console.log(`${'='.repeat(60)}\n`);
 
         // Commit to the branch on the correct repository (fork or main)
+        // Parse branch ref to extract owner if it's a fork branch (format: "owner:branch")
+        let branchOwner = targetOwner;
+        let branchName = existingPR.head.ref;
+
+        if (existingPR.head.ref.includes(':')) {
+          const [forkOwner, branch] = existingPR.head.ref.split(':');
+          branchOwner = forkOwner;
+          branchName = branch;
+          console.log(`[PageEditor] Parsed fork branch - Owner: ${branchOwner}, Branch: ${branchName}`);
+        }
+
         await commitToExistingBranch(
-          targetOwner,
+          branchOwner,
           targetRepo,
-          existingPR.head.ref,
+          branchName,
           filePath,
           newContent,
           commitMessage,
@@ -617,6 +654,21 @@ Include any supplementary details, notes, or related information.
         setSavingStatus('Creating branch...');
         await createBranch(targetOwner, targetRepo, branchName, baseBranch);
 
+        // If using fork, we need to get the correct SHA from the fork's branch
+        // because the fork might have a different SHA than the main repo
+        let correctFileSha = fileSha;
+        if (useFork && !isNewPage) {
+          console.log(`[PageEditor] Using fork - fetching current SHA from fork branch`);
+          try {
+            const forkFileData = await getFileContent(targetOwner, targetRepo, filePath, branchName);
+            correctFileSha = forkFileData.sha;
+            console.log(`[PageEditor] Fork SHA: ${correctFileSha}, Original SHA: ${fileSha}`);
+          } catch (err) {
+            console.warn(`[PageEditor] Failed to get fork SHA, using original:`, err);
+            // Continue with original SHA
+          }
+        }
+
         // Commit changes to new branch
         setSavingStatus('Committing changes...');
         await updateFileContent(
@@ -626,7 +678,7 @@ Include any supplementary details, notes, or related information.
           newContent,
           commitMessage,
           branchName,
-          isNewPage ? null : fileSha
+          isNewPage ? null : correctFileSha
         );
 
         // Create pull request (cross-repo if fork, direct if main repo)
@@ -695,14 +747,10 @@ Include any supplementary details, notes, or related information.
   const handleCancel = () => {
     if (isSaving) return;
 
-    const confirmCancel = window.confirm(
-      'Are you sure you want to cancel? Your changes will be lost.'
-    );
-
-    if (confirmCancel) {
-      // For new pages, go back to section page; for existing pages, go to page view
-      navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`);
-    }
+    // PageEditor already handles the unsaved changes confirmation,
+    // so we just navigate when called
+    // For new pages, go back to section page; for existing pages, go to page view
+    navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`);
   };
 
   const handleDelete = async () => {
@@ -1414,18 +1462,21 @@ Include any supplementary details, notes, or related information.
         </div>
       )}
 
-      {/* Editor */}
-      <PageEditor
-        initialContent={content}
-        initialMetadata={metadata}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        isSaving={isSaving}
-        contentProcessor={getContentProcessor()}
-        customComponents={getCustomComponents()}
-        renderSpellPreview={getSpellPreview()}
-        renderEquipmentPreview={getEquipmentPreview()}
-      />
+      {/* Editor - only render when metadata is loaded to prevent empty fields */}
+      {metadata && (
+        <PageEditor
+          key={`${pageId}-${editingPR?.number || 'main'}`}
+          initialContent={content}
+          initialMetadata={metadata}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          isSaving={isSaving}
+          contentProcessor={getContentProcessor()}
+          customComponents={getCustomComponents()}
+          renderSpellPreview={getSpellPreview()}
+          renderEquipmentPreview={getEquipmentPreview()}
+        />
+      )}
     </div>
   );
 };

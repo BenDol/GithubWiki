@@ -481,6 +481,14 @@ export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMe
 
     console.log(`[PR Search] Returning PR #${fullPR.number}: ${fullPR.title}`);
 
+    // Use fullPR.head.label for fork branches (format: "username:branch-name")
+    // Use fullPR.head.ref for direct branches (format: "branch-name")
+    const branchRef = fullPR.head.label || fullPR.head.ref;
+
+    console.log(`[PR Search] PR head.ref: ${fullPR.head.ref}`);
+    console.log(`[PR Search] PR head.label: ${fullPR.head.label}`);
+    console.log(`[PR Search] Using branch ref: ${branchRef}`);
+
     return {
       number: fullPR.number,
       url: fullPR.html_url,
@@ -488,7 +496,7 @@ export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMe
       title: fullPR.title,
       body: fullPR.body,
       head: {
-        ref: fullPR.head.ref,
+        ref: branchRef,
         sha: fullPR.head.sha,
       },
       base: {

@@ -8,6 +8,7 @@ const Button = ({
   variant = 'primary',
   size = 'md',
   className = '',
+  disabled = false,
   ...props
 }) => {
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
@@ -25,9 +26,12 @@ const Button = ({
     lg: 'px-6 py-3 text-lg',
   };
 
+  const disabledClasses = 'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none';
+
   return (
     <button
-      className={clsx(baseClasses, variants[variant], sizes[size], className)}
+      className={clsx(baseClasses, variants[variant], sizes[size], disabledClasses, className)}
+      disabled={disabled}
       {...props}
     >
       {children}

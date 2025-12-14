@@ -106,9 +106,16 @@ const PageEditor = ({
 
   // Parse initial content to extract metadata and body
   useEffect(() => {
+    console.log('[PageEditor] Initializing with:', {
+      hasInitialContent: !!initialContent,
+      hasInitialMetadata: !!initialMetadata,
+      initialMetadataKeys: initialMetadata ? Object.keys(initialMetadata) : []
+    });
+
     // Prefer initialMetadata if provided, otherwise parse from content
     if (initialMetadata && Object.keys(initialMetadata).length > 0) {
       const newMetadata = {
+        ...initialMetadata, // Preserve all existing fields
         id: initialMetadata.id || '',
         title: initialMetadata.title || '',
         description: initialMetadata.description || '',
@@ -117,6 +124,8 @@ const PageEditor = ({
         date: initialMetadata.date || '',
         order: initialMetadata.order ?? 0,
       };
+
+      console.log('[PageEditor] Setting metadata from initialMetadata:', newMetadata);
       setMetadata(newMetadata);
 
       // Ensure content has the metadata in frontmatter
@@ -124,16 +133,18 @@ const PageEditor = ({
         try {
           const parsed = matter(initialContent);
           const contentWithMetadata = matter.stringify(parsed.content, newMetadata);
+          console.log('[PageEditor] Reconstructed content with metadata');
           setContent(contentWithMetadata);
         } catch (err) {
-          console.error('Failed to reconstruct content with metadata:', err);
+          console.error('[PageEditor] Failed to reconstruct content with metadata:', err);
           setContent(initialContent);
         }
       }
     } else if (initialContent) {
       try {
         const parsed = matter(initialContent);
-        setMetadata({
+        const newMetadata = {
+          ...parsed.data, // Preserve all existing fields
           id: parsed.data.id || '',
           title: parsed.data.title || '',
           description: parsed.data.description || '',
@@ -141,9 +152,18 @@ const PageEditor = ({
           category: parsed.data.category || '',
           date: parsed.data.date || '',
           order: parsed.data.order ?? 0,
-        });
+        };
+
+        console.log('[PageEditor] Setting metadata from content:', newMetadata);
+        setMetadata(newMetadata);
+
+        // Also ensure content is set (in case it wasn't set yet)
+        if (!content || content !== initialContent) {
+          console.log('[PageEditor] Setting content from initialContent');
+          setContent(initialContent);
+        }
       } catch (err) {
-        console.error('Failed to parse frontmatter:', err);
+        console.error('[PageEditor] Failed to parse frontmatter:', err);
       }
     }
   }, [initialContent, initialMetadata]);
@@ -232,8 +252,11 @@ const PageEditor = ({
 
   // Update content when metadata changes
   const updateContentWithMetadata = (newMetadata) => {
+    console.log('[PageEditor] updateContentWithMetadata called', { newMetadata });
+
     try {
       const parsed = matter(content);
+      console.log('[PageEditor] Current parsed data from content:', parsed.data);
 
       // CRITICAL: Ensure we never save empty metadata
       // Merge with existing parsed metadata to preserve any fields not in newMetadata
@@ -241,6 +264,7 @@ const PageEditor = ({
         ...parsed.data, // Keep any existing fields from content
         ...newMetadata, // Override with new values
       };
+      console.log('[PageEditor] Safe merged metadata:', safeMetadata);
 
       // Extra safety: ensure required fields are never empty
       if (!safeMetadata.title?.trim() || !safeMetadata.category?.trim() ||
@@ -254,9 +278,15 @@ const PageEditor = ({
       }
 
       const updatedContent = matter.stringify(parsed.content, safeMetadata);
+      console.log('[PageEditor] Content updated with metadata, new length:', updatedContent.length);
+
+      // Verify the updated content
+      const verifyParsed = matter(updatedContent);
+      console.log('[PageEditor] Verified updated content has metadata:', verifyParsed.data);
+
       setContent(updatedContent);
     } catch (err) {
-      console.error('Failed to update frontmatter:', err);
+      console.error('[PageEditor] Failed to update frontmatter:', err);
     }
   };
 
@@ -451,7 +481,9 @@ const PageEditor = ({
   }, [metadata, content]);
 
   const handleMetadataChange = (field, value) => {
+    console.log('[PageEditor] handleMetadataChange called', { field, value, currentMetadata: metadata });
     const newMetadata = { ...metadata, [field]: value };
+    console.log('[PageEditor] New metadata:', newMetadata);
     setMetadata(newMetadata);
     updateContentWithMetadata(newMetadata);
   };
@@ -478,42 +510,92 @@ const PageEditor = ({
 
   // When content is manually edited in the markdown editor, sync back to metadata state
   const handleContentChange = (newContent) => {
+    console.log('[PageEditor] handleContentChange called', {
+      showFrontmatter,
+      hasNewContent: !!newContent,
+      newContentLength: newContent?.length,
+      currentMetadata: metadata
+    });
+
     // If frontmatter is hidden, reconstruct full content with existing metadata
     if (!showFrontmatter) {
       try {
-        const fullContent = matter.stringify(newContent, metadata);
+        // CRITICAL FIX: Parse CURRENT content to get existing metadata
+        // Don't rely on metadata state which may be stale/empty
+        const currentParsed = matter(content);
+        const existingMetadata = currentParsed.data || {};
+
+        console.log('[PageEditor] Frontmatter hidden - using metadata from current content:', existingMetadata);
+
+        // Verify metadata has required fields before reconstructing
+        if (!existingMetadata.title?.trim()) {
+          console.error('[PageEditor] WARNING: Current content metadata missing title!', existingMetadata);
+          console.error('[PageEditor] Metadata state:', metadata);
+
+          // Fall back to metadata state if current content has no metadata
+          if (metadata.title?.trim()) {
+            console.log('[PageEditor] Using metadata state as fallback');
+            existingMetadata.title = metadata.title;
+            existingMetadata.category = metadata.category;
+            existingMetadata.tags = metadata.tags;
+            existingMetadata.description = metadata.description;
+            existingMetadata.id = metadata.id;
+            existingMetadata.date = metadata.date;
+            existingMetadata.order = metadata.order;
+          }
+        }
+
+        const fullContent = matter.stringify(newContent, existingMetadata);
+        console.log('[PageEditor] Reconstructed content length:', fullContent.length);
+
+        // Verify reconstructed content has frontmatter
+        const verifyParsed = matter(fullContent);
+        console.log('[PageEditor] Verified reconstructed frontmatter:', verifyParsed.data);
+
         setContent(fullContent);
       } catch (err) {
-        console.error('Failed to reconstruct content with metadata:', err);
+        console.error('[PageEditor] Failed to reconstruct content with metadata:', err);
         setContent(newContent);
       }
     } else {
+      console.log('[PageEditor] Frontmatter visible - setting content directly');
       setContent(newContent);
 
       // Try to parse frontmatter and update metadata state
       try {
         const parsed = matter(newContent);
+        console.log('[PageEditor] Parsed frontmatter from content:', parsed.data);
+
         if (parsed.data && Object.keys(parsed.data).length > 0) {
           // CRITICAL: Only update fields that exist in parsed data
           // Preserve existing metadata for missing fields to prevent data loss
-          setMetadata((prevMetadata) => ({
-            id: parsed.data.id?.trim() || prevMetadata.id || '',
-            title: parsed.data.title?.trim() || prevMetadata.title || '',
-            description: parsed.data.description?.trim() || prevMetadata.description || '',
-            tags: Array.isArray(parsed.data.tags) && parsed.data.tags.length > 0 ? parsed.data.tags : prevMetadata.tags || [],
-            category: parsed.data.category?.trim() || prevMetadata.category || '',
-            date: parsed.data.date || prevMetadata.date || '',
-            order: parsed.data.order !== undefined && parsed.data.order !== null ? parsed.data.order : (prevMetadata.order ?? 0),
-          }));
+          setMetadata((prevMetadata) => {
+            const newMetadata = {
+              id: parsed.data.id?.trim() || prevMetadata.id || '',
+              title: parsed.data.title?.trim() || prevMetadata.title || '',
+              description: parsed.data.description?.trim() || prevMetadata.description || '',
+              tags: Array.isArray(parsed.data.tags) && parsed.data.tags.length > 0 ? parsed.data.tags : prevMetadata.tags || [],
+              category: parsed.data.category?.trim() || prevMetadata.category || '',
+              date: parsed.data.date || prevMetadata.date || '',
+              order: parsed.data.order !== undefined && parsed.data.order !== null ? parsed.data.order : (prevMetadata.order ?? 0),
+            };
+            console.log('[PageEditor] Updated metadata state:', newMetadata);
+            return newMetadata;
+          });
         }
       } catch (err) {
         // If parsing fails, keep existing metadata
-        console.error('Failed to sync metadata from content:', err);
+        console.error('[PageEditor] Failed to sync metadata from content:', err);
       }
     }
   };
 
   const handleSave = () => {
+    console.log('[PageEditor] ========== SAVE CLICKED ==========');
+    console.log('[PageEditor] Current metadata state:', metadata);
+    console.log('[PageEditor] Current content length:', content.length);
+    console.log('[PageEditor] Content preview (first 500 chars):', content.substring(0, 500));
+
     if (!content.trim()) {
       alert('Content cannot be empty');
       return;
@@ -532,6 +614,7 @@ const PageEditor = ({
 
     // Run validation
     const validationErrors = validateMetadata();
+    console.log('[PageEditor] Validation errors:', validationErrors);
 
     if (validationErrors.length > 0) {
       // Trigger shake animation
@@ -541,8 +624,11 @@ const PageEditor = ({
     }
 
     // CRITICAL: Final safety check - ensure content has valid frontmatter with metadata
+    console.log('[PageEditor] Starting final safety check...');
     try {
       const parsed = matter(content);
+      console.log('[PageEditor] Parsed content data:', parsed.data);
+      console.log('[PageEditor] Parsed content keys:', Object.keys(parsed.data || {}));
 
       // Verify all required fields are present and non-empty
       if (!parsed.data || Object.keys(parsed.data).length === 0) {
@@ -553,7 +639,11 @@ const PageEditor = ({
 
       if (!parsed.data.title?.trim()) {
         alert('CRITICAL ERROR: Title is missing from metadata. Cannot save to prevent data loss.');
-        console.error('[PageEditor] BLOCKED SAVE: Missing title', { parsedData: parsed.data, metadata });
+        console.error('[PageEditor] BLOCKED SAVE: Missing title', {
+          parsedData: parsed.data,
+          metadata,
+          contentPreview: content.substring(0, 1000)
+        });
         return;
       }
 
@@ -1132,8 +1222,14 @@ const PageEditor = ({
               variant="primary"
               size="sm"
               onClick={handleSave}
-              disabled={isSaving}
-              title={validationErrors.length > 0 ? 'Click to view validation errors' : 'Save changes'}
+              disabled={isSaving || !hasUnsavedChanges}
+              title={
+                !hasUnsavedChanges
+                  ? 'No changes to save'
+                  : validationErrors.length > 0
+                    ? 'Click to view validation errors'
+                    : 'Save changes'
+              }
             >
               {isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
