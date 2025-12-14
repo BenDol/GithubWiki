@@ -16,6 +16,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
+import { getContentProcessor, getCustomComponents, getSpellPreview, getEquipmentPreview } from '../utils/contentRendererRegistry';
 
 /**
  * PageEditorPage
@@ -1324,6 +1325,10 @@ Include any supplementary details, notes, or related information.
         onSave={handleSave}
         onCancel={handleCancel}
         isSaving={isSaving}
+        contentProcessor={getContentProcessor()}
+        customComponents={getCustomComponents()}
+        renderSpellPreview={getSpellPreview()}
+        renderEquipmentPreview={getEquipmentPreview()}
       />
     </div>
   );

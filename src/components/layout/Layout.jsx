@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
@@ -5,6 +6,7 @@ import Footer from './Footer';
 import ToastContainer from '../common/ToastContainer';
 import DevPanel from '../common/DevPanel';
 import BranchIndicator from '../common/BranchIndicator';
+import DataBrowserModal from '../common/DataBrowserModal';
 import { useDevStore } from '../../store/devStore';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
@@ -13,6 +15,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
  */
 const Layout = () => {
   const { toggleDevPanel } = useDevStore();
+  const [isDataBrowserOpen, setIsDataBrowserOpen] = useState(false);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -22,11 +25,17 @@ const Layout = () => {
       shift: true,
       handler: () => toggleDevPanel(),
     },
+    {
+      key: 'b',
+      ctrl: true,
+      shift: true,
+      handler: () => setIsDataBrowserOpen(prev => !prev),
+    },
   ]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-      <Header />
+      <Header onOpenDataBrowser={() => setIsDataBrowserOpen(true)} />
 
       <div className="flex-1 flex flex-col lg:flex-row">
         <Sidebar />
@@ -48,6 +57,12 @@ const Layout = () => {
 
       {/* Branch Indicator */}
       <BranchIndicator />
+
+      {/* Data Browser Modal */}
+      <DataBrowserModal
+        isOpen={isDataBrowserOpen}
+        onClose={() => setIsDataBrowserOpen(false)}
+      />
     </div>
   );
 };

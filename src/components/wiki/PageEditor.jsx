@@ -2,7 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useBeforeUnload, useNavigate, useLocation } from 'react-router-dom';
 import matter from 'gray-matter';
 import MarkdownEditor from './MarkdownEditor';
+import MarkdownFormatToolbar from './MarkdownFormatToolbar';
 import PageViewer from './PageViewer';
+import SpellPicker from './SpellPicker';
+import EquipmentPicker from './EquipmentPicker';
+import ImagePicker from './ImagePicker';
+import LinkDialog from './LinkDialog';
+import ColorPicker from './ColorPicker';
 import { useUIStore } from '../../store/uiStore';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import Button from '../common/Button';
@@ -18,7 +24,11 @@ const PageEditor = ({
   initialMetadata,
   onSave,
   onCancel,
-  isSaving = false
+  isSaving = false,
+  contentProcessor = null,
+  customComponents = {},
+  renderSpellPreview = null,
+  renderEquipmentPreview = null
 }) => {
   const [content, setContent] = useState(initialContent || '');
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
@@ -29,6 +39,19 @@ const PageEditor = ({
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shakeValidationError, setShakeValidationError] = useState(false);
+  const [showSpellPicker, setShowSpellPicker] = useState(false);
+  const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkDialogText, setLinkDialogText] = useState('');
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [boldActive, setBoldActive] = useState(false);
+  const [italicActive, setItalicActive] = useState(false);
+
+  // Debug: Track showColorPicker state changes
+  useEffect(() => {
+    console.log('[PageEditor] showColorPicker state changed to:', showColorPicker);
+  }, [showColorPicker]);
 
   // Metadata fields
   const [metadata, setMetadata] = useState({
@@ -48,6 +71,8 @@ const PageEditor = ({
   const sentinelRef = useRef(null);
   const toolbarRef = useRef(null);
   const validationErrorsRef = useRef(null);
+  const editorApiRef = useRef(null);
+  const colorButtonRef = useRef(null);
 
   // Get available categories from sections
   const availableCategories = config?.sections
@@ -208,7 +233,26 @@ const PageEditor = ({
   const updateContentWithMetadata = (newMetadata) => {
     try {
       const parsed = matter(content);
-      const updatedContent = matter.stringify(parsed.content, newMetadata);
+
+      // CRITICAL: Ensure we never save empty metadata
+      // Merge with existing parsed metadata to preserve any fields not in newMetadata
+      const safeMetadata = {
+        ...parsed.data, // Keep any existing fields from content
+        ...newMetadata, // Override with new values
+      };
+
+      // Extra safety: ensure required fields are never empty
+      if (!safeMetadata.title?.trim() || !safeMetadata.category?.trim() ||
+          !Array.isArray(safeMetadata.tags) || safeMetadata.tags.length === 0) {
+        console.error('[PageEditor] BLOCKED metadata update: required fields missing', {
+          newMetadata,
+          parsedData: parsed.data,
+          safeMetadata
+        });
+        return; // Don't update content if metadata would be invalid
+      }
+
+      const updatedContent = matter.stringify(parsed.content, safeMetadata);
       setContent(updatedContent);
     } catch (err) {
       console.error('Failed to update frontmatter:', err);
@@ -448,16 +492,18 @@ const PageEditor = ({
       // Try to parse frontmatter and update metadata state
       try {
         const parsed = matter(newContent);
-        if (parsed.data) {
-          setMetadata({
-            id: parsed.data.id || '',
-            title: parsed.data.title || '',
-            description: parsed.data.description || '',
-            tags: Array.isArray(parsed.data.tags) ? parsed.data.tags : [],
-            category: parsed.data.category || '',
-            date: parsed.data.date || '',
-            order: parsed.data.order ?? 0,
-          });
+        if (parsed.data && Object.keys(parsed.data).length > 0) {
+          // CRITICAL: Only update fields that exist in parsed data
+          // Preserve existing metadata for missing fields to prevent data loss
+          setMetadata((prevMetadata) => ({
+            id: parsed.data.id?.trim() || prevMetadata.id || '',
+            title: parsed.data.title?.trim() || prevMetadata.title || '',
+            description: parsed.data.description?.trim() || prevMetadata.description || '',
+            tags: Array.isArray(parsed.data.tags) && parsed.data.tags.length > 0 ? parsed.data.tags : prevMetadata.tags || [],
+            category: parsed.data.category?.trim() || prevMetadata.category || '',
+            date: parsed.data.date || prevMetadata.date || '',
+            order: parsed.data.order !== undefined && parsed.data.order !== null ? parsed.data.order : (prevMetadata.order ?? 0),
+          }));
         }
       } catch (err) {
         // If parsing fails, keep existing metadata
@@ -493,6 +539,42 @@ const PageEditor = ({
       return;
     }
 
+    // CRITICAL: Final safety check - ensure content has valid frontmatter with metadata
+    try {
+      const parsed = matter(content);
+
+      // Verify all required fields are present and non-empty
+      if (!parsed.data || Object.keys(parsed.data).length === 0) {
+        alert('CRITICAL ERROR: No metadata found in content. Cannot save to prevent data loss.');
+        console.error('[PageEditor] BLOCKED SAVE: No metadata in content', { content, metadata });
+        return;
+      }
+
+      if (!parsed.data.title?.trim()) {
+        alert('CRITICAL ERROR: Title is missing from metadata. Cannot save to prevent data loss.');
+        console.error('[PageEditor] BLOCKED SAVE: Missing title', { parsedData: parsed.data, metadata });
+        return;
+      }
+
+      if (!parsed.data.category?.trim()) {
+        alert('CRITICAL ERROR: Category is missing from metadata. Cannot save to prevent data loss.');
+        console.error('[PageEditor] BLOCKED SAVE: Missing category', { parsedData: parsed.data, metadata });
+        return;
+      }
+
+      if (!Array.isArray(parsed.data.tags) || parsed.data.tags.length === 0) {
+        alert('CRITICAL ERROR: Tags are missing from metadata. Cannot save to prevent data loss.');
+        console.error('[PageEditor] BLOCKED SAVE: Missing tags', { parsedData: parsed.data, metadata });
+        return;
+      }
+
+      console.log('[PageEditor] Final metadata validation passed:', parsed.data);
+    } catch (err) {
+      alert('CRITICAL ERROR: Failed to parse frontmatter. Cannot save to prevent data loss.');
+      console.error('[PageEditor] BLOCKED SAVE: Frontmatter parsing failed', err);
+      return;
+    }
+
     onSave?.(content, editSummary);
   };
 
@@ -516,6 +598,233 @@ const PageEditor = ({
         behavior: 'smooth',
         block: 'center'
       });
+    }
+  };
+
+  // Handle spell selection from picker
+  const handleSpellSelect = ({ spell, mode, alignment }) => {
+    // Insert spell syntax into content
+    // Format: <!-- spell:Fire Slash:detailed --> or <!-- spell:1:compact -->
+    let spellSyntax = `\n\n<!-- spell:${spell.name}:${mode} -->\n\n`;
+
+    // Apply alignment wrapper if needed (wrap after adding spacing)
+    if (alignment && alignment !== 'none') {
+      let style;
+      if (alignment === 'center') {
+        style = 'display: flex; justify-content: center;';
+      } else if (alignment === 'left') {
+        style = 'display: flex; justify-content: flex-start;';
+      } else if (alignment === 'right') {
+        style = 'display: flex; justify-content: flex-end;';
+      }
+      spellSyntax = `\n\n<div style="${style}">${spellSyntax}</div>\n\n`;
+    }
+
+    try {
+      const parsed = matter(content);
+      const newContent = parsed.content + spellSyntax;
+      const updatedContent = matter.stringify(newContent, metadata);
+      setContent(updatedContent);
+    } catch (err) {
+      console.error('Failed to insert spell:', err);
+      // Fallback: just append to content
+      setContent(content + spellSyntax);
+    }
+  };
+
+  // Handle equipment selection from picker
+  const handleEquipmentSelect = ({ equipment, mode, alignment }) => {
+    // Insert equipment syntax into content
+    // Format: <!-- equipment:Innocence:detailed --> or <!-- equipment:1:compact -->
+    let equipmentSyntax = `\n\n<!-- equipment:${equipment.name}:${mode} -->\n\n`;
+
+    // Apply alignment wrapper if needed (wrap after adding spacing)
+    if (alignment && alignment !== 'none') {
+      let style;
+      if (alignment === 'center') {
+        style = 'display: flex; justify-content: center;';
+      } else if (alignment === 'left') {
+        style = 'display: flex; justify-content: flex-start;';
+      } else if (alignment === 'right') {
+        style = 'display: flex; justify-content: flex-end;';
+      }
+      equipmentSyntax = `\n\n<div style="${style}">${equipmentSyntax}</div>\n\n`;
+    }
+
+    try {
+      const parsed = matter(content);
+      const newContent = parsed.content + equipmentSyntax;
+      const updatedContent = matter.stringify(newContent, metadata);
+      setContent(updatedContent);
+    } catch (err) {
+      console.error('Failed to insert equipment:', err);
+      // Fallback: just append to content
+      setContent(content + equipmentSyntax);
+    }
+  };
+
+  // Handle image selection from picker
+  const handleImageSelect = (markdownSyntax, image) => {
+    // Insert image markdown into content
+    // Format: ![alt text](path)
+    const imageSyntax = `\n\n${markdownSyntax}\n\n`;
+
+    try {
+      const parsed = matter(content);
+      const newContent = parsed.content + imageSyntax;
+      const updatedContent = matter.stringify(newContent, metadata);
+      setContent(updatedContent);
+    } catch (err) {
+      console.error('Failed to insert image:', err);
+      // Fallback: just append to content
+      setContent(content + imageSyntax);
+    }
+  };
+
+  // Handle markdown formatting actions
+  const handleFormat = (action) => {
+    if (!editorApiRef.current) return;
+
+    const api = editorApiRef.current;
+    const selection = api.getSelection();
+
+    switch (action) {
+      case 'bold':
+        if (selection.empty) {
+          // Toggle mode
+          setBoldActive(!boldActive);
+          if (!boldActive) {
+            api.insertAtCursor('****');
+            // Move cursor between asterisks (would need cursor positioning API)
+          }
+        } else {
+          // Wrap selection
+          api.replaceSelection(`**${selection.text}**`);
+        }
+        break;
+
+      case 'italic':
+        if (selection.empty) {
+          // Toggle mode
+          setItalicActive(!italicActive);
+          if (!italicActive) {
+            api.insertAtCursor('**');
+          }
+        } else {
+          // Wrap selection
+          api.replaceSelection(`*${selection.text}*`);
+        }
+        break;
+
+      case 'h1':
+        {
+          const line = api.getCurrentLine();
+          // Remove existing header markers
+          const cleanLine = line.text.replace(/^#+\s*/, '');
+          api.replaceLine(`# ${cleanLine}`);
+        }
+        break;
+
+      case 'h2':
+        {
+          const line = api.getCurrentLine();
+          const cleanLine = line.text.replace(/^#+\s*/, '');
+          api.replaceLine(`## ${cleanLine}`);
+        }
+        break;
+
+      case 'ul':
+        if (selection.empty) {
+          api.insertAtCursor('\n- List item');
+        } else {
+          const lines = selection.text.split('\n');
+          const formatted = lines.map(line => `- ${line}`).join('\n');
+          api.replaceSelection(formatted);
+        }
+        break;
+
+      case 'ol':
+        if (selection.empty) {
+          api.insertAtCursor('\n1. List item');
+        } else {
+          const lines = selection.text.split('\n');
+          const formatted = lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
+          api.replaceSelection(formatted);
+        }
+        break;
+
+      case 'link':
+        // Open link dialog
+        setLinkDialogText(selection.text);
+        setShowLinkDialog(true);
+        break;
+
+      case 'code':
+        if (selection.empty) {
+          api.insertAtCursor('\n```\ncode block\n```\n');
+        } else {
+          api.replaceSelection(`\`\`\`\n${selection.text}\n\`\`\``);
+        }
+        break;
+
+      case 'quote':
+        if (selection.empty) {
+          api.insertAtCursor('\n> Quote text');
+        } else {
+          const lines = selection.text.split('\n');
+          const formatted = lines.map(line => `> ${line}`).join('\n');
+          api.replaceSelection(formatted);
+        }
+        break;
+
+      case 'table':
+        // Insert a basic 3x3 table template
+        const tableTemplate = `
+| Header 1 | Header 2 | Header 3 |
+|----------|----------|----------|
+| Cell 1   | Cell 2   | Cell 3   |
+| Cell 4   | Cell 5   | Cell 6   |
+`;
+        api.insertAtCursor(tableTemplate);
+        break;
+
+      default:
+        return;
+    }
+  };
+
+  // Handle link insertion from dialog
+  const handleLinkInsert = (text, url) => {
+    if (!editorApiRef.current) return;
+    const markdown = `[${text}](${url})`;
+    editorApiRef.current.replaceSelection(markdown);
+  };
+
+  // Handle color picker open
+  const handleOpenColorPicker = () => {
+    console.log('[PageEditor] Opening color picker');
+    console.log('  - colorButtonRef.current:', colorButtonRef.current);
+    console.log('  - showColorPicker before:', showColorPicker);
+    setShowColorPicker(true);
+  };
+
+  // Handle color selection
+  const handleColorSelect = (color) => {
+    if (!editorApiRef.current) return;
+
+    const api = editorApiRef.current;
+    const selection = api.getSelection();
+
+    if (color === null) {
+      // Clear color - just insert plain text
+      if (!selection.empty) {
+        api.replaceSelection(selection.text);
+      }
+    } else {
+      // Apply color using span with Tailwind class
+      const text = selection.empty ? 'colored text' : selection.text;
+      const coloredText = `<span class="${color.class}">${text}</span>`;
+      api.replaceSelection(coloredText);
     }
   };
 
@@ -598,6 +907,27 @@ const PageEditor = ({
             {/* Action Buttons - Icon Only */}
             <div className="flex items-center gap-1.5">
               <button
+                onClick={() => setShowSpellPicker(true)}
+                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Insert Spell Card"
+              >
+                <span className="text-lg">🎴</span>
+              </button>
+              <button
+                onClick={() => setShowEquipmentPicker(true)}
+                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Insert Equipment Card"
+              >
+                <span className="text-lg">⚔️</span>
+              </button>
+              <button
+                onClick={() => setShowImagePicker(true)}
+                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                title="Insert Image"
+              >
+                <span className="text-lg">🖼️</span>
+              </button>
+              <button
                 onClick={handleCancel}
                 disabled={isSaving}
                 className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -641,7 +971,7 @@ const PageEditor = ({
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                📝 Edit Only
+                📝 Edit
               </button>
               <button
                 onClick={() => setViewMode('split')}
@@ -661,7 +991,7 @@ const PageEditor = ({
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                👁️ Preview Only
+                👁️ Preview
               </button>
             </div>
 
@@ -740,9 +1070,6 @@ const PageEditor = ({
 
         {metadataExpanded && (
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
-              Fields marked with <span className="text-red-600 dark:text-red-400 font-semibold">*</span> are required
-            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Title */}
               <div className="space-y-1.5">
@@ -801,9 +1128,6 @@ const PageEditor = ({
                   onChange={(tags) => handleMetadataChange('tags', tags)}
                   placeholder="Type to search or add tags..."
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  At least one tag is required
-                </p>
               </div>
 
               {/* Date */}
@@ -852,6 +1176,32 @@ const PageEditor = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Markdown Format Toolbar - Sits below action panel when sticky */}
+      <div className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-200 ${
+        isToolbarStuck
+          ? 'sticky top-[7.75rem] z-30 shadow-lg rounded-none border-t-0'
+          : 'rounded-lg'
+      }`}>
+        <div className="relative">
+          <MarkdownFormatToolbar
+            onInsertSpell={() => setShowSpellPicker(true)}
+            onInsertEquipment={() => setShowEquipmentPicker(true)}
+            onInsertImage={() => setShowImagePicker(true)}
+            onFormat={handleFormat}
+            onColorPicker={handleOpenColorPicker}
+            colorButtonRef={colorButtonRef}
+            boldActive={boldActive}
+            italicActive={italicActive}
+          />
+          <ColorPicker
+            isOpen={showColorPicker}
+            onClose={() => setShowColorPicker(false)}
+            onSelect={handleColorSelect}
+            anchorEl={colorButtonRef.current}
+          />
+        </div>
       </div>
 
       {/* Validation Status - Only show when there are errors */}
@@ -909,6 +1259,7 @@ const PageEditor = ({
               onChange={handleContentChange}
               darkMode={darkMode}
               placeholder="Write your content in Markdown..."
+              editorApi={editorApiRef}
             />
           </div>
 
@@ -953,6 +1304,8 @@ const PageEditor = ({
                   content={content}
                   metadata={metadata}
                   className={viewMode === 'preview' ? 'max-w-full' : ''}
+                  contentProcessor={contentProcessor}
+                  customComponents={customComponents}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-600">
@@ -982,6 +1335,36 @@ const PageEditor = ({
           <li>Add a clear edit summary to help reviewers</li>
         </ul>
       </div>
+
+      {/* Spell Picker Modal */}
+      <SpellPicker
+        isOpen={showSpellPicker}
+        onClose={() => setShowSpellPicker(false)}
+        onSelect={handleSpellSelect}
+        renderPreview={renderSpellPreview}
+      />
+      {/* Equipment Picker Modal */}
+      <EquipmentPicker
+        isOpen={showEquipmentPicker}
+        onClose={() => setShowEquipmentPicker(false)}
+        onSelect={handleEquipmentSelect}
+        renderPreview={renderEquipmentPreview}
+      />
+
+      {/* Image Picker Modal */}
+      <ImagePicker
+        isOpen={showImagePicker}
+        onClose={() => setShowImagePicker(false)}
+        onSelect={handleImageSelect}
+      />
+
+      {/* Link Dialog */}
+      <LinkDialog
+        isOpen={showLinkDialog}
+        onClose={() => setShowLinkDialog(false)}
+        onInsert={handleLinkInsert}
+        selectedText={linkDialogText}
+      />
     </div>
   );
 };

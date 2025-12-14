@@ -160,22 +160,46 @@ const PageViewerPage = ({ sectionId }) => {
   if (error) {
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
-        <div className="text-gray-400 text-6xl mb-4">📄</div>
+        <div className="text-gray-400 text-6xl mb-4">⏳</div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Page Not Found
+          Page Not Available Yet
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mb-6">
-          The page you're looking for doesn't exist or has been moved.
+        <p className="text-gray-600 dark:text-gray-400 mb-4">
+          This page hasn't been deployed yet or is still being published.
         </p>
-        <Link
-          to={`/${sectionId}`}
-          className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back to Section
-        </Link>
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6 text-left">
+          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">
+            What's happening?
+          </h3>
+          <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-disc list-inside">
+            <li>The wiki is currently deploying new content</li>
+            <li>This page will be available in about 1-2 minutes</li>
+            <li>Try refreshing the page after waiting a moment</li>
+          </ul>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh Page
+          </button>
+          <Link
+            to={`/${sectionId}`}
+            className="inline-flex items-center px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to Section
+          </Link>
+        </div>
+        <p className="mt-6 text-xs text-gray-500 dark:text-gray-400">
+          If this page still doesn't load after a few minutes, it may not exist yet.
+        </p>
       </div>
     );
   }

@@ -9,7 +9,7 @@ import UserMenu from '../auth/UserMenu';
 /**
  * Header component with navigation, search, and user menu
  */
-const Header = () => {
+const Header = ({ onOpenDataBrowser }) => {
   const { config } = useWikiConfig();
   const { darkMode, toggleDarkMode, toggleSidebar } = useUIStore();
   const { isAuthenticated, user } = useAuthStore();
@@ -66,8 +66,23 @@ const Header = () => {
             </nav>
           </div>
 
-          {/* Right side - Search, theme toggle, user menu */}
+          {/* Right side - Data browser, search, theme toggle, user menu */}
           <div className="flex items-center space-x-2">
+            {/* Data Browser */}
+            <button
+              onClick={onOpenDataBrowser}
+              className="flex items-center space-x-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 transition-colors"
+              title="Data Browser (Ctrl+Shift+B)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+              </svg>
+              <span className="hidden md:inline text-sm">Data</span>
+              <kbd className="hidden lg:inline px-2 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded">
+                Ctrl+Shift+B
+              </kbd>
+            </button>
+
             {/* Search */}
             <SearchBar />
 

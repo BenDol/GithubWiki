@@ -1,0 +1,406 @@
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+// Dynamically import imageService from parent project
+let imageService = null;
+try {
+  imageService = require('../../../../../src/services/imageService');
+} catch (err) {
+  console.warn('Image service not found in parent project');
+}
+
+/**
+ * SpellPicker Modal - Select a spell to insert into markdown
+ * Features:
+ * - Browse spells with card grid
+ * - Search and filter by element/grade
+ * - Preview panel with spell details and image
+ * - Display mode selection (compact/detailed/advanced)
+ * - Pagination for large spell lists
+ */
+const SpellPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) => {
+  const [spells, setSpells] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAttribute, setSelectedAttribute] = useState('All');
+  const [selectedGrade, setSelectedGrade] = useState('All');
+  const [selectedSpell, setSelectedSpell] = useState(null);
+  const [displayMode, setDisplayMode] = useState('detailed');
+  const [alignment, setAlignment] = useState('none');
+  const [spellImages, setSpellImages] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const spellsPerPage = 12;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadSpells = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/data/skills.json');
+        if (!response.ok) {
+          throw new Error('Failed to load spells');
+        }
+        const data = await response.json();
+        setSpells(data);
+        setLoading(false);
+      } catch (err) {
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    loadSpells();
+  }, [isOpen]);
+
+  // Load images for spells
+  useEffect(() => {
+    if (!spells.length || !imageService) return;
+
+    const loadImages = async () => {
+      const images = {};
+      for (const spell of spells) {
+        try {
+          const imagePath = await imageService.getSpellImage(spell.name, spell.attribute);
+          images[spell.id] = imagePath;
+        } catch (err) {
+          console.warn(`Failed to load image for ${spell.name}:`, err);
+        }
+      }
+      setSpellImages(images);
+    };
+
+    loadImages();
+  }, [spells]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, selectedAttribute, selectedGrade, isOpen]);
+
+  if (!isOpen) return null;
+
+  // Get unique attributes and grades
+  const attributes = ['All', ...new Set(spells.map(s => s.attribute))];
+  const grades = ['All', ...new Set(spells.map(s => s.grade))];
+
+  // Filter spells
+  const filteredSpells = spells.filter(spell => {
+    const matchesSearch = spell.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          spell.basicDescription.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesAttribute = selectedAttribute === 'All' || spell.attribute === selectedAttribute;
+    const matchesGrade = selectedGrade === 'All' || spell.grade === selectedGrade;
+    return matchesSearch && matchesAttribute && matchesGrade;
+  });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredSpells.length / spellsPerPage);
+  const startIndex = (currentPage - 1) * spellsPerPage;
+  const endIndex = startIndex + spellsPerPage;
+  const currentSpells = filteredSpells.slice(startIndex, endIndex);
+
+  const handleSpellSelect = (spell) => {
+    setSelectedSpell(spell);
+  };
+
+  const handleInsert = () => {
+    if (!selectedSpell) return;
+    onSelect({ spell: selectedSpell, mode: displayMode, alignment });
+    onClose();
+  };
+
+  // Attribute colors for visual indicators
+  const attributeColors = {
+    Fire: 'text-red-600 dark:text-red-400',
+    Water: 'text-blue-600 dark:text-blue-400',
+    Wind: 'text-green-600 dark:text-green-400',
+    Earth: 'text-yellow-600 dark:text-yellow-400',
+  };
+
+  const gradeColors = {
+    Common: 'bg-gray-500',
+    Great: 'bg-blue-500',
+    Rare: 'bg-purple-500',
+    Epic: 'bg-yellow-500',
+    Legendary: 'bg-orange-500',
+  };
+
+  return !isOpen ? null : (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-6xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            Insert Spell Card
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          <div className="flex flex-col gap-3">
+            {/* Search */}
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search spells..."
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+
+            {/* Filters */}
+            <div className="flex gap-2">
+              <select
+                value={selectedAttribute}
+                onChange={(e) => setSelectedAttribute(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+              >
+                <option value="All">All Elements ({spells.length})</option>
+                {attributes.slice(1).map(attr => {
+                  const count = spells.filter(s => s.attribute === attr).length;
+                  return <option key={attr} value={attr}>{attr} ({count})</option>;
+                })}
+              </select>
+
+              <select
+                value={selectedGrade}
+                onChange={(e) => setSelectedGrade(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+              >
+                <option value="All">All Grades</option>
+                {grades.slice(1).map(grade => (
+                  <option key={grade} value={grade}>{grade}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-3"></div>
+                <p className="text-gray-600 dark:text-gray-400">Loading spells...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-red-600 dark:text-red-400">
+                <p className="font-semibold mb-2">Error loading spells</p>
+                <p className="text-sm">{error}</p>
+              </div>
+            </div>
+          ) : filteredSpells.length === 0 ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <p className="font-semibold mb-1">No spells found</p>
+                <p className="text-sm">Try adjusting your search or filters</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
+              {currentSpells.map(spell => (
+                <button
+                  key={spell.id}
+                  onClick={() => handleSpellSelect(spell)}
+                  className={`group relative rounded-md overflow-hidden border transition-all hover:scale-105 ${
+                    selectedSpell?.id === spell.id
+                      ? 'border-blue-500 ring-1 ring-blue-500'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                  }`}
+                >
+                  <div className="aspect-square p-1.5 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 flex flex-col items-center justify-center">
+                    {spellImages[spell.id] && (
+                      <img
+                        src={spellImages[spell.id]}
+                        alt={spell.name}
+                        className="w-10 h-10 object-contain mb-0.5"
+                      />
+                    )}
+                    <h3 className="text-[9px] font-semibold text-center text-gray-900 dark:text-white line-clamp-1 leading-tight px-0.5">
+                      {spell.name}
+                    </h3>
+                    <span className={`${gradeColors[spell.grade]} text-white text-[7px] px-1 py-0.5 rounded-full mt-0.5`}>
+                      {spell.grade}
+                    </span>
+                  </div>
+                  {/* Selected checkmark */}
+                  {selectedSpell?.id === spell.id && (
+                    <div className="absolute top-0.5 right-0.5 bg-blue-500 rounded-full p-0.5">
+                      <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Spell Preview Panel (if selected) */}
+        {selectedSpell && (
+          <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+            <div className="flex flex-col gap-4">
+              {/* Top: Display Mode & Alignment Selection */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Display Mode */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide whitespace-nowrap">
+                    Display:
+                  </label>
+                  <div className="flex gap-1">
+                    {[
+                      { value: 'compact', label: 'Compact' },
+                      { value: 'detailed', label: 'Detailed' },
+                      { value: 'advanced', label: 'Advanced' }
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        onClick={() => setDisplayMode(mode.value)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                          displayMode === mode.value
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Alignment */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide whitespace-nowrap">
+                    Align:
+                  </label>
+                  <div className="flex gap-1">
+                    {[
+                      { value: 'none', icon: '○', title: 'None' },
+                      { value: 'left', icon: '⬅', title: 'Left' },
+                      { value: 'center', icon: '↔', title: 'Center' },
+                      { value: 'right', icon: '➡', title: 'Right' }
+                    ].map(option => (
+                      <button
+                        key={option.value}
+                        onClick={() => setAlignment(option.value)}
+                        title={option.title}
+                        className={`px-2.5 py-1 text-sm rounded transition-all ${
+                          alignment === option.value
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                        }`}
+                      >
+                        {option.icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom: Preview */}
+              <div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 max-h-64 overflow-y-auto">
+                  {renderPreview ? (
+                    renderPreview({ spell: selectedSpell, mode: displayMode })
+                  ) : (
+                    <div className="flex items-start gap-3">
+                      {spellImages[selectedSpell.id] && (
+                        <img
+                          src={spellImages[selectedSpell.id]}
+                          alt={selectedSpell.name}
+                          className="w-20 h-20 flex-shrink-0 object-contain bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-lg">{selectedSpell.name}</h3>
+                          <span className={`${gradeColors[selectedSpell.grade]} text-white text-xs px-2 py-0.5 rounded-full`}>
+                            {selectedSpell.grade}
+                          </span>
+                          <span className={`bg-gradient-to-r ${attributeColors[selectedSpell.attribute].replace('text-', 'from-').replace(' dark:', ' to-')} text-white text-xs px-2 py-0.5 rounded-full`}>
+                            {selectedSpell.attribute}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{selectedSpell.basicDescription}</p>
+                        <div className="flex gap-3 text-xs text-gray-600 dark:text-gray-400">
+                          <span>💧 MP: {selectedSpell.mpCost}</span>
+                          <span>⏱️ CD: {selectedSpell.cooldown}s</span>
+                          <span>📏 Range: {selectedSpell.range === 0 ? 'Self' : selectedSpell.range}</span>
+                          <span>⚡ Power: {selectedSpell.baseValue}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+          {/* Pagination */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              Page {currentPage} of {totalPages || 1} • {filteredSpells.length} spells
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleInsert}
+              disabled={!selectedSpell}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Insert Spell
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SpellPicker;
