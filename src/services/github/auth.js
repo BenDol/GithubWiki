@@ -5,14 +5,16 @@
 
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
 
-// Use proxy endpoints in development to avoid CORS issues
+// Use proxy endpoints in development (Vite) and production (Netlify Functions)
+// Development: Vite dev server proxies /api/github/* to GitHub
+// Production: Netlify Functions at /.netlify/functions/* proxy to GitHub
 const DEVICE_CODE_URL = import.meta.env.DEV
   ? '/api/github/device-code'
-  : 'https://github.com/login/device/code';
+  : '/.netlify/functions/device-code';
 
 const TOKEN_URL = import.meta.env.DEV
   ? '/api/github/access-token'
-  : 'https://github.com/login/oauth/access_token';
+  : '/.netlify/functions/access-token';
 
 const USER_URL = 'https://api.github.com/user';
 
@@ -20,7 +22,7 @@ const USER_URL = 'https://api.github.com/user';
 console.log('GitHub Auth Configuration:', {
   VITE_GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID,
   DEV_MODE: import.meta.env.DEV,
-  USING_PROXY: import.meta.env.DEV ? 'YES (via /api/github/*)' : 'NO (direct to GitHub)',
+  USING_PROXY: import.meta.env.DEV ? 'YES (Vite Dev Server)' : 'YES (Netlify Functions)',
   DEVICE_CODE_URL,
   TOKEN_URL,
 });
