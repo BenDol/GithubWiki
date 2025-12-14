@@ -3,17 +3,17 @@ import { useAuthStore } from '../store/authStore';
 import { useWikiConfig } from './useWikiConfig';
 import { getPrestigeTier } from '../utils/prestige';
 import { getUserPullRequests } from '../services/github/pullRequests';
+import { getUserPrestigeData, getCachedPrestigeDataSync } from '../services/github/prestige';
 
 /**
  * Prestige data hook
  *
- * Currently only loads prestige for the authenticated user.
- * Future enhancement: Add central cache to store prestige for multiple users
- * and fetch from GitHub API or a backend service.
+ * Uses centralized prestige cache updated daily by GitHub Action.
+ * Falls back to PR-based calculation for authenticated user if cache unavailable.
  */
 
-// In-memory cache for user prestige data
-// Future: Move this to a Zustand store or localStorage for persistence
+// In-memory cache for user prestige data (short-term, 5 minutes)
+// Main cache is localStorage + GitHub issue (updated daily)
 const prestigeCache = new Map();
 
 /**
@@ -48,18 +48,32 @@ export const useUserPrestige = (username) => {
         return;
       }
 
-      // Only load prestige for authenticated user (for now)
-      // Future: Support loading for any user via API/cache
-      if (!isAuthenticated || !user || username !== user.login) {
-        setPrestigeData(null);
+      // Check in-memory cache first (5 minute TTL)
+      const cached = prestigeCache.get(username);
+      if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+        setPrestigeData(cached.data);
         setLoading(false);
         return;
       }
 
-      // Check cache first
-      const cached = prestigeCache.get(username);
-      if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) { // 5 minute cache
-        setPrestigeData(cached.data);
+      // Check localStorage cache synchronously (24 hour TTL)
+      const syncCached = getCachedPrestigeDataSync(username);
+      if (syncCached) {
+        console.log(`[Prestige] Using cached data for ${username} from localStorage`);
+        const data = {
+          tier: {
+            id: syncCached.prestigeTier,
+            badge: syncCached.prestigeBadge,
+            color: syncCached.prestigeColor,
+          },
+          stats: {
+            totalContributions: syncCached.contributions,
+          },
+        };
+
+        // Cache in memory too
+        prestigeCache.set(username, { data, timestamp: Date.now() });
+        setPrestigeData(data);
         setLoading(false);
         return;
       }
@@ -75,33 +89,59 @@ export const useUserPrestige = (username) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        const prs = await getUserPullRequests(owner, repo, username);
 
-        // Calculate stats
-        const stats = {
-          totalPRs: prs.length,
-          openPRs: prs.filter(pr => pr.state === 'open').length,
-          mergedPRs: prs.filter(pr => pr.state === 'merged').length,
-          closedPRs: prs.filter(pr => pr.state === 'closed' && !pr.merged_at).length,
-          totalAdditions: prs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
-          totalDeletions: prs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
-          totalFiles: prs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
-        };
+        // Try to fetch from GitHub issue cache (updated daily by GitHub Action)
+        console.log(`[Prestige] Fetching prestige data for ${username} from GitHub cache`);
+        const prestigeData = await getUserPrestigeData(owner, repo, username);
 
-        // Get prestige tier
-        const tier = getPrestigeTier(stats, config.prestige.tiers);
+        if (prestigeData) {
+          // Found in cache
+          console.log(`[Prestige] Found ${username} in GitHub cache with tier: ${prestigeData.prestigeTier}`);
+          const data = {
+            tier: {
+              id: prestigeData.prestigeTier,
+              badge: prestigeData.prestigeBadge,
+              color: prestigeData.prestigeColor,
+            },
+            stats: {
+              totalContributions: prestigeData.contributions,
+            },
+          };
 
-        const data = { tier, stats };
+          // Cache the result
+          prestigeCache.set(username, { data, timestamp: Date.now() });
+          setPrestigeData(data);
+        } else if (isAuthenticated && user && username === user.login) {
+          // Fallback: Calculate from PRs for authenticated user only
+          console.log(`[Prestige] No cache for ${username}, calculating from PRs (authenticated user)`);
+          const prs = await getUserPullRequests(owner, repo, username);
 
-        // Cache the result
-        prestigeCache.set(username, {
-          data,
-          timestamp: Date.now(),
-        });
+          // Calculate stats
+          const stats = {
+            totalPRs: prs.length,
+            openPRs: prs.filter(pr => pr.state === 'open').length,
+            mergedPRs: prs.filter(pr => pr.state === 'merged').length,
+            closedPRs: prs.filter(pr => pr.state === 'closed' && !pr.merged_at).length,
+            totalAdditions: prs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
+            totalDeletions: prs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
+            totalFiles: prs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
+          };
 
-        setPrestigeData(data);
+          // Get prestige tier based on total PRs
+          const tier = getPrestigeTier(stats, config.prestige.tiers);
+
+          const data = { tier, stats };
+
+          // Cache the result
+          prestigeCache.set(username, { data, timestamp: Date.now() });
+          setPrestigeData(data);
+        } else {
+          // No data available for non-authenticated users
+          console.log(`[Prestige] No prestige data available for ${username}`);
+          setPrestigeData(null);
+        }
       } catch (err) {
-        console.error('Failed to load prestige data:', err);
+        console.error(`[Prestige] Failed to load prestige data for ${username}:`, err);
         setError(err.message);
       } finally {
         loadingUsers.delete(username);
