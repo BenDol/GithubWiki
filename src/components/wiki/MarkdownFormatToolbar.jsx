@@ -119,14 +119,18 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
           {/* Alignment options - MUST render before backdrop */}
           {console.log('[MarkdownFormatToolbar] Rendering alignment options div')}
           <div
-            className="absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-2"
+            className="rounded-lg shadow-xl p-2 border-4"
             style={{
-              position: 'absolute',
-              top: '100%',
-              left: '12px',
-              marginTop: '4px',
-              zIndex: 150,
-              pointerEvents: 'auto'
+              position: 'fixed',
+              top: '200px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9999,
+              pointerEvents: 'auto',
+              backgroundColor: '#ff0000', // Bright red to see if it renders
+              borderColor: '#00ff00', // Green border
+              minWidth: '200px',
+              minHeight: '100px'
             }}
           >
             <div className="flex flex-col gap-1 min-w-[140px]">

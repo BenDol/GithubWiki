@@ -1027,27 +1027,6 @@ const PageEditor = ({
             {/* Action Buttons - Icon Only */}
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setShowSpellPicker(true)}
-                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                title="Insert Spell Card"
-              >
-                <span className="text-lg">🎴</span>
-              </button>
-              <button
-                onClick={() => setShowEquipmentPicker(true)}
-                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                title="Insert Equipment Card"
-              >
-                <span className="text-lg">⚔️</span>
-              </button>
-              <button
-                onClick={() => setShowImagePicker(true)}
-                className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                title="Insert Image"
-              >
-                <span className="text-lg">🖼️</span>
-              </button>
-              <button
                 onClick={handleCancel}
                 disabled={isSaving}
                 className="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

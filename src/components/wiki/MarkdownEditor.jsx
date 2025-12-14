@@ -17,12 +17,20 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
   const [widgetPosition, setWidgetPosition] = useState({ top: 0, left: 0 });
   const [currentImageInfo, setCurrentImageInfo] = useState(null);
 
-  // Expose editor API to parent
+  // Expose editor API to parent - ensure it persists across renders
   useEffect(() => {
-    if (editorApi && viewRef.current) {
+    console.log('[MarkdownEditor] Setting up editor API', {
+      hasEditorApi: !!editorApi,
+      hasViewRef: !!viewRef.current
+    });
+
+    if (editorApi) {
+      // Always set API, even if viewRef is temporarily null
+      // The API methods will check for viewRef when called
       editorApi.current = {
         getSelection: () => {
           const view = viewRef.current;
+          console.log('[MarkdownEditor.getSelection] viewRef.current exists:', !!view);
           if (!view) return { text: '', from: 0, to: 0, empty: true };
           const selection = view.state.selection.main;
           const selectedText = view.state.doc.sliceString(selection.from, selection.to);
@@ -35,7 +43,11 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
         },
         replaceSelection: (text) => {
           const view = viewRef.current;
-          if (!view) return;
+          console.log('[MarkdownEditor.replaceSelection] viewRef.current exists:', !!view);
+          if (!view) {
+            console.error('[MarkdownEditor.replaceSelection] View not available!');
+            return;
+          }
           const selection = view.state.selection.main;
           view.dispatch({
             changes: { from: selection.from, to: selection.to, insert: text },
@@ -44,11 +56,16 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
         },
         replaceRange: (from, to, text) => {
           const view = viewRef.current;
-          if (!view) return;
+          console.log('[MarkdownEditor.replaceRange] viewRef.current exists:', !!view, {from, to, textLength: text.length});
+          if (!view) {
+            console.error('[MarkdownEditor.replaceRange] View not available!');
+            return;
+          }
           view.dispatch({
             changes: { from, to, insert: text },
             selection: { anchor: from + text.length }
           });
+          console.log('[MarkdownEditor.replaceRange] Dispatch complete');
         },
         insertAtCursor: (text) => {
           const view = viewRef.current;
@@ -81,8 +98,13 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           });
         }
       };
+      console.log('[MarkdownEditor] Editor API set up successfully');
     }
-  }, [editorApi]);
+
+    return () => {
+      console.log('[MarkdownEditor] Cleaning up editor API');
+    };
+  }, [editorApi]); // Only depend on editorApi prop, not viewRef
 
   useEffect(() => {
     if (!editorRef.current) return;
