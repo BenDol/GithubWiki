@@ -1,4 +1,4 @@
-import { getOctokit } from './api';
+import { getOctokit, getBotOctokit, hasBotToken } from './api';
 
 /**
  * GitHub Comments API functions
@@ -41,6 +41,7 @@ export const findPageIssue = async (owner, repo, pageTitle, branch) => {
 
 /**
  * Get or create an issue for a specific wiki page (requires authentication)
+ * Uses bot token if available, falls back to user token
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} pageTitle - Page title
@@ -49,15 +50,19 @@ export const findPageIssue = async (owner, repo, pageTitle, branch) => {
  * @returns {Promise<Object>} Issue object
  */
 export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, branch) => {
-  const octokit = getOctokit();
-
   // First try to find existing issue
   const existingIssue = await findPageIssue(owner, repo, pageTitle, branch);
   if (existingIssue) {
     return existingIssue;
   }
 
-  // Create new issue for this page (requires authentication)
+  // Create new issue for this page
+  // Requires bot token (prevents users from closing the issue)
+  // Will throw error if bot token not configured
+  const octokit = getBotOctokit();
+
+  console.log('[Comments] Creating page issue with bot token (users cannot close)');
+
   const branchLabel = `branch:${branch}`;
 
   try {
@@ -65,11 +70,11 @@ export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, bran
       owner,
       repo,
       title: `Comments: ${pageTitle}`,
-      body: `💬 **Comments for:** ${pageTitle}\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!`,
+      body: `💬 **Comments for:** ${pageTitle}\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
       labels: ['wiki-comments', branchLabel],
     });
 
-    console.log(`[Comments] Created page issue for ${pageTitle} in branch: ${branch}`);
+    console.log(`[Comments] Created page issue #${newIssue.number} for ${pageTitle} in branch: ${branch} (bot)`);
 
     return newIssue;
   } catch (error) {

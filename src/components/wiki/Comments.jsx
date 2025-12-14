@@ -59,6 +59,32 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data
   const FAKE_COMMENT_ID_START = 8000000; // Fake comment IDs start from this number
 
+  // Issue caching helpers (fixes GitHub search API indexing delay)
+  const getIssueCacheKey = (owner, repo, sectionId, pageId, branch) => {
+    return `wiki-issue:${owner}/${repo}/${sectionId}/${pageId}/${branch}`;
+  };
+
+  const getCachedIssueNumber = (owner, repo, sectionId, pageId, branch) => {
+    try {
+      const key = getIssueCacheKey(owner, repo, sectionId, pageId, branch);
+      const cached = sessionStorage.getItem(key);
+      return cached ? parseInt(cached, 10) : null;
+    } catch (err) {
+      console.warn('[Comments] Failed to get cached issue number:', err);
+      return null;
+    }
+  };
+
+  const cacheIssueNumber = (owner, repo, sectionId, pageId, branch, issueNumber) => {
+    try {
+      const key = getIssueCacheKey(owner, repo, sectionId, pageId, branch);
+      sessionStorage.setItem(key, String(issueNumber));
+      console.log(`[Comments] Cached issue #${issueNumber} for page`);
+    } catch (err) {
+      console.warn('[Comments] Failed to cache issue number:', err);
+    }
+  };
+
   // Load issue and comments
   useEffect(() => {
     const loadComments = async () => {
@@ -73,8 +99,32 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         // Detect current branch for namespace isolation
         const branch = await detectCurrentBranch(config);
 
-        // Always try to find existing issue (read-only, works without auth for public repos)
-        const pageIssue = await findPageIssue(owner, repo, pageTitle, branch);
+        // Try to load issue from cache first (avoids GitHub search API indexing delay)
+        const cachedIssueNumber = getCachedIssueNumber(owner, repo, sectionId, pageId, branch);
+        let pageIssue = null;
+
+        if (cachedIssueNumber) {
+          console.log(`[Comments] Found cached issue #${cachedIssueNumber}, loading directly...`);
+          try {
+            const { getIssue } = await import('../../services/github/issueOperations');
+            pageIssue = await getIssue(owner, repo, cachedIssueNumber);
+            console.log('[Comments] Loaded issue from cache:', pageIssue);
+          } catch (err) {
+            console.warn('[Comments] Failed to load cached issue, falling back to search:', err);
+            pageIssue = null;
+          }
+        }
+
+        // If no cached issue or loading failed, search for it
+        if (!pageIssue) {
+          console.log('[Comments] Searching for page issue...');
+          pageIssue = await findPageIssue(owner, repo, pageTitle, branch);
+
+          // Cache the issue number if found
+          if (pageIssue) {
+            cacheIssueNumber(owner, repo, sectionId, pageId, branch, pageIssue.number);
+          }
+        }
 
         if (pageIssue) {
           setIssue(pageIssue);
@@ -233,6 +283,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         pageIssue = await getOrCreatePageIssue(owner, repo, pageTitle, pageUrl, branch);
         console.log('[Comments] Created/found issue:', pageIssue);
         setIssue(pageIssue);
+
+        // Cache the issue number to avoid GitHub search API indexing delay
+        cacheIssueNumber(owner, repo, sectionId, pageId, branch, pageIssue.number);
       }
 
       console.log('[Comments] Creating comment on issue #', pageIssue.number);
@@ -287,8 +340,14 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     } catch (err) {
       console.error('Failed to submit comment:', err);
 
+      // Handle bot token not configured error
+      if (err.message?.includes('Bot token not configured')) {
+        alert('❌ Comments are disabled. Bot token not configured.\n\n' +
+              'The wiki administrator needs to configure VITE_WIKI_BOT_TOKEN to enable comments.\n' +
+              'See BOT-SETUP.md for setup instructions.');
+      }
       // Handle GitHub API rate limit errors
-      if (err.status === 403 && err.message?.includes('rate limit')) {
+      else if (err.status === 403 && err.message?.includes('rate limit')) {
         alert('⏱️ GitHub API rate limit exceeded. Please wait a moment and try again.');
       } else if (err.status === 403) {
         alert('❌ Permission denied. You may need to sign in again.');
@@ -424,24 +483,50 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         r => r.user.login === user.login && r.content === oppositeType
       );
 
+      // Optimistically update UI first (for immediate feedback)
       if (existingReaction) {
-        // Remove reaction (toggle off)
+        // Remove reaction (toggle off) - optimistic update
+        setCommentReactions(prev => ({
+          ...prev,
+          [commentId]: reactions.filter(r => r.id !== existingReaction.id),
+        }));
         await deleteCommentReaction(owner, repo, commentId, existingReaction.id);
       } else {
-        // If opposite reaction exists, remove it first
+        // Add new reaction - optimistic update
+        const optimisticReaction = {
+          id: Date.now(), // Temporary ID
+          content: reactionType,
+          user: { login: user.login },
+        };
+
+        // Remove opposite reaction if exists
+        let updatedReactions = reactions;
         if (oppositeReaction) {
+          updatedReactions = reactions.filter(r => r.id !== oppositeReaction.id);
           await deleteCommentReaction(owner, repo, commentId, oppositeReaction.id);
         }
-        // Add new reaction
+
+        // Add optimistic reaction
+        setCommentReactions(prev => ({
+          ...prev,
+          [commentId]: [...updatedReactions, optimisticReaction],
+        }));
+
+        // Add new reaction to GitHub
         await addCommentReaction(owner, repo, commentId, reactionType);
       }
 
-      // Reload reactions for this comment
-      const updatedReactions = await getCommentReactions(owner, repo, commentId);
+      // Wait a bit for GitHub's cache to update, then reload reactions
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Reload reactions for this comment (confirms changes)
+      const confirmedReactions = await getCommentReactions(owner, repo, commentId);
       setCommentReactions(prev => ({
         ...prev,
-        [commentId]: updatedReactions,
+        [commentId]: confirmedReactions,
       }));
+
+      console.log('[Comments] Reaction updated and confirmed from server');
     } catch (err) {
       console.error('Failed to handle reaction:', err);
 

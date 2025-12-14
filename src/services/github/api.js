@@ -6,6 +6,7 @@ import { Octokit } from 'octokit';
  */
 
 let octokitInstance = null;
+let botOctokitInstance = null;
 
 // Request de-duplication tracking
 // Prevents multiple concurrent requests for the same data
@@ -42,6 +43,65 @@ export const getOctokit = () => {
  */
 export const clearOctokit = () => {
   octokitInstance = null;
+};
+
+/**
+ * Initialize Bot Octokit with bot token
+ * Used for creating comment issues (so users can't close them)
+ * Automatically reads from import.meta.env.VITE_WIKI_BOT_TOKEN if no token provided
+ * @param {string} botToken - Optional bot token. If not provided, reads from environment.
+ */
+export const initializeBotOctokit = (botToken = null) => {
+  // Try to get bot token from parameter or environment
+  const token = botToken || import.meta.env.VITE_WIKI_BOT_TOKEN;
+
+  if (!token) {
+    console.info('[Bot] Bot token not configured (VITE_WIKI_BOT_TOKEN)');
+    console.info('[Bot] Comment issues will be created by users. Configure a bot token to prevent users from closing comment issues.');
+    return null;
+  }
+
+  botOctokitInstance = new Octokit({
+    auth: token,
+    userAgent: 'GitHub-Wiki-Bot/1.0',
+  });
+
+  console.log('[Bot] ✓ Bot Octokit initialized successfully');
+  return botOctokitInstance;
+};
+
+/**
+ * Get Bot Octokit instance (for creating comment issues)
+ * @param {boolean} fallbackToUser - Whether to fall back to user token if bot not available (default: false)
+ * @returns {Octokit} Bot Octokit instance
+ * @throws {Error} If bot token not configured and fallback disabled
+ */
+export const getBotOctokit = (fallbackToUser = false) => {
+  if (botOctokitInstance) {
+    return botOctokitInstance;
+  }
+
+  if (fallbackToUser) {
+    console.warn('[Bot] Bot token not configured, falling back to user token');
+    return getOctokit();
+  }
+
+  throw new Error('Bot token not configured. Please configure VITE_WIKI_BOT_TOKEN to enable comment functionality.');
+};
+
+/**
+ * Check if bot token is configured
+ * @returns {boolean} True if bot token is available
+ */
+export const hasBotToken = () => {
+  return botOctokitInstance !== null;
+};
+
+/**
+ * Clear Bot Octokit instance
+ */
+export const clearBotOctokit = () => {
+  botOctokitInstance = null;
 };
 
 /**
