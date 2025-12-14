@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useAuthStore } from '../../store/authStore';
 import { getOctokit } from '../../services/github/api';
 
 /**
@@ -8,10 +9,12 @@ import { getOctokit } from '../../services/github/api';
  */
 const PendingEditRequests = ({ sectionId, pageId }) => {
   const { config } = useWikiConfig();
+  const { user, isAuthenticated } = useAuthStore();
   const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [closingPR, setClosingPR] = useState(null);
 
   useEffect(() => {
     const fetchPendingPRs = async () => {
@@ -76,6 +79,45 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
     fetchPendingPRs();
   }, [config, sectionId, pageId]);
 
+  // Handle closing a PR
+  const handleClosePR = async (pr, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Confirm with user
+    const confirmed = window.confirm(
+      `Are you sure you want to close PR #${pr.number}?\n\n"${pr.title}"\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setClosingPR(pr.number);
+      const { owner, repo } = config.wiki.repository;
+      const octokit = getOctokit();
+
+      console.log(`[PendingEditRequests] Closing PR #${pr.number}`);
+
+      // Close the PR
+      await octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: pr.number,
+        state: 'closed',
+      });
+
+      console.log(`[PendingEditRequests] PR #${pr.number} closed successfully`);
+
+      // Remove from list
+      setPrs(prevPrs => prevPrs.filter(p => p.number !== pr.number));
+    } catch (err) {
+      console.error('[PendingEditRequests] Failed to close PR:', err);
+      alert(`Failed to close PR: ${err.message}`);
+    } finally {
+      setClosingPR(null);
+    }
+  };
+
   // Don't show if loading or no PRs
   if (loading || error || prs.length === 0) {
     return null;
@@ -109,15 +151,15 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
       {/* PR List - Expandable */}
       {isExpanded && (
         <div className="border-t border-blue-200 dark:border-blue-800">
-          {prs.map(pr => (
-            <a
-              key={pr.number}
-              href={pr.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block px-3 py-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-b border-blue-100 dark:border-blue-800 last:border-b-0"
-            >
-              <div className="flex items-start space-x-2">
+          {prs.map(pr => {
+            const isOwnPR = isAuthenticated && user?.login === pr.author;
+            const isClosing = closingPR === pr.number;
+
+            return (
+              <div
+                key={pr.number}
+                className="group relative flex items-start space-x-2 px-3 py-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-b border-blue-100 dark:border-blue-800 last:border-b-0"
+              >
                 <img
                   src={pr.authorAvatar}
                   alt={pr.author}
@@ -131,17 +173,56 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
                     <span className="text-xs text-blue-700 dark:text-blue-300 truncate">
                       by {pr.author}
                     </span>
+                    {isOwnPR && (
+                      <span className="text-xs bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded">
+                        You
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-blue-800 dark:text-blue-300 mt-0.5 line-clamp-2">
                     {pr.title}
                   </p>
                 </div>
-                <svg className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
+
+                {/* Action buttons */}
+                <div className="flex items-center space-x-1 flex-shrink-0">
+                  {/* Close button - only for own PRs */}
+                  {isOwnPR && (
+                    <button
+                      onClick={(e) => handleClosePR(pr, e)}
+                      disabled={isClosing}
+                      title="Close this edit request"
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isClosing ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+
+                  {/* External link button */}
+                  <a
+                    href={pr.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View on GitHub"
+                    className="p-1 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-400 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
               </div>
-            </a>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

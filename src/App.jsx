@@ -14,6 +14,13 @@ function App() {
     restoreSession();
   }, [restoreSession]);
 
+  // Set document title from config
+  useEffect(() => {
+    if (config?.wiki?.title) {
+      document.title = config.wiki.title;
+    }
+  }, [config]);
+
   // Loading state
   if (loading) {
     return (
