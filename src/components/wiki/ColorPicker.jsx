@@ -26,13 +26,52 @@ const ColorPicker = ({ isOpen, onClose, onSelect, anchorEl }) => {
     console.log('[ColorPicker] useEffect triggered', { isOpen, hasAnchorEl: !!anchorEl });
     if (isOpen && anchorEl) {
       const rect = anchorEl.getBoundingClientRect();
-      // For fixed positioning, use viewport coordinates directly (no scrollY/scrollX)
-      const newPosition = {
-        top: rect.bottom + 8, // 8px gap below button
-        left: rect.left,
-      };
+      const pickerWidth = 280; // min-w-[280px]
+      const pickerHeight = 400; // Approximate height
+      const gap = 8;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const padding = 16; // Minimum padding from viewport edges
+
+      let top = rect.bottom + gap;
+      let left = rect.left;
+
+      // Check if picker would overflow right edge
+      if (left + pickerWidth + padding > viewportWidth) {
+        // Try aligning to right edge of anchor
+        left = rect.right - pickerWidth;
+
+        // If still overflowing, align to right edge of viewport
+        if (left < padding) {
+          left = viewportWidth - pickerWidth - padding;
+        }
+      }
+
+      // Ensure minimum padding from left edge
+      if (left < padding) {
+        left = padding;
+      }
+
+      // Check if picker would overflow bottom edge
+      if (top + pickerHeight + padding > viewportHeight) {
+        // Position above anchor instead
+        top = rect.top - pickerHeight - gap;
+
+        // If still overflowing top, align to bottom of viewport
+        if (top < padding) {
+          top = viewportHeight - pickerHeight - padding;
+        }
+      }
+
+      // Ensure minimum padding from top edge
+      if (top < padding) {
+        top = padding;
+      }
+
+      const newPosition = { top, left };
       console.log('[ColorPicker] Positioning:');
       console.log('  - rect:', rect);
+      console.log('  - viewport:', { width: viewportWidth, height: viewportHeight });
       console.log('  - newPosition:', newPosition);
       setPosition(newPosition);
       setIsReady(true);
