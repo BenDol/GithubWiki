@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
 /**
  * ImagePicker - Modal for browsing and selecting images from the image database
@@ -422,26 +422,51 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                   <label className="block text-[10px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1.5">
                     Align
                   </label>
-                  <div className="flex gap-1">
-                    {[
-                      { value: 'none', icon: '○', title: 'None' },
-                      { value: 'left', icon: '⬅', title: 'Left' },
-                      { value: 'center', icon: '↔', title: 'Center' },
-                      { value: 'right', icon: '➡', title: 'Right' }
-                    ].map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => setAlignment(option.value)}
-                        title={option.title}
-                        className={`flex-1 px-2.5 py-1 text-sm rounded transition-all ${
-                          alignment === option.value
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                        }`}
-                      >
-                        {option.icon}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-4 gap-1">
+                    <button
+                      onClick={() => setAlignment('none')}
+                      title="No Alignment"
+                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
+                        alignment === 'none'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('left')}
+                      title="Align Left"
+                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
+                        alignment === 'left'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('center')}
+                      title="Align Center"
+                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
+                        alignment === 'center'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignCenter className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('right')}
+                      title="Align Right"
+                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
+                        alignment === 'right'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 

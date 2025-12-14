@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
 // Dynamically import imageService from parent project
 let imageService = null;
@@ -290,25 +290,50 @@ const EquipmentPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) =>
                     Align:
                   </label>
                   <div className="flex gap-1">
-                    {[
-                      { value: 'none', icon: '○', title: 'None' },
-                      { value: 'left', icon: '⬅', title: 'Left' },
-                      { value: 'center', icon: '↔', title: 'Center' },
-                      { value: 'right', icon: '➡', title: 'Right' }
-                    ].map(option => (
-                      <button
-                        key={option.value}
-                        onClick={() => setAlignment(option.value)}
-                        title={option.title}
-                        className={`px-2.5 py-1 text-sm rounded transition-all ${
-                          alignment === option.value
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                        }`}
-                      >
-                        {option.icon}
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => setAlignment('none')}
+                      title="No Alignment"
+                      className={`px-2.5 py-1 rounded transition-all flex items-center justify-center ${
+                        alignment === 'none'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('left')}
+                      title="Align Left"
+                      className={`px-2.5 py-1 rounded transition-all flex items-center justify-center ${
+                        alignment === 'left'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('center')}
+                      title="Align Center"
+                      className={`px-2.5 py-1 rounded transition-all flex items-center justify-center ${
+                        alignment === 'center'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignCenter className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setAlignment('right')}
+                      title="Align Right"
+                      className={`px-2.5 py-1 rounded transition-all flex items-center justify-center ${
+                        alignment === 'right'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               </div>

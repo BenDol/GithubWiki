@@ -47,6 +47,7 @@ const PageEditor = ({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [boldActive, setBoldActive] = useState(false);
   const [italicActive, setItalicActive] = useState(false);
+  const [savedSelection, setSavedSelection] = useState(null);
 
   // Debug: Track showColorPicker state changes
   useEffect(() => {
@@ -603,11 +604,13 @@ const PageEditor = ({
 
   // Handle spell selection from picker
   const handleSpellSelect = ({ spell, mode, alignment }) => {
+    if (!editorApiRef.current) return;
+
     // Insert spell syntax into content
     // Format: <!-- spell:Fire Slash:detailed --> or <!-- spell:1:compact -->
-    let spellSyntax = `\n\n<!-- spell:${spell.name}:${mode} -->\n\n`;
+    let spellSyntax = `<!-- spell:${spell.name}:${mode} -->`;
 
-    // Apply alignment wrapper if needed (wrap after adding spacing)
+    // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
       let style;
       if (alignment === 'center') {
@@ -617,28 +620,22 @@ const PageEditor = ({
       } else if (alignment === 'right') {
         style = 'display: flex; justify-content: flex-end;';
       }
-      spellSyntax = `\n\n<div style="${style}">${spellSyntax}</div>\n\n`;
+      spellSyntax = `<div style="${style}">\n\n${spellSyntax}\n\n</div>`;
     }
 
-    try {
-      const parsed = matter(content);
-      const newContent = parsed.content + spellSyntax;
-      const updatedContent = matter.stringify(newContent, metadata);
-      setContent(updatedContent);
-    } catch (err) {
-      console.error('Failed to insert spell:', err);
-      // Fallback: just append to content
-      setContent(content + spellSyntax);
-    }
+    // Insert at cursor position
+    editorApiRef.current.insertAtCursor(`\n\n${spellSyntax}\n\n`);
   };
 
   // Handle equipment selection from picker
   const handleEquipmentSelect = ({ equipment, mode, alignment }) => {
+    if (!editorApiRef.current) return;
+
     // Insert equipment syntax into content
     // Format: <!-- equipment:Innocence:detailed --> or <!-- equipment:1:compact -->
-    let equipmentSyntax = `\n\n<!-- equipment:${equipment.name}:${mode} -->\n\n`;
+    let equipmentSyntax = `<!-- equipment:${equipment.name}:${mode} -->`;
 
-    // Apply alignment wrapper if needed (wrap after adding spacing)
+    // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
       let style;
       if (alignment === 'center') {
@@ -648,47 +645,69 @@ const PageEditor = ({
       } else if (alignment === 'right') {
         style = 'display: flex; justify-content: flex-end;';
       }
-      equipmentSyntax = `\n\n<div style="${style}">${equipmentSyntax}</div>\n\n`;
+      equipmentSyntax = `<div style="${style}">\n\n${equipmentSyntax}\n\n</div>`;
     }
 
-    try {
-      const parsed = matter(content);
-      const newContent = parsed.content + equipmentSyntax;
-      const updatedContent = matter.stringify(newContent, metadata);
-      setContent(updatedContent);
-    } catch (err) {
-      console.error('Failed to insert equipment:', err);
-      // Fallback: just append to content
-      setContent(content + equipmentSyntax);
-    }
+    // Insert at cursor position
+    editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}\n\n`);
   };
 
   // Handle image selection from picker
   const handleImageSelect = (markdownSyntax, image) => {
+    if (!editorApiRef.current) return;
+
     // Insert image markdown into content
     // Format: ![alt text](path)
-    const imageSyntax = `\n\n${markdownSyntax}\n\n`;
-
-    try {
-      const parsed = matter(content);
-      const newContent = parsed.content + imageSyntax;
-      const updatedContent = matter.stringify(newContent, metadata);
-      setContent(updatedContent);
-    } catch (err) {
-      console.error('Failed to insert image:', err);
-      // Fallback: just append to content
-      setContent(content + imageSyntax);
-    }
+    // Insert at cursor position
+    editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}\n\n`);
   };
 
   // Handle markdown formatting actions
-  const handleFormat = (action) => {
+  const handleFormat = (action, param) => {
     if (!editorApiRef.current) return;
 
     const api = editorApiRef.current;
     const selection = api.getSelection();
 
     switch (action) {
+      case 'align':
+        // Handle alignment
+        if (param && param !== 'none') {
+          let style;
+          if (param === 'center') {
+            style = 'text-align: center;';
+          } else if (param === 'left') {
+            style = 'text-align: left;';
+          } else if (param === 'right') {
+            style = 'text-align: right;';
+          }
+
+          if (selection.empty) {
+            // Insert alignment wrapper at cursor
+            api.insertAtCursor(`\n\n<div style="${style}">\nYour content here\n</div>\n\n`);
+          } else {
+            // Check if selection contains card syntax (<!-- spell: or <!-- equipment:)
+            const isCard = /<!--\s*(spell|equipment):/.test(selection.text);
+
+            if (isCard) {
+              // Use flexbox for cards
+              let flexStyle;
+              if (param === 'center') {
+                flexStyle = 'display: flex; justify-content: center;';
+              } else if (param === 'left') {
+                flexStyle = 'display: flex; justify-content: flex-start;';
+              } else if (param === 'right') {
+                flexStyle = 'display: flex; justify-content: flex-end;';
+              }
+              api.replaceSelection(`\n\n<div style="${flexStyle}">\n\n${selection.text}\n\n</div>\n\n`);
+            } else {
+              // Use text-align for text content
+              api.replaceSelection(`\n\n<div style="${style}">\n${selection.text}\n</div>\n\n`);
+            }
+          }
+        }
+        break;
+
       case 'bold':
         if (selection.empty) {
           // Toggle mode
@@ -805,6 +824,14 @@ const PageEditor = ({
     console.log('[PageEditor] Opening color picker');
     console.log('  - colorButtonRef.current:', colorButtonRef.current);
     console.log('  - showColorPicker before:', showColorPicker);
+
+    // Save current selection before opening picker (selection may be lost when picker opens)
+    if (editorApiRef.current) {
+      const selection = editorApiRef.current.getSelection();
+      console.log('  - Saving selection:', selection);
+      setSavedSelection(selection);
+    }
+
     setShowColorPicker(true);
   };
 
@@ -813,19 +840,36 @@ const PageEditor = ({
     if (!editorApiRef.current) return;
 
     const api = editorApiRef.current;
-    const selection = api.getSelection();
+
+    // Use saved selection instead of current selection (which may be empty)
+    const selection = savedSelection || api.getSelection();
+    console.log('[PageEditor] Applying color with selection:', selection);
 
     if (color === null) {
       // Clear color - just insert plain text
-      if (!selection.empty) {
-        api.replaceSelection(selection.text);
+      if (!selection.empty && selection.text) {
+        // Use saved positions if available, otherwise current selection
+        if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
+          api.replaceRange(savedSelection.from, savedSelection.to, selection.text);
+        } else {
+          api.replaceSelection(selection.text);
+        }
       }
     } else {
       // Apply color using span with Tailwind class
       const text = selection.empty ? 'colored text' : selection.text;
       const coloredText = `<span class="${color.class}">${text}</span>`;
-      api.replaceSelection(coloredText);
+
+      // If we have a saved selection with positions, use direct replacement at those positions
+      if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
+        api.replaceRange(savedSelection.from, savedSelection.to, coloredText);
+      } else {
+        api.replaceSelection(coloredText);
+      }
     }
+
+    // Clear saved selection after use
+    setSavedSelection(null);
   };
 
   return (
@@ -1244,7 +1288,7 @@ const PageEditor = ({
                 onClick={() => setShowFrontmatter(!showFrontmatter)}
                 className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
               >
-                {showFrontmatter ? '📄 Hide Frontmatter' : '📄 Show Frontmatter'}
+                {showFrontmatter ? 'Hide Frontmatter' : 'Show Frontmatter'}
               </button>
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 Markdown supported

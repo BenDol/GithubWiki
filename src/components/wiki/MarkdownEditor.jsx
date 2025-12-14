@@ -23,7 +23,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       editorApi.current = {
         getSelection: () => {
           const view = viewRef.current;
-          if (!view) return { text: '', from: 0, to: 0 };
+          if (!view) return { text: '', from: 0, to: 0, empty: true };
           const selection = view.state.selection.main;
           const selectedText = view.state.doc.sliceString(selection.from, selection.to);
           return {
@@ -40,6 +40,14 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           view.dispatch({
             changes: { from: selection.from, to: selection.to, insert: text },
             selection: { anchor: selection.from + text.length }
+          });
+        },
+        replaceRange: (from, to, text) => {
+          const view = viewRef.current;
+          if (!view) return;
+          view.dispatch({
+            changes: { from, to, insert: text },
+            selection: { anchor: from + text.length }
           });
         },
         insertAtCursor: (text) => {
