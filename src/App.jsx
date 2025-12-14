@@ -21,6 +21,72 @@ function App() {
     }
   }, [config]);
 
+  // Set favicon from config
+  useEffect(() => {
+    if (config?.wiki?.favicon) {
+      // Find existing favicon link element
+      let faviconLink = document.querySelector("link[rel*='icon']");
+
+      // If no favicon link exists, create one
+      if (!faviconLink) {
+        faviconLink = document.createElement('link');
+        faviconLink.rel = 'icon';
+        document.head.appendChild(faviconLink);
+      }
+
+      // Update href to configured favicon path
+      faviconLink.href = config.wiki.favicon;
+
+      // Set type based on file extension
+      const ext = config.wiki.favicon.split('.').pop().toLowerCase();
+      if (ext === 'svg') {
+        faviconLink.type = 'image/svg+xml';
+      } else if (ext === 'png') {
+        faviconLink.type = 'image/png';
+      } else if (ext === 'ico') {
+        faviconLink.type = 'image/x-icon';
+      } else if (ext === 'jpg' || ext === 'jpeg') {
+        faviconLink.type = 'image/jpeg';
+      }
+    }
+  }, [config]);
+
+  // Set web app manifest from config
+  useEffect(() => {
+    if (config?.wiki?.manifest) {
+      // Find existing manifest link element
+      let manifestLink = document.querySelector("link[rel='manifest']");
+
+      // If no manifest link exists, create one
+      if (!manifestLink) {
+        manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        document.head.appendChild(manifestLink);
+      }
+
+      // Update href to configured manifest path
+      manifestLink.href = config.wiki.manifest;
+    }
+  }, [config]);
+
+  // Set theme color from config
+  useEffect(() => {
+    if (config?.wiki?.themeColor) {
+      // Find existing theme-color meta tag
+      let themeColorMeta = document.querySelector("meta[name='theme-color']");
+
+      // If no theme-color meta exists, create one
+      if (!themeColorMeta) {
+        themeColorMeta = document.createElement('meta');
+        themeColorMeta.name = 'theme-color';
+        document.head.appendChild(themeColorMeta);
+      }
+
+      // Update content to configured theme color
+      themeColorMeta.content = config.wiki.themeColor;
+    }
+  }, [config]);
+
   // Loading state
   if (loading) {
     return (
