@@ -829,7 +829,21 @@ const PageEditor = ({
     if (editorApiRef.current) {
       const selection = editorApiRef.current.getSelection();
       console.log('  - Saving selection:', selection);
-      setSavedSelection(selection);
+      console.log('  - Selection details:', {
+        text: selection.text,
+        from: selection.from,
+        to: selection.to,
+        empty: selection.empty,
+        length: selection.text?.length
+      });
+
+      // Create a deep copy of the selection to ensure it persists
+      setSavedSelection({
+        text: selection.text,
+        from: selection.from,
+        to: selection.to,
+        empty: selection.empty
+      });
     }
 
     setShowColorPicker(true);
@@ -837,38 +851,100 @@ const PageEditor = ({
 
   // Handle color selection
   const handleColorSelect = (color) => {
-    if (!editorApiRef.current) return;
+    console.log('[PageEditor] handleColorSelect called');
+    console.log('  - color:', color);
+    console.log('  - editorApiRef.current exists:', !!editorApiRef.current);
+
+    if (!editorApiRef.current) {
+      console.error('[PageEditor] Editor API not available!');
+      return;
+    }
 
     const api = editorApiRef.current;
+    console.log('  - API methods available:', {
+      replaceRange: typeof api.replaceRange,
+      replaceSelection: typeof api.replaceSelection,
+      getSelection: typeof api.getSelection
+    });
 
     // Use saved selection instead of current selection (which may be empty)
     const selection = savedSelection || api.getSelection();
-    console.log('[PageEditor] Applying color with selection:', selection);
+    console.log('[PageEditor] Selection to use:', {
+      source: savedSelection ? 'saved' : 'current',
+      text: selection.text,
+      from: selection.from,
+      to: selection.to,
+      empty: selection.empty
+    });
 
     if (color === null) {
       // Clear color - just insert plain text
       if (!selection.empty && selection.text) {
+        console.log('[PageEditor] Clearing color, inserting plain text:', selection.text);
         // Use saved positions if available, otherwise current selection
         if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
-          api.replaceRange(savedSelection.from, savedSelection.to, selection.text);
+          console.log('[PageEditor] Using replaceRange with saved positions');
+          try {
+            api.replaceRange(savedSelection.from, savedSelection.to, selection.text);
+            console.log('[PageEditor] replaceRange succeeded');
+          } catch (error) {
+            console.error('[PageEditor] replaceRange failed:', error);
+          }
         } else {
-          api.replaceSelection(selection.text);
+          console.log('[PageEditor] Using replaceSelection');
+          try {
+            api.replaceSelection(selection.text);
+            console.log('[PageEditor] replaceSelection succeeded');
+          } catch (error) {
+            console.error('[PageEditor] replaceSelection failed:', error);
+          }
         }
+      } else {
+        console.warn('[PageEditor] No text to clear color from');
       }
     } else {
       // Apply color using span with Tailwind class
       const text = selection.empty ? 'colored text' : selection.text;
       const coloredText = `<span class="${color.class}">${text}</span>`;
+      console.log('[PageEditor] Applying color:', {
+        originalText: text,
+        coloredText: coloredText,
+        colorClass: color.class
+      });
 
       // If we have a saved selection with positions, use direct replacement at those positions
       if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
-        api.replaceRange(savedSelection.from, savedSelection.to, coloredText);
+        console.log('[PageEditor] Using replaceRange with positions:', {
+          from: savedSelection.from,
+          to: savedSelection.to
+        });
+        try {
+          api.replaceRange(savedSelection.from, savedSelection.to, coloredText);
+          console.log('[PageEditor] Color applied successfully via replaceRange');
+        } catch (error) {
+          console.error('[PageEditor] replaceRange failed:', error);
+          // Fallback to replaceSelection
+          console.log('[PageEditor] Falling back to replaceSelection');
+          try {
+            api.replaceSelection(coloredText);
+            console.log('[PageEditor] Color applied successfully via replaceSelection fallback');
+          } catch (error2) {
+            console.error('[PageEditor] replaceSelection fallback also failed:', error2);
+          }
+        }
       } else {
-        api.replaceSelection(coloredText);
+        console.log('[PageEditor] Using replaceSelection (no saved positions)');
+        try {
+          api.replaceSelection(coloredText);
+          console.log('[PageEditor] Color applied successfully via replaceSelection');
+        } catch (error) {
+          console.error('[PageEditor] replaceSelection failed:', error);
+        }
       }
     }
 
     // Clear saved selection after use
+    console.log('[PageEditor] Clearing saved selection');
     setSavedSelection(null);
   };
 
