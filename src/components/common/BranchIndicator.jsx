@@ -44,7 +44,7 @@ const BranchIndicator = () => {
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 ${style.bg} ${style.border} ${style.text} border-2 rounded-lg px-3 py-2 shadow-lg backdrop-blur-sm`}
+      className={`hidden md:block fixed bottom-4 right-4 z-50 ${style.bg} ${style.border} ${style.text} border-2 rounded-lg px-3 py-2 shadow-lg backdrop-blur-sm`}
       title={`Current git branch: ${branch}`}
     >
       <div className="flex items-center gap-2">

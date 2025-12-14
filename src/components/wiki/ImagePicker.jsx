@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
 /**
@@ -26,8 +27,19 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
   const [scalePercentage, setScalePercentage] = useState(100);
   const [alignment, setAlignment] = useState('none');
+  const [isMobile, setIsMobile] = useState(false);
   const imagesPerPage = 24;
   const isScalingRef = useRef(false);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Load image index
   useEffect(() => {
@@ -219,8 +231,8 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  const modal = (
+    <div className={`fixed inset-0 ${isMobile ? 'z-[9999]' : 'z-50'} flex ${isMobile ? 'items-start' : 'items-center justify-center p-4'} ${isMobile ? 'p-0' : ''}`}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black bg-opacity-50"
@@ -228,7 +240,11 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] border border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className={`relative bg-white dark:bg-gray-800 shadow-2xl w-full border border-gray-200 dark:border-gray-700 flex flex-col ${
+        isMobile
+          ? 'h-full'
+          : 'rounded-lg max-w-6xl max-h-[90vh]'
+      }`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-3">
@@ -564,6 +580,8 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 };
 
 export default ImagePicker;

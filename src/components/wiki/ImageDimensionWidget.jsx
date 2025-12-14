@@ -17,7 +17,18 @@ const ImageDimensionWidget = ({
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const widgetRef = useRef(null);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Initialize dimensions when widget becomes visible
   useEffect(() => {
@@ -83,17 +94,37 @@ const ImageDimensionWidget = ({
   if (!visible) return null;
 
   return (
-    <div
-      ref={widgetRef}
-      className="fixed bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-lg p-2"
-      style={{
-        top: `${position.top - 90}px`, // Position above line end
-        left: `${position.left - 200}px`, // Offset to left so it doesn't go offscreen
-        width: '200px',
-        zIndex: 9999,
-      }}
-      onMouseDown={(e) => e.stopPropagation()} // Prevent editor losing focus
-    >
+    <div className={`fixed inset-0 ${isMobile ? 'z-[9999]' : 'z-[9999]'} pointer-events-none`}>
+      {/* Mobile Backdrop */}
+      {isMobile && (
+        <div
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Widget */}
+      <div
+        ref={widgetRef}
+        className={`fixed bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded shadow-lg pointer-events-auto ${
+          isMobile ? 'p-4' : 'p-2'
+        }`}
+        style={
+          isMobile
+            ? {
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '280px',
+              }
+            : {
+                top: `${position.top - 90}px`,
+                left: `${position.left - 200}px`,
+                width: '200px',
+              }
+        }
+        onMouseDown={(e) => e.stopPropagation()} // Prevent editor losing focus
+      >
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
@@ -116,23 +147,23 @@ const ImageDimensionWidget = ({
       </div>
 
       {/* Dimension Inputs */}
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <label className="text-xs text-gray-600 dark:text-gray-400">W</label>
+      <div className={`flex items-center gap-1.5 ${isMobile ? 'mb-3' : 'mb-1.5'}`}>
+        <label className={`${isMobile ? 'text-sm' : 'text-xs'} text-gray-600 dark:text-gray-400`}>W</label>
         <input
           type="number"
           value={width}
           onChange={(e) => handleWidthChange(e.target.value)}
           placeholder="Auto"
-          className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`${isMobile ? 'w-20 px-2 py-1.5 text-sm' : 'w-14 px-1.5 py-0.5 text-xs'} border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
         />
-        <span className="text-xs text-gray-400">×</span>
-        <label className="text-xs text-gray-600 dark:text-gray-400">H</label>
+        <span className={`${isMobile ? 'text-sm' : 'text-xs'} text-gray-400`}>×</span>
+        <label className={`${isMobile ? 'text-sm' : 'text-xs'} text-gray-600 dark:text-gray-400`}>H</label>
         <input
           type="number"
           value={height}
           onChange={(e) => handleHeightChange(e.target.value)}
           placeholder="Auto"
-          className="w-14 px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          className={`${isMobile ? 'w-20 px-2 py-1.5 text-sm' : 'w-14 px-1.5 py-0.5 text-xs'} border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white`}
         />
         <button
           onClick={() => setMaintainAspectRatio(!maintainAspectRatio)}
@@ -154,21 +185,22 @@ const ImageDimensionWidget = ({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-1">
+      <div className="flex gap-2">
         <button
           onClick={handleApply}
-          className="flex-1 px-2 py-0.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded transition-colors"
+          className={`flex-1 ${isMobile ? 'px-4 py-2 text-sm' : 'px-2 py-0.5 text-xs'} font-medium text-white bg-blue-500 hover:bg-blue-600 rounded transition-colors`}
         >
           Apply
         </button>
         <button
           onClick={handleRemove}
-          className="px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded transition-colors"
+          className={`${isMobile ? 'px-4 py-2 text-sm' : 'px-2 py-0.5 text-xs'} font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded transition-colors`}
           title="Remove dimensions"
         >
           ↺
         </button>
       </div>
+    </div>
     </div>
   );
 };

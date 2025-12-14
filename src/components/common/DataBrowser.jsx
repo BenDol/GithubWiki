@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Copy, CheckCircle, ChevronRight, ChevronDown, Database, File, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Search, Copy, CheckCircle, ChevronRight, ChevronDown, Database, File, ChevronsDown, ChevronsUp, Menu, X } from 'lucide-react';
 
 /**
  * DataBrowser - Browse and explore JSON data files
@@ -10,6 +10,7 @@ import { Search, Copy, CheckCircle, ChevronRight, ChevronDown, Database, File, C
  * - Search/filter within data
  * - Copy to clipboard functionality
  * - Virtual scrolling for large datasets
+ * - Mobile-responsive with collapsible sidebar
  */
 const DataBrowser = ({ dataFiles = [] }) => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -19,6 +20,18 @@ const DataBrowser = ({ dataFiles = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedPath, setCopiedPath] = useState(null);
   const [expandedPaths, setExpandedPaths] = useState(new Set());
+  const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Load selected data file
   const loadDataFile = async (filePath) => {
@@ -45,6 +58,10 @@ const DataBrowser = ({ dataFiles = [] }) => {
   const handleFileSelect = (file) => {
     setSelectedFile(file);
     loadDataFile(file.path);
+    // Close sidebar on mobile after selection
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
   };
 
   // Toggle path expansion
@@ -333,13 +350,38 @@ const DataBrowser = ({ dataFiles = [] }) => {
     : fileData;
 
   return (
-    <div className="flex h-full">
-      {/* File List */}
-      <div className="w-64 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+    <div className="flex h-full relative">
+      {/* Mobile Sidebar Backdrop */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* File List Sidebar */}
+      <div className={`
+        ${isMobile
+          ? `fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+          : 'w-64 border-r'
+        }
+        border-gray-200 dark:border-gray-700 flex flex-col bg-white dark:bg-gray-800
+      `}>
         <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-2">
-            <Database className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data Files</h3>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-blue-600" />
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Data Files</h3>
+            </div>
+            {/* Mobile Close Button */}
+            {isMobile && (
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+              </button>
+            )}
           </div>
           <p className="text-xs text-gray-600 dark:text-gray-400">
             {dataFiles.length} files available
@@ -373,6 +415,19 @@ const DataBrowser = ({ dataFiles = [] }) => {
 
       {/* Data Viewer */}
       <div className="flex-1 flex flex-col">
+        {/* Mobile Menu Button */}
+        {isMobile && (
+          <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <Menu className="w-4 h-4" />
+              <span>Browse Files</span>
+            </button>
+          </div>
+        )}
+
         {!selectedFile ? (
           <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
             <div className="text-center">

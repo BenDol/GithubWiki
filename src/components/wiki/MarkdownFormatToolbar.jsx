@@ -13,8 +13,10 @@ import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote,
 const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage, onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false }) => {
   const internalColorButtonRef = useRef(null);
   const alignButtonRef = useRef(null);
+  const alignDropdownRef = useRef(null);
   const [showAlignmentPicker, setShowAlignmentPicker] = useState(false);
   const [backdropReady, setBackdropReady] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
 
   const formatButtons = [
     { icon: Bold, label: 'Bold', action: 'bold', shortcut: 'Ctrl+B', active: boldActive },
@@ -42,6 +44,42 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
       onColorPicker?.();
     } else if (special && action === 'align') {
       const newState = !showAlignmentPicker;
+
+      if (newState && alignButtonRef.current) {
+        // Calculate position to keep dropdown in viewport
+        const buttonRect = alignButtonRef.current.getBoundingClientRect();
+        const dropdownWidth = 160; // Approximate dropdown width
+        const dropdownHeight = 180; // Approximate dropdown height
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const padding = 8;
+
+        let top = buttonRect.bottom + 4;
+        let left = buttonRect.left;
+
+        // Adjust if going off right edge
+        if (left + dropdownWidth > viewportWidth - padding) {
+          left = viewportWidth - dropdownWidth - padding;
+        }
+
+        // Adjust if going off left edge
+        if (left < padding) {
+          left = padding;
+        }
+
+        // Adjust if going off bottom - show above button instead
+        if (top + dropdownHeight > viewportHeight - padding) {
+          top = buttonRect.top - dropdownHeight - 4;
+        }
+
+        // Ensure it doesn't go above viewport
+        if (top < padding) {
+          top = padding;
+        }
+
+        setDropdownPosition({ top, left });
+      }
+
       setShowAlignmentPicker(newState);
       if (newState) {
         // Delay backdrop to prevent immediate closure
@@ -113,13 +151,15 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
         <>
           {/* Alignment options - MUST render before backdrop */}
           <div
+            ref={alignDropdownRef}
             className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl p-2"
             style={{
               position: 'fixed',
-              top: alignButtonRef.current ? alignButtonRef.current.getBoundingClientRect().bottom + 4 : '100px',
-              left: alignButtonRef.current ? alignButtonRef.current.getBoundingClientRect().left : '12px',
+              top: `${dropdownPosition.top}px`,
+              left: `${dropdownPosition.left}px`,
               zIndex: 9999,
-              pointerEvents: 'auto'
+              pointerEvents: 'auto',
+              maxWidth: 'calc(100vw - 16px)' // Ensure it never exceeds viewport width
             }}
           >
             <div className="flex flex-col gap-1 min-w-[140px]">

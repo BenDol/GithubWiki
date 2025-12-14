@@ -15,6 +15,17 @@ const ColorPicker = ({ isOpen, onClose, onSelect, anchorEl }) => {
   const pickerRef = useRef(null);
   const [position, setPosition] = useState(null); // Start as null to indicate not ready
   const [isReady, setIsReady] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Debug: Track isOpen changes
   useEffect(() => {
@@ -142,19 +153,40 @@ const ColorPicker = ({ isOpen, onClose, onSelect, anchorEl }) => {
     onClose?.();
   };
 
-  // Don't render until we have position calculated
-  if (!isOpen || !isReady || !position) return null;
+  // Don't render until we have position calculated (desktop) or component is ready (mobile)
+  if (!isOpen || (!isMobile && (!isReady || !position))) return null;
 
   const picker = (
-    <div
-      ref={pickerRef}
-      className="fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl p-3 min-w-[280px]"
-      style={{
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-        zIndex: 9999,
-      }}
-    >
+    <>
+      {/* Mobile Backdrop */}
+      {isMobile && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998]"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Picker */}
+      <div
+        ref={pickerRef}
+        className={`fixed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl ${
+          isMobile ? 'p-4 w-[320px]' : 'p-3 min-w-[280px]'
+        }`}
+        style={
+          isMobile
+            ? {
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 9999,
+              }
+            : {
+                top: `${position.top}px`,
+                left: `${position.left}px`,
+                zIndex: 9999,
+              }
+        }
+      >
       {/* Header */}
       <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
@@ -172,7 +204,7 @@ const ColorPicker = ({ isOpen, onClose, onSelect, anchorEl }) => {
       </div>
 
       {/* Color Grid */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
+      <div className={`grid grid-cols-3 ${isMobile ? 'gap-3 mb-4' : 'gap-2 mb-3'}`}>
         {colorPresets.map((color) => (
           <button
             key={color.name}
@@ -205,6 +237,7 @@ const ColorPicker = ({ isOpen, onClose, onSelect, anchorEl }) => {
         Clear Color
       </button>
     </div>
+    </>
   );
 
   // Render as portal to avoid clipping by parent overflow

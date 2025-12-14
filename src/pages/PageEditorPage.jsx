@@ -17,6 +17,7 @@ import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
 import { getContentProcessor, getCustomComponents, getSpellPreview, getEquipmentPreview } from '../utils/contentRendererRegistry';
+import { useInvalidatePrestige } from '../hooks/usePrestige';
 
 /**
  * PageEditorPage
@@ -29,6 +30,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const section = useSection(sectionId);
   const { isAuthenticated, user } = useAuthStore();
   const { branch: currentBranch, loading: branchLoading } = useBranchNamespace();
+  const invalidatePrestige = useInvalidatePrestige();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -425,6 +427,12 @@ Include any supplementary details, notes, or related information.
 
         console.log(`\n[PageEditor] ✓ Successfully committed to ${baseBranch}`);
 
+        // Invalidate prestige cache to reflect new contribution
+        if (user?.login) {
+          invalidatePrestige(user.login);
+          console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
+
         // Show success message without PR
         setSavingStatus('');
         setIsSaving(false);
@@ -550,6 +558,12 @@ Include any supplementary details, notes, or related information.
         pr = existingPR;
         setIsUpdatingExistingPR(true);
         console.log(`\n[PageEditor] ✓ Successfully added commit to existing PR #${existingPR.number}\n`);
+
+        // Invalidate prestige cache to reflect new contribution
+        if (user?.login) {
+          invalidatePrestige(user.login);
+          console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
       } else {
         // Create new branch and PR
         console.log(`\n${'='.repeat(60)}`);
@@ -611,6 +625,12 @@ Include any supplementary details, notes, or related information.
 
         console.log(`\n[PageEditor] ✓ Successfully created new PR #${pr.number}`);
         console.log(`[PageEditor] URL: ${pr.url}\n`);
+
+        // Invalidate prestige cache to reflect new contribution
+        if (user?.login) {
+          invalidatePrestige(user.login);
+          console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
       }
 
       // Set first contribution state and determine prestige tier
@@ -711,6 +731,12 @@ Include any supplementary details, notes, or related information.
         );
 
         console.log(`\n[PageEditor] ✓ Successfully deleted from ${baseBranch}`);
+
+        // Invalidate prestige cache to reflect new contribution
+        if (user?.login) {
+          invalidatePrestige(user.login);
+          console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
 
         // Show success and navigate back
         setSavingStatus('');
@@ -851,6 +877,12 @@ Include any supplementary details, notes, or related information.
 
       console.log(`\n[PageEditor] ✓ Successfully created deletion PR #${pr.number}`);
       console.log(`[PageEditor] URL: ${pr.url}\n`);
+
+      // Invalidate prestige cache to reflect new contribution
+      if (user?.login) {
+        invalidatePrestige(user.login);
+        console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+      }
 
       setSavingStatus('');
       setPrUrl(pr.url);

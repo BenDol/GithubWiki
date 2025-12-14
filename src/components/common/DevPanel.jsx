@@ -54,7 +54,7 @@ const DevPanel = () => {
     return (
       <button
         onClick={toggleDevPanel}
-        className="fixed bottom-4 left-4 z-50 px-3 py-2 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-700 transition-colors text-xl"
+        className="hidden md:block fixed bottom-4 left-4 z-50 px-3 py-2 bg-gray-800 text-white rounded-lg shadow-lg hover:bg-gray-700 transition-colors text-xl"
         title="Open Developer Panel (Ctrl+Shift+D)"
       >
         🛠️ {logs.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">{logs.length}</span>}
