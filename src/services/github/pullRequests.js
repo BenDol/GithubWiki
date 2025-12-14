@@ -223,32 +223,79 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
 
     console.log(`[PR Filter] Found ${userPRs.length} PRs by ${username}${baseBranch ? ` targeting ${baseBranch}` : ''}`);
 
-    // OPTIMIZATION: The pulls.list() endpoint already includes ALL the data we need!
-    // No need for individual .get() calls (which was causing N+1 problem)
-    // The list response includes: additions, deletions, changed_files, commits, etc.
-    const detailedPRs = userPRs.map(pr => ({
-      number: pr.number,
-      title: pr.title,
-      body: pr.body,
-      state: pr.state,
-      html_url: pr.html_url,
-      created_at: pr.created_at,
-      updated_at: pr.updated_at,
-      merged_at: pr.merged_at,
-      // These fields ARE included in pulls.list() response
-      additions: pr.additions || 0,
-      deletions: pr.deletions || 0,
-      changed_files: pr.changed_files || 0,
-      user: {
-        login: pr.user.login,
-        avatar_url: pr.user.avatar_url,
-      },
-      labels: pr.labels || [],
-    }));
+    // NOTE: pulls.list() does NOT include additions, deletions, and changed_files
+    // We need to fetch detailed PR data with pulls.get() for each PR
+    // OPTIMIZATION: Fetch all in parallel to avoid sequential N+1 bottleneck
+    console.log(`[PR Details] Fetching detailed data for ${userPRs.length} PRs in parallel...`);
+
+    const detailedPRs = await Promise.all(
+      userPRs.map(async (pr) => {
+        try {
+          // Fetch detailed PR data
+          const { data: detailedPR } = await octokit.rest.pulls.get({
+            owner,
+            repo,
+            pull_number: pr.number,
+          });
+
+          return {
+            number: detailedPR.number,
+            title: detailedPR.title,
+            body: detailedPR.body,
+            state: detailedPR.state,
+            html_url: detailedPR.html_url,
+            created_at: detailedPR.created_at,
+            updated_at: detailedPR.updated_at,
+            merged_at: detailedPR.merged_at,
+            // These fields are only in pulls.get() response
+            additions: detailedPR.additions || 0,
+            deletions: detailedPR.deletions || 0,
+            changed_files: detailedPR.changed_files || 0,
+            commits: detailedPR.commits || 0,
+            user: {
+              login: detailedPR.user.login,
+              avatar_url: detailedPR.user.avatar_url,
+            },
+            head: {
+              ref: detailedPR.head.ref,
+              sha: detailedPR.head.sha,
+            },
+            base: {
+              ref: detailedPR.base.ref,
+            },
+            labels: detailedPR.labels || [],
+          };
+        } catch (error) {
+          console.error(`[PR Details] Failed to fetch details for PR #${pr.number}:`, error);
+          // Return basic data from list if detailed fetch fails
+          return {
+            number: pr.number,
+            title: pr.title,
+            body: pr.body,
+            state: pr.state,
+            html_url: pr.html_url,
+            created_at: pr.created_at,
+            updated_at: pr.updated_at,
+            merged_at: pr.merged_at,
+            additions: 0,
+            deletions: 0,
+            changed_files: 0,
+            user: {
+              login: pr.user.login,
+              avatar_url: pr.user.avatar_url,
+            },
+            labels: pr.labels || [],
+          };
+        }
+      })
+    );
+
+    // Increment API call count for the additional .get() calls
+    store.incrementAPICall(userPRs.length);
 
     // Cache the results
     store.cachePR(cacheKey, detailedPRs);
-    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs for user: ${username}`);
+    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs with detailed stats for user: ${username}`);
 
     return detailedPRs;
   });

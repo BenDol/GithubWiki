@@ -95,7 +95,8 @@ const ContributorHighscorePage = () => {
 
       const data = await refreshHighscoreCache(
         config.wiki.repository.owner,
-        config.wiki.repository.repo
+        config.wiki.repository.repo,
+        config
       );
 
       setHighscoreData(data);

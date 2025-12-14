@@ -26,6 +26,16 @@ export const WIKI_LABELS = {
       description: 'Wiki edit or content contribution',
       color: '7057ff', // Purple
     },
+    {
+      name: 'wiki-comments',
+      description: 'Issue used for collecting page comments',
+      color: '0075ca', // Blue
+    },
+    {
+      name: 'wiki-edit',
+      description: 'Pull request for wiki content edits',
+      color: '7057ff', // Purple
+    },
   ],
 
   // Section labels (which section of wiki)
@@ -84,6 +94,11 @@ export const WIKI_LABELS = {
       name: 'section:tools',
       description: 'Tools section',
       color: 'f5d9c5', // Peach
+    },
+    {
+      name: 'section:meta',
+      description: 'Meta section (wiki information and guidelines)',
+      color: 'e0e0e0', // Light gray
     },
   ],
 
@@ -275,6 +290,7 @@ export const getAnonymousEditLabels = (sectionId, branch = null) => {
 export const getWikiCommentLabels = (sectionId, branch = null) => {
   const labels = [
     'wiki:comment',
+    'wiki-comments',
     getSectionLabel(sectionId),
     'automated',
   ];

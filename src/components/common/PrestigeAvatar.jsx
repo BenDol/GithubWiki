@@ -23,6 +23,7 @@ const PrestigeAvatar = ({
   username = null,
   className = '',
   showBadge = true,
+  badgeScale = 1.0,
 }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
@@ -79,7 +80,10 @@ const PrestigeAvatar = ({
       {prestigeTier && (
         <div
           className={`absolute -bottom-0.5 -right-0.5 ${badgeSizeClasses[size]} rounded-full flex items-center justify-center shadow-xl ring-2 ring-white dark:ring-gray-900 z-10`}
-          style={{ backgroundColor: prestigeTier.color }}
+          style={{
+            backgroundColor: prestigeTier.color,
+            transform: `scale(${badgeScale})`,
+          }}
           title={formatPrestigeTitle(prestigeTier)}
         >
           <span className="leading-none select-none">{prestigeTier.badge}</span>

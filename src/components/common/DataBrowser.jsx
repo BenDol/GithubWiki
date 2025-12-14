@@ -420,10 +420,10 @@ const DataBrowser = ({ dataFiles = [] }) => {
           <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               <Menu className="w-4 h-4" />
-              <span>Browse Files</span>
+              <span>Browse Files ({dataFiles.length})</span>
             </button>
           </div>
         )}
@@ -438,28 +438,28 @@ const DataBrowser = ({ dataFiles = [] }) => {
         ) : (
           <>
             {/* Header with search */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">
                     {selectedFile.name}
                   </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{selectedFile.path}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{selectedFile.path}</p>
                 </div>
                 {fileData && (
                   <button
                     onClick={() => copyToClipboard(fileData, 'root')}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                    className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
                   >
                     {copiedPath === 'root' ? (
                       <>
-                        <CheckCircle className="w-4 h-4" />
-                        Copied!
+                        <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline">Copied!</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-4 h-4" />
-                        Copy All
+                        <Copy className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden sm:inline">Copy All</span>
                       </>
                     )}
                   </button>
@@ -484,19 +484,21 @@ const DataBrowser = ({ dataFiles = [] }) => {
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={handleExpandAll}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors border border-gray-300 dark:border-gray-600"
+                      className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors border border-gray-300 dark:border-gray-600"
                       title="Expand all nodes"
                     >
-                      <ChevronsDown className="w-4 h-4" />
-                      <span>Expand All</span>
+                      <ChevronsDown className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline">Expand All</span>
+                      <span className="sm:hidden">Expand</span>
                     </button>
                     <button
                       onClick={handleCollapseAll}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors border border-gray-300 dark:border-gray-600"
+                      className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors border border-gray-300 dark:border-gray-600"
                       title="Collapse all nodes"
                     >
-                      <ChevronsUp className="w-4 h-4" />
-                      <span>Collapse All</span>
+                      <ChevronsUp className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline">Collapse All</span>
+                      <span className="sm:hidden">Collapse</span>
                     </button>
                   </div>
                 </>
@@ -504,25 +506,25 @@ const DataBrowser = ({ dataFiles = [] }) => {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-auto p-3 sm:p-4">
               {loading && (
-                <div className="text-center text-gray-500 dark:text-gray-400">Loading...</div>
+                <div className="text-center text-sm text-gray-500 dark:text-gray-400">Loading...</div>
               )}
 
               {error && (
-                <div className="text-center text-red-600 dark:text-red-400">
+                <div className="text-center text-sm text-red-600 dark:text-red-400">
                   Error: {error}
                 </div>
               )}
 
               {!loading && !error && filteredData && (
-                <div className="font-mono text-sm">
+                <div className="font-mono text-xs sm:text-sm">
                   {renderValue(filteredData, 'root')}
                 </div>
               )}
 
               {!loading && !error && searchQuery && !filteredData && (
-                <div className="text-center text-gray-500 dark:text-gray-400">
+                <div className="text-center text-sm text-gray-500 dark:text-gray-400">
                   No matches found
                 </div>
               )}

@@ -55,9 +55,11 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                 {/* Contributor Info */}
                 <div className="col-span-6 md:col-span-7 flex items-center space-x-2 sm:space-x-3">
                   <PrestigeAvatar
-                    user={contributor}
-                    size={window.innerWidth < 640 ? 36 : 48}
-                    showPrestigeBadge={true}
+                    src={contributor.avatarUrl}
+                    alt={contributor.login}
+                    username={contributor.login}
+                    size={window.innerWidth < 640 ? 'sm' : 'md'}
+                    showBadge={true}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-1 sm:space-x-2">

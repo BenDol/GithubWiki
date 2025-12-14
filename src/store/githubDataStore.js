@@ -379,11 +379,11 @@ export const useGitHubDataStore = create((set, get) => ({
 
   // ===== Metrics Methods =====
 
-  incrementAPICall: () => {
+  incrementAPICall: (count = 1) => {
     set(state => ({
       metrics: {
         ...state.metrics,
-        apiCalls: state.metrics.apiCalls + 1
+        apiCalls: state.metrics.apiCalls + count
       }
     }));
   },

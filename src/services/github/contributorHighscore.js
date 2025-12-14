@@ -66,9 +66,77 @@ function parseCacheData(issueBody) {
 }
 
 /**
+ * Fetch repository collaborators (users with contributor role)
+ */
+async function fetchRepositoryCollaborators(owner, repo) {
+  const octokit = getOctokit();
+
+  try {
+    console.log('[Highscore] Fetching repository collaborators...');
+    const { data: collaborators } = await octokit.rest.repos.listCollaborators({
+      owner,
+      repo,
+      per_page: 100,
+    });
+
+    const collaboratorLogins = collaborators.map(c => c.login);
+    console.log('[Highscore] Found collaborators:', collaboratorLogins);
+    return new Set(collaboratorLogins);
+  } catch (error) {
+    console.error('[Highscore] Failed to fetch collaborators:', error);
+    // Return empty set if we can't fetch collaborators (permission issue)
+    return new Set();
+  }
+}
+
+/**
+ * Apply filters to contributor list based on config
+ */
+async function applyContributorFilters(contributors, owner, repo, config = {}) {
+  let filteredContributors = [...contributors];
+
+  // Apply filters based on config
+  const ignoreOwner = config?.features?.contributorHighscore?.ignoreRepositoryOwner ?? false;
+  const ignoreMainContributors = config?.features?.contributorHighscore?.ignoreMainContributors ?? false;
+
+  // Track which users to exclude
+  const excludedUsers = new Set();
+
+  if (ignoreOwner) {
+    console.log('[Highscore] Filtering out repository owner:', owner);
+    excludedUsers.add(owner);
+  }
+
+  if (ignoreMainContributors) {
+    console.log('[Highscore] Filtering out main contributors (repository collaborators)');
+    // Fetch all collaborators (users with contributor role on the repo)
+    const collaborators = await fetchRepositoryCollaborators(owner, repo);
+
+    if (collaborators.size > 0) {
+      collaborators.forEach(login => excludedUsers.add(login));
+      console.log('[Highscore] Will filter out collaborators:', Array.from(collaborators));
+    } else {
+      console.log('[Highscore] No collaborators to filter (or permission denied)');
+    }
+  }
+
+  // Apply all filters at once
+  if (excludedUsers.size > 0) {
+    const beforeCount = filteredContributors.length;
+    filteredContributors = filteredContributors.filter(c => !excludedUsers.has(c.login));
+    console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} users:`, Array.from(excludedUsers));
+  }
+
+  // Sort by contributions (descending)
+  filteredContributors.sort((a, b) => b.contributions - a.contributions);
+
+  return filteredContributors;
+}
+
+/**
  * Fetch fresh contributor statistics from GitHub API
  */
-async function fetchFreshContributorStats(owner, repo) {
+async function fetchFreshContributorStats(owner, repo, config = {}) {
   const octokit = getOctokit();
 
   try {
@@ -88,11 +156,11 @@ async function fetchFreshContributorStats(owner, repo) {
       contributions: contributor.contributions,
       profileUrl: contributor.html_url,
       prestige: 0, // Will be calculated separately if needed
+      type: contributor.type, // 'User' or 'Bot'
     }));
 
-    // Sort by contributions (descending)
-    formattedContributors.sort((a, b) => b.contributions - a.contributions);
-
+    // Don't apply filters here - they'll be applied when data is returned
+    // This keeps cached data unfiltered so filters can be changed dynamically
     return formattedContributors;
   } catch (error) {
     console.error('[Highscore] Failed to fetch contributor stats:', error);
@@ -163,7 +231,13 @@ export async function getContributorHighscore(owner, repo, config) {
     if (isCacheValid(localData.lastUpdated, cacheMinutes)) {
       console.log('[Highscore] Using browser cache (age: ' +
         Math.round((new Date() - new Date(localData.lastUpdated)) / 1000 / 60) + ' minutes)');
-      return localData;
+
+      // Apply filters to cached data before returning
+      const filteredContributors = await applyContributorFilters(localData.contributors, owner, repo, config);
+      return {
+        ...localData,
+        contributors: filteredContributors
+      };
     }
     console.log('[Highscore] Browser cache expired');
   }
@@ -178,9 +252,16 @@ export async function getContributorHighscore(owner, repo, config) {
       console.log('[Highscore] Using GitHub cache (age: ' +
         Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60) + ' minutes)');
 
-      // Update browser cache
+      // Apply filters to cached data before returning
+      const filteredContributors = await applyContributorFilters(githubCacheData.contributors, owner, repo, config);
+      const filteredData = {
+        ...githubCacheData,
+        contributors: filteredContributors
+      };
+
+      // Update browser cache with unfiltered data (filters are applied at read time)
       localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
-      return githubCacheData;
+      return filteredData;
     }
 
     console.log('[Highscore] GitHub cache expired, fetching fresh data...');
@@ -189,7 +270,7 @@ export async function getContributorHighscore(owner, repo, config) {
   }
 
   // Step 3: Fetch fresh data
-  const freshContributors = await fetchFreshContributorStats(owner, repo);
+  const freshContributors = await fetchFreshContributorStats(owner, repo, config);
 
   // Try to update GitHub cache if we have access (requires write permissions)
   let freshData;
@@ -219,23 +300,28 @@ export async function getContributorHighscore(owner, repo, config) {
     };
   }
 
-  // Update browser cache
+  // Update browser cache with unfiltered data
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
 
-  return freshData;
+  // Apply filters before returning
+  const filteredContributors = await applyContributorFilters(freshData.contributors, owner, repo, config);
+  return {
+    ...freshData,
+    contributors: filteredContributors
+  };
 }
 
 /**
  * Force refresh the highscore cache
  */
-export async function refreshHighscoreCache(owner, repo) {
+export async function refreshHighscoreCache(owner, repo, config = {}) {
   console.log('[Highscore] Force refreshing cache...');
 
   // Clear browser cache
   localStorage.removeItem(HIGHSCORE_CACHE_KEY);
 
   // Fetch fresh data
-  const freshContributors = await fetchFreshContributorStats(owner, repo);
+  const freshContributors = await fetchFreshContributorStats(owner, repo, config);
 
   // Try to update GitHub cache if we have access (requires write permissions)
   let freshData;
@@ -268,10 +354,15 @@ export async function refreshHighscoreCache(owner, repo) {
     };
   }
 
-  // Update browser cache
+  // Update browser cache with unfiltered data
   localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
 
-  return freshData;
+  // Apply filters before returning
+  const filteredContributors = await applyContributorFilters(freshData.contributors, owner, repo, config);
+  return {
+    ...freshData,
+    contributors: filteredContributors
+  };
 }
 
 /**

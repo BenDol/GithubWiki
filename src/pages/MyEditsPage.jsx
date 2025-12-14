@@ -289,8 +289,8 @@ const MyEditsPage = () => {
               <PrestigeAvatar
                 src={user.avatar_url}
                 alt={user.name || user.login}
+                username={user.login}
                 size="2xl"
-                stats={stats}
                 showBadge={true}
               />
 
@@ -316,11 +316,24 @@ const MyEditsPage = () => {
                         {progressToNextTier.percentage}%
                       </span>
                     </div>
-                    <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="relative flex items-center gap-2">
+                      {/* Progress bar */}
+                      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
+                          style={{ width: `${progressToNextTier.percentage}%` }}
+                        />
+                      </div>
+                      {/* Next tier badge icon */}
                       <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-500"
-                        style={{ width: `${progressToNextTier.percentage}%` }}
-                      />
+                        className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full shadow-lg ring-2 ring-white dark:ring-gray-800"
+                        style={{ backgroundColor: progressToNextTier.nextTier.color }}
+                        title={`Next: ${progressToNextTier.nextTier.title}`}
+                      >
+                        <span className="text-lg leading-none select-none">
+                          {progressToNextTier.nextTier.badge}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                       {Math.ceil(progressToNextTier.required - progressToNextTier.current)} more contribution{Math.ceil(progressToNextTier.required - progressToNextTier.current) !== 1 ? 's' : ''} needed

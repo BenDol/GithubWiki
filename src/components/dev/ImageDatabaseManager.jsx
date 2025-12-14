@@ -573,21 +573,21 @@ const ImageDatabaseManager = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg">
         {/* Header */}
-        <div className="border-b border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Database className="w-8 h-8 text-blue-600" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Image Database Manager</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-400">Dev tool for managing image database and filesystem sync</p>
+        <div className="border-b border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+              <Database className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Image Database Manager</h1>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Dev tool for managing image database and filesystem sync</p>
               </div>
             </div>
             <button
               onClick={loadImageIndexes}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm sm:text-base flex-shrink-0 w-full sm:w-auto justify-center"
             >
               <RefreshCw className="w-4 h-4" />
               Reload
@@ -596,53 +596,55 @@ const ImageDatabaseManager = () => {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 p-6 bg-gray-50 dark:bg-gray-900">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Total Images</div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total.toLocaleString()}</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 md:gap-4 p-3 sm:p-4 md:p-6 bg-gray-50 dark:bg-gray-900">
+          <div className="bg-white dark:bg-gray-800 p-2 sm:p-3 md:p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total Images</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-white">{stats.total.toLocaleString()}</div>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Orphaned Entries</div>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">{stats.orphaned.toLocaleString()}</div>
+          <div className="bg-white dark:bg-gray-800 p-2 sm:p-3 md:p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Orphaned</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-red-600 dark:text-red-400">{stats.orphaned.toLocaleString()}</div>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Categories</div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.categories}</div>
+          <div className="bg-white dark:bg-gray-800 p-2 sm:p-3 md:p-4 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Categories</div>
+            <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-white">{stats.categories}</div>
           </div>
         </div>
 
         {/* Orphan Scanner */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-600" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Orphaned Images Scanner</h2>
+              <AlertTriangle className="w-5 h-5 text-orange-600 flex-shrink-0" />
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Orphaned Images Scanner</h2>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <button
                 onClick={scanForOrphans}
                 disabled={scanning}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 text-sm sm:text-base"
               >
                 {scanning ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Scanning...
+                    <span className="hidden sm:inline">Scanning...</span>
+                    <span className="sm:hidden">Scan...</span>
                   </>
                 ) : (
                   <>
                     <Search className="w-4 h-4" />
-                    Scan for Orphans
+                    <span>Scan for Orphans</span>
                   </>
                 )}
               </button>
               {orphanedImages.length > 0 && (
                 <button
                   onClick={removeOrphans}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm sm:text-base"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Remove {orphanedImages.length} Orphans
+                  <span className="hidden sm:inline">Remove {orphanedImages.length} Orphans</span>
+                  <span className="sm:hidden">Remove ({orphanedImages.length})</span>
                 </button>
               )}
             </div>
@@ -666,24 +668,24 @@ const ImageDatabaseManager = () => {
         </div>
 
         {/* Search */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Search className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Search Images</h2>
+        <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-3 sm:mb-4">
+            <Search className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Search Images</h2>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               placeholder="Search by filename, category, keywords, or path..."
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm sm:text-base"
             />
             <button
               onClick={handleSearch}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm sm:text-base whitespace-nowrap"
             >
               Search
             </button>
@@ -692,38 +694,38 @@ const ImageDatabaseManager = () => {
           {searchResults.length > 0 && (
             <>
               {/* Bulk Actions */}
-              <div className="flex items-center justify-between mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
-                    {selectedImages.size} of {searchResults.length} files selected
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                  <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                    {selectedImages.size} of {searchResults.length} selected
                   </span>
                   <button
                     onClick={selectAll}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                    className="text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                   >
                     Select All
                   </button>
                   <button
                     onClick={clearSelection}
-                    className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                   >
                     Clear
                   </button>
                 </div>
                 {selectedImages.size > 0 && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 w-full sm:w-auto">
                     <button
                       onClick={moveSelectedImages}
-                      className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      className="flex items-center justify-center gap-1 flex-1 sm:flex-initial px-3 py-1 bg-blue-600 text-white text-xs sm:text-sm rounded hover:bg-blue-700"
                     >
-                      <Move className="w-4 h-4" />
+                      <Move className="w-3 h-3 sm:w-4 sm:h-4" />
                       Move
                     </button>
                     <button
                       onClick={deleteSelectedImages}
-                      className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                      className="flex items-center justify-center gap-1 flex-1 sm:flex-initial px-3 py-1 bg-red-600 text-white text-xs sm:text-sm rounded hover:bg-red-700"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                       Delete
                     </button>
                   </div>
@@ -731,16 +733,16 @@ const ImageDatabaseManager = () => {
               </div>
 
               {/* Results */}
-              <div className="relative">
+              <div className="relative overflow-x-auto">
                 <div
                   id="image-results-table"
-                  className="border border-gray-200 dark:border-gray-700 rounded-t-lg overflow-y-auto"
+                  className="border border-gray-200 dark:border-gray-700 rounded-t-lg overflow-y-auto min-w-[640px]"
                   style={{ height: `${tableHeight}px` }}
                 >
-                  <table className="w-full text-sm">
+                  <table className="w-full text-xs sm:text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0 z-20">
                     <tr>
-                      <th className="w-12 p-3 text-left bg-gray-50 dark:bg-gray-700">
+                      <th className="w-8 sm:w-12 p-2 sm:p-3 text-left bg-gray-50 dark:bg-gray-700">
                         <input
                           type="checkbox"
                           checked={selectedImages.size === searchResults.length}
@@ -748,11 +750,11 @@ const ImageDatabaseManager = () => {
                           className="rounded"
                         />
                       </th>
-                      <th className="p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">Preview</th>
-                      <th className="p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">Filename</th>
-                      <th className="p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">Category</th>
-                      <th className="p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">Path</th>
-                      <th className="p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700">Size</th>
+                      <th className="p-2 sm:p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 text-xs sm:text-sm">Preview</th>
+                      <th className="p-2 sm:p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 text-xs sm:text-sm">Filename</th>
+                      <th className="p-2 sm:p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 text-xs sm:text-sm">Category</th>
+                      <th className="p-2 sm:p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 text-xs sm:text-sm">Path</th>
+                      <th className="p-2 sm:p-3 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 text-xs sm:text-sm">Size</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -773,7 +775,7 @@ const ImageDatabaseManager = () => {
                             className="hover:bg-gray-100 dark:hover:bg-gray-700 sticky z-10"
                             style={{ top: '43px' }}
                           >
-                            <td className="p-3 bg-gray-100 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-800">
+                            <td className="p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-800">
                               <input
                                 type="checkbox"
                                 checked={allFilesSelected}
@@ -784,23 +786,23 @@ const ImageDatabaseManager = () => {
                                 className="rounded"
                               />
                             </td>
-                            <td className="p-3 bg-gray-100 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-800" colSpan="5">
-                              <div className="flex items-center gap-2" style={{ paddingLeft: `${indentPx}px` }}>
+                            <td className="p-2 sm:p-3 bg-gray-100 dark:bg-gray-800 border-t border-gray-100 dark:border-gray-800" colSpan="5">
+                              <div className="flex items-center gap-1 sm:gap-2" style={{ paddingLeft: `${indentPx}px` }}>
                                 <button
                                   onClick={() => toggleDirectory(row.path)}
                                   className="flex items-center gap-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded p-1"
                                 >
                                   {row.isExpanded ? (
-                                    <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                    <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 dark:text-gray-400" />
                                   ) : (
-                                    <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 dark:text-gray-400" />
                                   )}
-                                  <Folder className="w-5 h-5 text-blue-500" />
-                                  <span className="font-semibold text-gray-900 dark:text-white">
+                                  <Folder className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
+                                  <span className="font-semibold text-gray-900 dark:text-white text-xs sm:text-sm">
                                     {row.name}
                                   </span>
                                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                                    ({row.fileCount} {row.fileCount === 1 ? 'file' : 'files'})
+                                    ({row.fileCount})
                                   </span>
                                 </button>
                               </div>
@@ -818,7 +820,7 @@ const ImageDatabaseManager = () => {
                               selectedImages.has(row.path) ? 'bg-blue-50 dark:bg-blue-900/30' : ''
                             }`}
                           >
-                            <td className="p-3">
+                            <td className="p-2 sm:p-3">
                               <div style={{ paddingLeft: `${indentPx}px` }}>
                                 <input
                                   type="checkbox"
@@ -828,28 +830,28 @@ const ImageDatabaseManager = () => {
                                 />
                               </div>
                             </td>
-                            <td className="p-3">
+                            <td className="p-2 sm:p-3">
                               <img
                                 src={image.path}
                                 alt={image.filename}
-                                className="w-12 h-12 object-cover rounded"
+                                className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded"
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                   e.target.nextSibling.style.display = 'flex';
                                 }}
                               />
-                              <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs hidden">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-200 rounded flex items-center justify-center text-gray-400 text-xs hidden">
                                 N/A
                               </div>
                             </td>
-                            <td className="p-3 font-mono text-xs text-gray-900 dark:text-gray-200">{image.filename}</td>
-                            <td className="p-3">
-                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs">
+                            <td className="p-2 sm:p-3 font-mono text-xs text-gray-900 dark:text-gray-200">{image.filename}</td>
+                            <td className="p-2 sm:p-3">
+                              <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs">
                                 {image.category}
                               </span>
                             </td>
-                            <td className="p-3 font-mono text-xs text-gray-600 dark:text-gray-400">{image.path}</td>
-                            <td className="p-3 text-gray-600 dark:text-gray-400">
+                            <td className="p-2 sm:p-3 font-mono text-xs text-gray-600 dark:text-gray-400">{image.path}</td>
+                            <td className="p-2 sm:p-3 text-xs text-gray-600 dark:text-gray-400">
                               {image.filesize ? `${(image.filesize / 1024).toFixed(1)} KB` : 'N/A'}
                             </td>
                           </tr>
@@ -883,41 +885,41 @@ const ImageDatabaseManager = () => {
 
               {/* Pagination Controls */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                       Page {currentPage} of {totalPages}
                     </span>
                     <span className="text-xs text-gray-500 dark:text-gray-500">
-                      ({totalItems} total {flattenedRows.length > 0 ? 'rows' : 'files'}, showing {pageSize} per page)
+                      ({totalItems} total, {pageSize} per page)
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto">
                     <button
                       onClick={() => goToPage(1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 sm:flex-initial px-2 sm:px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
                     >
                       First
                     </button>
                     <button
                       onClick={() => goToPage(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 sm:flex-initial px-2 sm:px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
                     >
-                      Previous
+                      Prev
                     </button>
                     <button
                       onClick={() => goToPage(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 sm:flex-initial px-2 sm:px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
                     >
                       Next
                     </button>
                     <button
                       onClick={() => goToPage(totalPages)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 sm:flex-initial px-2 sm:px-3 py-1 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
                     >
                       Last
                     </button>
@@ -929,10 +931,10 @@ const ImageDatabaseManager = () => {
         </div>
 
         {/* Lower Quality */}
-        <div className="border-t border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Lower Image Quality</h2>
+        <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-3 sm:mb-4">
+            <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Lower Image Quality</h2>
           </div>
 
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -1042,17 +1044,17 @@ const ImageDatabaseManager = () => {
 
       {/* Move Dialog */}
       {showMoveDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-2 mb-4">
-              <Move className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Move Images</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-4 sm:p-6 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
+              <Move className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Move Images</h3>
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-3 sm:mb-4">
               Moving {selectedImages.size} images to a new directory.
             </p>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Target Directory
               </label>
               <input
@@ -1060,7 +1062,7 @@ const ImageDatabaseManager = () => {
                 value={moveTarget}
                 onChange={(e) => setMoveTarget(e.target.value)}
                 placeholder="e.g., skills/fire/hellfire-slash"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 sm:px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm sm:text-base"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Relative to public/images/
@@ -1069,13 +1071,13 @@ const ImageDatabaseManager = () => {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowMoveDialog(false)}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="px-3 sm:px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-sm sm:text-base"
               >
                 Cancel
               </button>
               <button
                 onClick={executeMoveOperation}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm sm:text-base"
               >
                 Move Images
               </button>
