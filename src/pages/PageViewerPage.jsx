@@ -106,11 +106,13 @@ const PageViewerPage = ({ sectionId }) => {
             console.log('[PageViewer] Checking path:', `public/content/${sectionId}/${pageId}.md`);
             console.log('[PageViewer] Branch:', branch);
             const filePath = `public/content/${sectionId}/${pageId}.md`;
+            // Use cache-busting to get fresh content (especially important for recent PRs)
             const fileData = await getFileContent(
               config.wiki.repository.owner,
               config.wiki.repository.repo,
               filePath,
-              branch
+              branch,
+              true // bustCache = true for fresh content
             );
 
             // getFileContent returns null for 404 errors instead of throwing

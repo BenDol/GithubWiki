@@ -124,7 +124,7 @@ const ProfilePage = () => {
               setPullRequests(snapshot.pullRequests);
               setHighscoreStats(snapshot.stats);
             } else {
-              // No snapshot available - fetch user data and show message
+              // No snapshot available - fetch user data and show basic profile
               console.log(`[Profile] No snapshot found for ${urlUsername}, fetching basic user data`);
               try {
                 const octokit = getOctokit();
@@ -132,7 +132,9 @@ const ProfilePage = () => {
                   username: urlUsername,
                 });
                 setProfileUser(userData);
-                setError('Profile data not yet available. The user needs to have at least one merged contribution for their profile to be cached.');
+                // Don't set error - we'll show a basic profile page with a friendly message
+                setPullRequests([]); // No PRs yet
+                setHighscoreStats(null); // No stats yet
               } catch (err) {
                 console.error('Failed to fetch user data:', err);
                 setError(`User "${urlUsername}" not found`);
@@ -149,7 +151,9 @@ const ProfilePage = () => {
                 username: urlUsername,
               });
               setProfileUser(userData);
-              setError('Failed to load profile snapshot. Please try again later.');
+              // Show basic profile with no data
+              setPullRequests([]);
+              setHighscoreStats(null);
             } catch (userErr) {
               console.error('Failed to fetch user data:', userErr);
               setError(`User "${urlUsername}" not found`);
@@ -411,7 +415,7 @@ const ProfilePage = () => {
         </p>
 
         {/* Prestige Badge Display */}
-        {profileUser && config?.prestige?.enabled && (
+        {profileUser && config?.prestige?.enabled && pullRequests.length > 0 && (
           <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
             <div className="flex items-center gap-6">
               {/* Avatar with Prestige Badge */}
@@ -487,6 +491,105 @@ const ProfilePage = () => {
                     </p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Basic Profile Info - Show when no contributions yet */}
+        {profileUser && !isOwnProfile && pullRequests.length === 0 && (
+          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+            <div className="flex items-start gap-6">
+              {/* Avatar without prestige badge */}
+              <img
+                src={profileUser.avatar_url}
+                alt={profileUser.login}
+                className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-lg flex-shrink-0"
+              />
+
+              {/* User Info */}
+              <div className="flex-1">
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                  {profileUser.name || profileUser.login}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  @{profileUser.login}
+                </p>
+
+                {/* Bio */}
+                {profileUser.bio && (
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                    {profileUser.bio}
+                  </p>
+                )}
+
+                {/* Additional Info */}
+                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {profileUser.location && (
+                    <div className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span>{profileUser.location}</span>
+                    </div>
+                  )}
+                  {profileUser.company && (
+                    <div className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      <span>{profileUser.company}</span>
+                    </div>
+                  )}
+                  {profileUser.created_at && (
+                    <div className="flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Joined GitHub {new Date(profileUser.created_at).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* GitHub Stats */}
+                <div className="flex items-center gap-6 text-sm">
+                  {profileUser.public_repos !== undefined && (
+                    <div>
+                      <span className="font-semibold text-gray-900 dark:text-white">{profileUser.public_repos}</span>
+                      <span className="text-gray-600 dark:text-gray-400 ml-1">repositories</span>
+                    </div>
+                  )}
+                  {profileUser.followers !== undefined && (
+                    <div>
+                      <span className="font-semibold text-gray-900 dark:text-white">{profileUser.followers}</span>
+                      <span className="text-gray-600 dark:text-gray-400 ml-1">followers</span>
+                    </div>
+                  )}
+                  {profileUser.following !== undefined && (
+                    <div>
+                      <span className="font-semibold text-gray-900 dark:text-white">{profileUser.following}</span>
+                      <span className="text-gray-600 dark:text-gray-400 ml-1">following</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info Message */}
+                <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-200 mb-1">
+                        No Contributions Yet
+                      </p>
+                      <p className="text-xs text-blue-800 dark:text-blue-300">
+                        {profileUser.login} hasn't made any wiki contributions yet. Once they create and merge their first edit request, their profile will show detailed contribution statistics and prestige information.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

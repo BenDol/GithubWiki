@@ -108,7 +108,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
         // Check if current user is banned
         if (isAuthenticated && user) {
-          const banned = await isBanned(user.login, owner, repo);
+          const banned = await isBanned(user.login, owner, repo, config);
           setUserIsBanned(banned);
           if (banned) {
             console.warn(`[Comments] User ${user.login} is banned from commenting`);
@@ -373,16 +373,20 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     } catch (err) {
       console.error('Failed to submit comment:', err);
 
-      // Handle bot token not configured error (should not happen - we fall back to user token)
-      if (err.message?.includes('Bot token not configured')) {
-        alert('❌ Comments system error.\n\n' +
-              'Please ensure you are signed in and try again.');
+      // Handle bot token not configured error
+      if (err.message?.includes('Bot token not configured') || err.message?.includes('Comment system requires bot token')) {
+        alert('❌ Comments system requires configuration.\n\n' +
+              'The wiki administrator needs to configure the bot token in Netlify.\n' +
+              'See BOT.md for setup instructions.');
       }
       // Handle GitHub API rate limit errors
       else if (err.status === 403 && err.message?.includes('rate limit')) {
         alert('⏱️ GitHub API rate limit exceeded. Please wait a moment and try again.');
       } else if (err.status === 403) {
-        alert('❌ Permission denied. You may need to sign in again.');
+        alert('❌ Permission denied. Please check:\n\n' +
+              '1. You are signed in\n' +
+              '2. Bot token is configured in Netlify\n' +
+              '3. Bot has permission to create issues');
       } else if (err.status === 422) {
         alert('❌ Invalid comment. Please check your input.');
       } else {
@@ -484,9 +488,22 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       return;
     }
 
+    const { owner, repo } = config.wiki.repository;
+    const reactions = commentReactions[commentId] || [];
+
+    // Check if user has the opposite reaction (thumbs up/down are mutually exclusive)
+    const oppositeType = reactionType === '+1' ? '-1' : '+1';
+    const oppositeReaction = reactions.find(
+      r => r.user.login === user.login && r.content === oppositeType
+    );
+
+    // For switching reactions, be more lenient with rate limiting since it's a modification
+    const isSwitchingReaction = !!oppositeReaction;
+
     // Check client-side rate limiting
     const rateLimitCheck = checkReactionRateLimit();
-    if (rateLimitCheck.isLimited) {
+    if (rateLimitCheck.isLimited && !isSwitchingReaction) {
+      // If switching reactions, allow it even if we're close to the rate limit
       console.warn('[Comments] Rate limited:', rateLimitCheck.reason);
       alert(`⏱️ ${rateLimitCheck.reason}`);
       return;
@@ -501,18 +518,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       // Record reaction timestamp for rate limiting
       reactionTimestamps.current.push(Date.now());
 
-      const { owner, repo } = config.wiki.repository;
-      const reactions = commentReactions[commentId] || [];
-
       // Check if user already reacted with this type
       const existingReaction = reactions.find(
         r => r.user.login === user.login && r.content === reactionType
-      );
-
-      // Check if user has the opposite reaction (thumbs up/down are mutually exclusive)
-      const oppositeType = reactionType === '+1' ? '-1' : '+1';
-      const oppositeReaction = reactions.find(
-        r => r.user.login === user.login && r.content === oppositeType
       );
 
       // Optimistically update UI first (for immediate feedback)
@@ -530,9 +538,17 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         // Remove opposite reaction if exists (mutually exclusive)
         let updatedReactions = reactions;
         if (oppositeReaction) {
+          console.log('[Comments] Switching reactions - removing opposite reaction first');
           updatedReactions = reactions.filter(r => r.id !== oppositeReaction.id);
+
+          // Delete opposite reaction from GitHub
           await deleteCommentReaction(owner, repo, commentId, oppositeReaction.id);
           console.log('[Comments] ✓ Opposite reaction removed');
+
+          // IMPORTANT: Add a small delay between delete and add to avoid GitHub rate limit
+          // GitHub processes requests sequentially and may reject rapid successive calls
+          await new Promise(resolve => setTimeout(resolve, 300));
+          console.log('[Comments] Waited 300ms before adding new reaction');
         }
 
         // Add new reaction - optimistic update
@@ -572,9 +588,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
       // Handle GitHub API rate limit (HTTP 403 with specific message)
       if (err.status === 403 && err.message?.includes('rate limit')) {
-        alert('⏱️ GitHub API rate limit exceeded. Please wait a moment and try again.');
+        alert('⏱️ GitHub API rate limit exceeded.\n\nWhen switching between like/dislike, please wait a moment between changes.');
       } else if (err.status === 403) {
         alert('❌ Permission denied. You may need to sign in again.');
+      } else if (err.status === 422) {
+        alert('❌ Failed to update reaction: The reaction could not be processed.\n\nThis can happen when switching reactions too quickly. Please try again in a moment.');
       } else {
         alert('❌ Failed to update reaction: ' + err.message);
       }
@@ -642,7 +660,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
     try {
       const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login);
+      await addAdmin(username, owner, repo, user.login, config);
       alert(`✅ Successfully added ${username} as administrator`);
     } catch (error) {
       console.error('Failed to add admin:', error);

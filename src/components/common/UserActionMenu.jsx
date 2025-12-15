@@ -30,7 +30,7 @@ const UserActionMenu = ({ username, onClose, position, onBan, onMakeAdmin }) => 
     const checkStatus = async () => {
       try {
         const { owner, repo } = config.wiki.repository;
-        const status = await getCurrentUserAdminStatus(owner, repo);
+        const status = await getCurrentUserAdminStatus(owner, repo, config);
         setAdminStatus(status);
       } catch (error) {
         console.error('Failed to check admin status:', error);
@@ -78,7 +78,7 @@ const UserActionMenu = ({ username, onClose, position, onBan, onMakeAdmin }) => 
     try {
       setBanning(true);
       const { owner, repo } = config.wiki.repository;
-      await banUser(username, banReason.trim(), owner, repo, adminStatus.username);
+      await banUser(username, banReason.trim(), owner, repo, adminStatus.username, config);
 
       alert(`✅ Successfully banned ${username}`);
       setBanReason('');

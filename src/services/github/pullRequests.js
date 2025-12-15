@@ -133,29 +133,41 @@ export const generatePRTitle = (pageTitle, sectionTitle, isNewPage = false, page
  * @param {string} filePath - File path to fetch
  * @returns {Promise<Object>} File content and metadata
  */
-export const getPRBranchContent = async (owner, repo, branch, filePath) => {
+export const getPRBranchContent = async (owner, repo, branch, filePath, sha = null, bustCache = true) => {
   const octokit = getOctokit();
 
   try {
-    console.log(`[PR Branch] Fetching content from branch: ${branch}, file: ${filePath}`);
+    console.log(`[PR Branch] Fetching content from ${owner}/${repo}, branch: ${branch}, file: ${filePath}`);
 
     // Handle fork branches (format: "username:branch-name")
-    let targetOwner = owner;
+    // When the branch is "username:branch-name", we need to strip the "username:" part
+    // since we're already fetching from the correct owner's repo
     let targetBranch = branch;
-
     if (branch.includes(':')) {
-      const [forkOwner, forkBranch] = branch.split(':');
-      targetOwner = forkOwner;
-      targetBranch = forkBranch;
-      console.log(`[PR Branch] Using fork: ${targetOwner}/${repo}:${targetBranch}`);
+      const parts = branch.split(':');
+      targetBranch = parts[1]; // Get just the branch name, not the "username:" prefix
+      console.log(`[PR Branch] Stripped fork prefix: ${branch} → ${targetBranch}`);
     }
 
-    const { data } = await octokit.rest.repos.getContent({
-      owner: targetOwner,
-      repo,
+    const params = {
+      owner,  // This should already be the fork owner from PageEditorPage
+      repo,   // This should already be the fork repo name
       path: filePath,
-      ref: targetBranch,
-    });
+      ref: targetBranch,  // Use the branch name without prefix
+    };
+
+    // Cache busting for fresh PR content (always enabled by default for PRs)
+    if (bustCache) {
+      console.log('[PR Branch] Using cache-busting headers');
+      params.headers = {
+        'Cache-Control': 'no-cache',
+        'If-None-Match': '', // Force revalidation
+      };
+    }
+
+    console.log(`[PR Branch] Final request: GET /repos/${owner}/${repo}/contents/${filePath}?ref=${targetBranch}`);
+
+    const { data } = await octokit.rest.repos.getContent(params);
 
     if (data.type !== 'file') {
       throw new Error('Path is not a file');
@@ -470,6 +482,11 @@ export const createWikiEditPR = async (
   // Create PR
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch);
 
+  // Invalidate PR cache immediately so new PR shows up in pending edits
+  const store = useGitHubDataStore.getState();
+  store.invalidatePRCache();
+  console.log('[PR] Invalidated PR cache after PR creation');
+
   // Build label list
   const labels = ['wiki-edit', 'documentation'];
   if (isFirstContribution) {
@@ -540,10 +557,16 @@ export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMe
     let matchedPattern = null;
 
     for (const pattern of patterns) {
-      matchingPR = userPRs.find(pr => pr.head.ref.startsWith(pattern));
+      // Check both head.ref (branch name) and head.label (username:branch for forks)
+      matchingPR = userPRs.find(pr => {
+        const branchRef = pr.head.label || pr.head.ref;
+        return branchRef.includes(pattern);
+      });
+
       if (matchingPR) {
         matchedPattern = pattern;
-        console.log(`[PR Search] Found match with pattern "${pattern}": PR #${matchingPR.number} (branch: ${matchingPR.head.ref})`);
+        const branchRef = matchingPR.head.label || matchingPR.head.ref;
+        console.log(`[PR Search] Found match with pattern "${pattern}": PR #${matchingPR.number} (branch: ${branchRef})`);
         break;
       } else {
         console.log(`[PR Search] No match found for pattern: ${pattern}`);
@@ -581,6 +604,7 @@ export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMe
       head: {
         ref: branchRef,
         sha: fullPR.head.sha,
+        repo: fullPR.head.repo, // Include fork repo info for content fetching
       },
       base: {
         ref: fullPR.base.ref,

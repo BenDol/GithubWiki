@@ -1,12 +1,16 @@
-import { getOctokit, getBotOctokit, getAuthenticatedUser } from './api';
+import { getOctokit, getAuthenticatedUser } from './api';
+import { createAdminIssueWithBot, updateAdminIssueWithBot } from './botService';
+import { detectCurrentBranch } from './branchNamespace';
 
 /**
  * GitHub Admin Service
  * Manages admins and banned users via GitHub issues
+ * Uses bot service for secure token handling (similar to comments system)
  */
 
-const ADMIN_LIST_LABEL = 'wiki-admin:admins';
-const BANNED_USERS_LABEL = 'wiki-admin:banned-users';
+const ADMIN_LIST_LABEL = 'wiki-admin-list';
+const BANNED_USERS_LABEL = 'wiki-ban-list';
+const AUTOMATED_LABEL = 'automated';
 
 /**
  * Check if a user is the repository owner
@@ -22,44 +26,45 @@ export const isRepositoryOwner = (username, owner) => {
  * Get or create the admins list issue
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Issue object containing admins list
  */
-export const getOrCreateAdminsIssue = async (owner, repo) => {
-  const botOctokit = getBotOctokit();
+export const getOrCreateAdminsIssue = async (owner, repo, config) => {
+  const octokit = getOctokit();
 
-  // Search for existing admins issue
-  const searchQuery = `repo:${owner}/${repo} is:issue label:"${ADMIN_LIST_LABEL}"`;
+  // Detect current branch for namespace isolation
+  const branch = await detectCurrentBranch(config);
+  const branchLabel = `branch:${branch}`;
 
   try {
-    const { data: searchResults } = await botOctokit.rest.search.issuesAndPullRequests({
-      q: searchQuery,
+    // Search for existing admins issue using listForRepo (fast, reliable)
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: `${ADMIN_LIST_LABEL},${branchLabel}`,
+      state: 'open',
+      per_page: 1,
     });
 
-    const existingIssue = searchResults.items.find(
-      issue => issue.title === 'Wiki Admins List'
+    const existingIssue = issues.find(
+      issue => issue.title === '[Admin List]'
     );
 
     if (existingIssue) {
+      console.log(`[Admin] Found existing admin list issue #${existingIssue.number}`);
       return existingIssue;
     }
 
-    // Create new admins issue
-    console.log('[Admin] Creating admins list issue...');
-    const { data: newIssue } = await botOctokit.rest.issues.create({
+    // Create new admins issue using bot service
+    console.log('[Admin] Creating admins list issue with bot...');
+    const newIssue = await createAdminIssueWithBot(
       owner,
       repo,
-      title: 'Wiki Admins List',
-      body: `🔐 **Wiki Administrators**\n\nThis issue stores the list of wiki administrators who have permission to manage users and content.\n\n**Admin List:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Only the repository owner can modify the admin list via the Admin Panel.\n\n🤖 *Automated admin management system*`,
-      labels: [ADMIN_LIST_LABEL],
-    });
-
-    // Lock the issue to prevent unauthorized edits
-    await botOctokit.rest.issues.lock({
-      owner,
-      repo,
-      issue_number: newIssue.number,
-      lock_reason: 'off-topic',
-    });
+      '[Admin List]',
+      `🔐 **Wiki Administrators**\n\nThis issue stores the list of wiki administrators who have permission to manage users and content.\n\n**Admin List:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Only the repository owner can modify the admin list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
+      [ADMIN_LIST_LABEL, branchLabel, AUTOMATED_LABEL],
+      true // Lock the issue
+    );
 
     console.log(`[Admin] Created admins list issue #${newIssue.number}`);
     return newIssue;
@@ -73,44 +78,45 @@ export const getOrCreateAdminsIssue = async (owner, repo) => {
  * Get or create the banned users issue
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Issue object containing banned users list
  */
-export const getOrCreateBannedUsersIssue = async (owner, repo) => {
-  const botOctokit = getBotOctokit();
+export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
+  const octokit = getOctokit();
 
-  // Search for existing banned users issue
-  const searchQuery = `repo:${owner}/${repo} is:issue label:"${BANNED_USERS_LABEL}"`;
+  // Detect current branch for namespace isolation
+  const branch = await detectCurrentBranch(config);
+  const branchLabel = `branch:${branch}`;
 
   try {
-    const { data: searchResults } = await botOctokit.rest.search.issuesAndPullRequests({
-      q: searchQuery,
+    // Search for existing banned users issue using listForRepo (fast, reliable)
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: `${BANNED_USERS_LABEL},${branchLabel}`,
+      state: 'open',
+      per_page: 1,
     });
 
-    const existingIssue = searchResults.items.find(
-      issue => issue.title === 'Wiki Banned Users'
+    const existingIssue = issues.find(
+      issue => issue.title === '[Ban List]'
     );
 
     if (existingIssue) {
+      console.log(`[Admin] Found existing ban list issue #${existingIssue.number}`);
       return existingIssue;
     }
 
-    // Create new banned users issue
-    console.log('[Admin] Creating banned users issue...');
-    const { data: newIssue } = await botOctokit.rest.issues.create({
+    // Create new banned users issue using bot service
+    console.log('[Admin] Creating banned users issue with bot...');
+    const newIssue = await createAdminIssueWithBot(
       owner,
       repo,
-      title: 'Wiki Banned Users',
-      body: `🚫 **Banned Users**\n\nThis issue stores the list of users who are banned from commenting and contributing to the wiki.\n\n**Banned Users:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Repository owner and admins can manage the ban list via the Admin Panel.\n\n🤖 *Automated user management system*`,
-      labels: [BANNED_USERS_LABEL],
-    });
-
-    // Lock the issue to prevent unauthorized edits
-    await botOctokit.rest.issues.lock({
-      owner,
-      repo,
-      issue_number: newIssue.number,
-      lock_reason: 'off-topic',
-    });
+      '[Ban List]',
+      `🚫 **Banned Users**\n\nThis issue stores the list of users who are banned from commenting and contributing to the wiki.\n\n**Banned Users:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Repository owner and admins can manage the ban list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
+      [BANNED_USERS_LABEL, branchLabel, AUTOMATED_LABEL],
+      true // Lock the issue
+    );
 
     console.log(`[Admin] Created banned users issue #${newIssue.number}`);
     return newIssue;
@@ -161,11 +167,12 @@ const updateUserListInIssue = (body, users) => {
  * Get list of admins
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Array<Object>>} Array of admin objects
  */
-export const getAdmins = async (owner, repo) => {
+export const getAdmins = async (owner, repo, config) => {
   try {
-    const issue = await getOrCreateAdminsIssue(owner, repo);
+    const issue = await getOrCreateAdminsIssue(owner, repo, config);
     return parseUserListFromIssue(issue.body);
   } catch (error) {
     console.error('Failed to get admins:', error);
@@ -177,11 +184,12 @@ export const getAdmins = async (owner, repo) => {
  * Get list of banned users
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Array<Object>>} Array of banned user objects
  */
-export const getBannedUsers = async (owner, repo) => {
+export const getBannedUsers = async (owner, repo, config) => {
   try {
-    const issue = await getOrCreateBannedUsersIssue(owner, repo);
+    const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
     return parseUserListFromIssue(issue.body);
   } catch (error) {
     console.error('Failed to get banned users:', error);
@@ -194,16 +202,17 @@ export const getBannedUsers = async (owner, repo) => {
  * @param {string} username - Username to check
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<boolean>} True if user is admin or owner
  */
-export const isAdmin = async (username, owner, repo) => {
+export const isAdmin = async (username, owner, repo, config) => {
   // Owner is always admin
   if (isRepositoryOwner(username, owner)) {
     return true;
   }
 
   // Check admin list
-  const admins = await getAdmins(owner, repo);
+  const admins = await getAdmins(owner, repo, config);
   return admins.some(admin => admin.username.toLowerCase() === username.toLowerCase());
 };
 
@@ -212,10 +221,11 @@ export const isAdmin = async (username, owner, repo) => {
  * @param {string} username - Username to check
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<boolean>} True if user is banned
  */
-export const isBanned = async (username, owner, repo) => {
-  const bannedUsers = await getBannedUsers(owner, repo);
+export const isBanned = async (username, owner, repo, config) => {
+  const bannedUsers = await getBannedUsers(owner, repo, config);
   return bannedUsers.some(user => user.username.toLowerCase() === username.toLowerCase());
 };
 
@@ -225,16 +235,16 @@ export const isBanned = async (username, owner, repo) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} addedBy - Username of person adding admin
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Updated admins list
  */
-export const addAdmin = async (username, owner, repo, addedBy) => {
+export const addAdmin = async (username, owner, repo, addedBy, config) => {
   // Verify the person adding is the owner
   if (!isRepositoryOwner(addedBy, owner)) {
     throw new Error('Only the repository owner can add admins');
   }
 
-  const botOctokit = getBotOctokit();
-  const issue = await getOrCreateAdminsIssue(owner, repo);
+  const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
   // Check if already admin
@@ -251,14 +261,9 @@ export const addAdmin = async (username, owner, repo, addedBy) => {
 
   admins.push(newAdmin);
 
-  // Update issue
+  // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, admins);
-  await botOctokit.rest.issues.update({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body: newBody,
-  });
+  await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
   console.log(`[Admin] Added admin: ${username}`);
   return admins;
@@ -270,16 +275,16 @@ export const addAdmin = async (username, owner, repo, addedBy) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} removedBy - Username of person removing admin
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Updated admins list
  */
-export const removeAdmin = async (username, owner, repo, removedBy) => {
+export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   // Verify the person removing is the owner
   if (!isRepositoryOwner(removedBy, owner)) {
     throw new Error('Only the repository owner can remove admins');
   }
 
-  const botOctokit = getBotOctokit();
-  const issue = await getOrCreateAdminsIssue(owner, repo);
+  const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
   // Filter out the admin
@@ -291,14 +296,9 @@ export const removeAdmin = async (username, owner, repo, removedBy) => {
     throw new Error(`${username} is not an admin`);
   }
 
-  // Update issue
+  // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, updatedAdmins);
-  await botOctokit.rest.issues.update({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body: newBody,
-  });
+  await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
   console.log(`[Admin] Removed admin: ${username}`);
   return updatedAdmins;
@@ -311,11 +311,12 @@ export const removeAdmin = async (username, owner, repo, removedBy) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} bannedBy - Username of person banning
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Updated banned users list
  */
-export const banUser = async (username, reason, owner, repo, bannedBy) => {
+export const banUser = async (username, reason, owner, repo, bannedBy, config) => {
   // Verify the person banning is admin or owner
-  const userIsAdmin = await isAdmin(bannedBy, owner, repo);
+  const userIsAdmin = await isAdmin(bannedBy, owner, repo, config);
   if (!userIsAdmin) {
     throw new Error('Only repository owner or admins can ban users');
   }
@@ -326,13 +327,12 @@ export const banUser = async (username, reason, owner, repo, bannedBy) => {
   }
 
   // Cannot ban other admins
-  const targetIsAdmin = await isAdmin(username, owner, repo);
+  const targetIsAdmin = await isAdmin(username, owner, repo, config);
   if (targetIsAdmin && !isRepositoryOwner(bannedBy, owner)) {
     throw new Error('Only the repository owner can ban admins');
   }
 
-  const botOctokit = getBotOctokit();
-  const issue = await getOrCreateBannedUsersIssue(owner, repo);
+  const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
   const bannedUsers = parseUserListFromIssue(issue.body);
 
   // Check if already banned
@@ -350,14 +350,9 @@ export const banUser = async (username, reason, owner, repo, bannedBy) => {
 
   bannedUsers.push(bannedUser);
 
-  // Update issue
+  // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, bannedUsers);
-  await botOctokit.rest.issues.update({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body: newBody,
-  });
+  await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
   console.log(`[Admin] Banned user: ${username}`);
   return bannedUsers;
@@ -369,17 +364,17 @@ export const banUser = async (username, reason, owner, repo, bannedBy) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} unbannedBy - Username of person unbanning
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Updated banned users list
  */
-export const unbanUser = async (username, owner, repo, unbannedBy) => {
+export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   // Verify the person unbanning is admin or owner
-  const userIsAdmin = await isAdmin(unbannedBy, owner, repo);
+  const userIsAdmin = await isAdmin(unbannedBy, owner, repo, config);
   if (!userIsAdmin) {
     throw new Error('Only repository owner or admins can unban users');
   }
 
-  const botOctokit = getBotOctokit();
-  const issue = await getOrCreateBannedUsersIssue(owner, repo);
+  const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
   const bannedUsers = parseUserListFromIssue(issue.body);
 
   // Filter out the unbanned user
@@ -391,14 +386,9 @@ export const unbanUser = async (username, owner, repo, unbannedBy) => {
     throw new Error(`${username} is not banned`);
   }
 
-  // Update issue
+  // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, updatedBannedUsers);
-  await botOctokit.rest.issues.update({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body: newBody,
-  });
+  await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
   console.log(`[Admin] Unbanned user: ${username}`);
   return updatedBannedUsers;
@@ -408,15 +398,16 @@ export const unbanUser = async (username, owner, repo, unbannedBy) => {
  * Check current user's admin status
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config for branch detection
  * @returns {Promise<Object>} Object with isOwner, isAdmin, username
  */
-export const getCurrentUserAdminStatus = async (owner, repo) => {
+export const getCurrentUserAdminStatus = async (owner, repo, config) => {
   try {
     const user = await getAuthenticatedUser();
     const username = user.login;
 
     const isOwner = isRepositoryOwner(username, owner);
-    const userIsAdmin = isOwner || await isAdmin(username, owner, repo);
+    const userIsAdmin = isOwner || await isAdmin(username, owner, repo, config);
 
     return {
       isOwner,

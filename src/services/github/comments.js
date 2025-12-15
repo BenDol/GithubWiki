@@ -1,4 +1,5 @@
-import { getOctokit, getBotOctokit, hasBotToken } from './api';
+import { getOctokit } from './api';
+import { createCommentIssueWithBot } from './botService';
 
 /**
  * GitHub Comments API functions
@@ -65,31 +66,34 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
     return existingIssue;
   }
 
-  // Create new issue for this page
-  // Uses bot token if available (prevents users from closing the issue)
-  // Falls back to user token if bot not configured
-  const octokit = getBotOctokit(true); // true = fallback to user token
-
-  const usingBot = hasBotToken();
-  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} ${usingBot ? 'with bot token (users cannot close)' : 'with user token'}`);
-
+  // Create new issue for this page using bot (server-side via Netlify Function)
+  // This keeps the bot token secure and prevents users from closing comment issues
   const pageLabel = `page:${sectionId}/${pageId}`;
   const branchLabel = `branch:${branch}`;
 
+  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot (server-side)`);
+
   try {
-    const { data: newIssue } = await octokit.rest.issues.create({
+    // Call secure Netlify Function to create issue with bot token
+    const newIssue = await createCommentIssueWithBot(
       owner,
       repo,
-      title: `[Comments] ${pageTitle}`,
-      body: `💬 **Comments for:** ${pageTitle}\n📄 **Page ID:** \`${sectionId}/${pageId}\`\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
-      labels: ['wiki-comments', pageLabel, branchLabel],
-    });
+      `[Comments] ${pageTitle}`,
+      `💬 **Comments for:** ${pageTitle}\n📄 **Page ID:** \`${sectionId}/${pageId}\`\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
+      ['wiki-comments', pageLabel, branchLabel]
+    );
 
-    console.log(`[Comments] Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
+    console.log(`[Comments] ✓ Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
 
     return newIssue;
   } catch (error) {
-    console.error('Failed to create page issue:', error);
+    console.error('[Comments] Failed to create page issue with bot:', error);
+
+    // If bot service fails, throw a helpful error
+    if (error.message?.includes('Bot token not configured')) {
+      throw new Error('Comment system requires bot token configuration. Please contact the wiki administrator.');
+    }
+
     throw error;
   }
 };

@@ -25,6 +25,7 @@ const PageEditor = ({
   onSave,
   onCancel,
   isSaving = false,
+  isConfiguringPR = false,
   contentProcessor = null,
   customComponents = {},
   renderSpellPreview = null,
@@ -74,6 +75,7 @@ const PageEditor = ({
   const validationErrorsRef = useRef(null);
   const editorApiRef = useRef(null);
   const colorButtonRef = useRef(null);
+  const metadataRef = useRef(metadata); // Track latest metadata to prevent loss during race conditions
 
   // Get available categories from sections
   const availableCategories = config?.sections
@@ -127,6 +129,7 @@ const PageEditor = ({
 
       console.log('[PageEditor] Setting metadata from initialMetadata:', newMetadata);
       setMetadata(newMetadata);
+      metadataRef.current = newMetadata; // Keep ref in sync
 
       // Ensure content has the metadata in frontmatter
       if (initialContent) {
@@ -156,6 +159,7 @@ const PageEditor = ({
 
         console.log('[PageEditor] Setting metadata from content:', newMetadata);
         setMetadata(newMetadata);
+        metadataRef.current = newMetadata; // Keep ref in sync
 
         // Also ensure content is set (in case it wasn't set yet)
         if (!content || content !== initialContent) {
@@ -485,6 +489,7 @@ const PageEditor = ({
     const newMetadata = { ...metadata, [field]: value };
     console.log('[PageEditor] New metadata:', newMetadata);
     setMetadata(newMetadata);
+    metadataRef.current = newMetadata; // Keep ref in sync
     updateContentWithMetadata(newMetadata);
   };
 
@@ -514,7 +519,8 @@ const PageEditor = ({
       showFrontmatter,
       hasNewContent: !!newContent,
       newContentLength: newContent?.length,
-      currentMetadata: metadata
+      currentMetadata: metadata,
+      metadataRef: metadataRef.current
     });
 
     // If frontmatter is hidden, reconstruct full content with existing metadata
@@ -525,27 +531,31 @@ const PageEditor = ({
         const currentParsed = matter(content);
         const existingMetadata = currentParsed.data || {};
 
-        console.log('[PageEditor] Frontmatter hidden - using metadata from current content:', existingMetadata);
+        console.log('[PageEditor] Frontmatter hidden - existing metadata from content:', existingMetadata);
+        console.log('[PageEditor] Current metadata state:', metadata);
+        console.log('[PageEditor] Metadata from ref (latest):', metadataRef.current);
 
-        // Verify metadata has required fields before reconstructing
-        if (!existingMetadata.title?.trim()) {
-          console.error('[PageEditor] WARNING: Current content metadata missing title!', existingMetadata);
-          console.error('[PageEditor] Metadata state:', metadata);
+        // CRITICAL: Use metadataRef as source of truth since it has the latest values
+        // The metadata state might be stale during rapid edits, but metadataRef is always current
+        // Merge: start with existing, then override with latest from ref (if non-empty)
+        const mergedMetadata = { ...existingMetadata };
 
-          // Fall back to metadata state if current content has no metadata
-          if (metadata.title?.trim()) {
-            console.log('[PageEditor] Using metadata state as fallback');
-            existingMetadata.title = metadata.title;
-            existingMetadata.category = metadata.category;
-            existingMetadata.tags = metadata.tags;
-            existingMetadata.description = metadata.description;
-            existingMetadata.id = metadata.id;
-            existingMetadata.date = metadata.date;
-            existingMetadata.order = metadata.order;
+        // Override with latest metadata from form (via ref) for non-empty values
+        for (const [key, value] of Object.entries(metadataRef.current)) {
+          if (value !== '' && value !== null) {
+            if (Array.isArray(value)) {
+              if (value.length > 0) {
+                mergedMetadata[key] = value;
+              }
+            } else {
+              mergedMetadata[key] = value;
+            }
           }
         }
 
-        const fullContent = matter.stringify(newContent, existingMetadata);
+        console.log('[PageEditor] Merged metadata (existing + latest from ref):', mergedMetadata);
+
+        const fullContent = matter.stringify(newContent, mergedMetadata);
         console.log('[PageEditor] Reconstructed content length:', fullContent.length);
 
         // Verify reconstructed content has frontmatter
@@ -1130,7 +1140,13 @@ const PageEditor = ({
                 onClick={handleSave}
                 disabled={isSaving}
                 className="p-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title={validationErrors.length > 0 ? 'Click to view validation errors' : 'Save changes'}
+                title={
+                  isConfiguringPR
+                    ? 'Configuring your edit request... please wait'
+                    : validationErrors.length > 0
+                    ? 'Click to view validation errors'
+                    : 'Save changes'
+                }
               >
                 {isSaving ? (
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1224,14 +1240,16 @@ const PageEditor = ({
               onClick={handleSave}
               disabled={isSaving || !hasUnsavedChanges}
               title={
-                !hasUnsavedChanges
+                isConfiguringPR
+                  ? 'Configuring your edit request... please wait'
+                  : !hasUnsavedChanges
                   ? 'No changes to save'
                   : validationErrors.length > 0
                     ? 'Click to view validation errors'
                     : 'Save changes'
               }
             >
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {isConfiguringPR ? 'Configuring...' : isSaving ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </div>

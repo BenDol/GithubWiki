@@ -48,6 +48,9 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
             repo,
             state: 'open',
             per_page: 100,
+            // Add sort/updated to get freshest data
+            sort: 'updated',
+            direction: 'desc',
           });
 
           allPRs = data;
@@ -136,6 +139,25 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
 
       // Also invalidate user's PR cache
       store.invalidatePRsForUser(pr.author);
+
+      // Clean up locally stored PR content
+      // The storage key format is: pr-content-${sectionId}-${pageId}-${prNumber}
+      // We need to iterate through localStorage to find and remove this PR's content
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('pr-content-') && key.endsWith(`-${pr.number}`)) {
+            keysToRemove.push(key);
+          }
+        }
+        if (keysToRemove.length > 0) {
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          console.log(`[PendingEditRequests] Cleaned up ${keysToRemove.length} stored content entry for PR #${pr.number}`);
+        }
+      } catch (err) {
+        console.warn('[PendingEditRequests] Failed to clean up stored content:', err);
+      }
 
       // Remove from list
       setPrs(prevPrs => prevPrs.filter(p => p.number !== pr.number));

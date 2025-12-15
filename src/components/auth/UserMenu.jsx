@@ -33,7 +33,7 @@ const UserMenu = () => {
     const checkAdmin = async () => {
       try {
         const { owner, repo } = config.wiki.repository;
-        const status = await getCurrentUserAdminStatus(owner, repo);
+        const status = await getCurrentUserAdminStatus(owner, repo, config);
         setIsAdmin(status.isAdmin);
       } catch (error) {
         console.error('Failed to check admin status:', error);

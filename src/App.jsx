@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { useWikiConfig } from './hooks/useWikiConfig';
 import { useAuthStore } from './store/authStore';
@@ -8,6 +8,14 @@ import { BranchProvider } from './hooks/useBranchNamespace';
 function App() {
   const { config, loading, error } = useWikiConfig();
   const { restoreSession } = useAuthStore();
+
+  // Create router with loaded config (memoized to prevent recreation on every render)
+  // MUST be before early returns to comply with hooks rules
+  const router = useMemo(() => {
+    if (!config) return null;
+    console.log('[App] Creating router with config');
+    return createWikiRouter(config);
+  }, [config]);
 
   // Restore authentication session on mount
   useEffect(() => {
@@ -118,8 +126,17 @@ function App() {
     );
   }
 
-  // Create router with loaded config
-  const router = createWikiRouter(config);
+  // Router is created above (before early returns) to comply with hooks rules
+  if (!router) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Initializing router...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <BranchProvider>

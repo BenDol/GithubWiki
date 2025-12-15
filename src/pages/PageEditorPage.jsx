@@ -19,6 +19,7 @@ import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
 import { getContentProcessor, getCustomComponents, getSpellPreview, getEquipmentPreview } from '../utils/contentRendererRegistry';
 import { useInvalidatePrestige } from '../hooks/usePrestige';
+import { useGitHubDataStore } from '../store/githubDataStore';
 
 /**
  * PageEditorPage
@@ -49,6 +50,8 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const [savingStatus, setSavingStatus] = useState(''); // For showing fork operation progress
   const [isAnonymousMode, setIsAnonymousMode] = useState(false); // Track if user chose anonymous mode
   const [editingPR, setEditingPR] = useState(null); // Track if editing content from an existing PR
+  const [isRecentlyCreatedPR, setIsRecentlyCreatedPR] = useState(false); // Track if PR was just created (not yet in GitHub API)
+  const [prCheckAttempts, setPrCheckAttempts] = useState(0); // Track how many times we've checked for PR
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -158,23 +161,135 @@ Include any supplementary details, notes, or related information.
         const { owner, repo, contentPath } = config.wiki.repository;
         const filePath = `${contentPath}/${sectionId}/${pageId}.md`;
 
+        // Clean up old stored PR content (older than 24 hours)
+        try {
+          const maxAgeHours = 24;
+          const now = Date.now();
+          const keysToRemove = [];
+
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('pr-content-')) {
+              try {
+                const storedDataStr = localStorage.getItem(key);
+                const storedData = JSON.parse(storedDataStr);
+                const ageHours = (now - storedData.timestamp) / 1000 / 60 / 60;
+
+                if (ageHours > maxAgeHours) {
+                  keysToRemove.push(key);
+                }
+              } catch (err) {
+                // Corrupted data, remove it
+                keysToRemove.push(key);
+              }
+            }
+          }
+
+          if (keysToRemove.length > 0) {
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            console.log(`[PageEditor] Cleaned up ${keysToRemove.length} old stored PR content entries`);
+          }
+        } catch (err) {
+          console.warn('[PageEditor] Failed to clean up old stored content:', err);
+        }
+
         // Check if user has an existing PR for this page (only if authenticated)
         let existingPR = null;
+        let isRecentlyCreatedPR = false;
+
         if (user?.login) {
           console.log(`[PageEditor] Checking for existing PR for page: ${pageId}`);
           console.log(`[PageEditor] User: ${user.login}`);
           console.log(`[PageEditor] Full user object:`, user);
-          try {
-            existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
-            if (existingPR) {
-              console.log(`[PageEditor] Found existing PR #${existingPR.number}: ${existingPR.title}`);
-              console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
-            } else {
-              console.log(`[PageEditor] No existing PR found for user: ${user.login}`);
+
+          // First, check if we just created a PR (even if GitHub API doesn't show it yet)
+          const recentPRKey = `recent-pr-${sectionId}-${pageId}-${user.login}`;
+          const recentPRStr = localStorage.getItem(recentPRKey);
+
+          if (recentPRStr) {
+            try {
+              const recentPR = JSON.parse(recentPRStr);
+              const ageInMinutes = (Date.now() - recentPR.createdAt) / 1000 / 60;
+              const ageInSeconds = (Date.now() - recentPR.createdAt) / 1000;
+
+              // If PR was created in last 5 minutes, check if it's actually in GitHub API now
+              if (ageInMinutes < 5) {
+                console.log(`[PageEditor] Found recently created PR #${recentPR.prNumber} (${ageInMinutes.toFixed(1)} minutes ago)`);
+
+                // If more than 30 seconds old, immediately check if it's in GitHub API
+                // This handles the case where user refreshed after PR was created
+                if (ageInSeconds > 30) {
+                  console.log(`[PageEditor] PR is ${ageInSeconds.toFixed(0)}s old, checking if it's in GitHub API now...`);
+                  try {
+                    const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+                    if (foundPR && foundPR.number === recentPR.prNumber) {
+                      console.log(`[PageEditor] ✓ PR #${recentPR.prNumber} is now in GitHub API! Using it directly.`);
+                      existingPR = foundPR;
+                      isRecentlyCreatedPR = false; // Not recently created anymore, it's ready
+                      localStorage.removeItem(recentPRKey); // Clean up
+                    } else {
+                      console.log(`[PageEditor] PR #${recentPR.prNumber} not yet in GitHub API, marking as recently created`);
+                      existingPR = {
+                        number: recentPR.prNumber,
+                        url: recentPR.prUrl,
+                        head: {
+                          ref: recentPR.branch,
+                        },
+                        title: `Edit ${pageId}`,
+                      };
+                      isRecentlyCreatedPR = true;
+                    }
+                  } catch (err) {
+                    console.warn('[PageEditor] Failed to check if PR is in GitHub API:', err);
+                    // Fall back to treating it as recently created
+                    existingPR = {
+                      number: recentPR.prNumber,
+                      url: recentPR.prUrl,
+                      head: {
+                        ref: recentPR.branch,
+                      },
+                      title: `Edit ${pageId}`,
+                    };
+                    isRecentlyCreatedPR = true;
+                  }
+                } else {
+                  // Less than 30 seconds old, definitely still being configured
+                  console.log(`[PageEditor] PR is only ${ageInSeconds.toFixed(0)}s old, marking as recently created`);
+                  existingPR = {
+                    number: recentPR.prNumber,
+                    url: recentPR.prUrl,
+                    head: {
+                      ref: recentPR.branch,
+                    },
+                    title: `Edit ${pageId}`,
+                  };
+                  isRecentlyCreatedPR = true;
+                }
+              } else {
+                // Old entry, clean it up
+                localStorage.removeItem(recentPRKey);
+                console.log(`[PageEditor] Cleaned up old recent PR entry (${ageInMinutes.toFixed(1)} minutes old)`);
+              }
+            } catch (err) {
+              console.warn('[PageEditor] Failed to parse recent PR data:', err);
+              localStorage.removeItem(recentPRKey);
             }
-          } catch (err) {
-            console.warn('[PageEditor] Failed to check for existing PR (will load from main branch):', err);
-            // Continue loading from main branch
+          }
+
+          // If no recent PR found, check GitHub API
+          if (!existingPR) {
+            try {
+              existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+              if (existingPR) {
+                console.log(`[PageEditor] Found existing PR #${existingPR.number}: ${existingPR.title}`);
+                console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
+              } else {
+                console.log(`[PageEditor] No existing PR found for user: ${user.login}`);
+              }
+            } catch (err) {
+              console.warn('[PageEditor] Failed to check for existing PR (will load from main branch):', err);
+              // Continue loading from main branch
+            }
           }
         } else {
           console.log(`[PageEditor] No user logged in or user.login is undefined`);
@@ -182,24 +297,81 @@ Include any supplementary details, notes, or related information.
 
         let fileData;
 
-        // If PR exists, load content from PR branch
+        // Check for locally stored PR content first (bypasses GitHub cache)
         if (existingPR) {
-          try {
-            console.log(`[PageEditor] Loading content from PR branch: ${existingPR.head.ref}`);
-            fileData = await getPRBranchContent(owner, repo, existingPR.head.ref, filePath);
-            setEditingPR(existingPR);
-            console.log(`[PageEditor] Successfully loaded content from PR branch`);
-          } catch (err) {
-            console.error('[PageEditor] Failed to load from PR branch, falling back to main:', err);
-            // Fall back to loading from main branch
-            fileData = await getFileContent(owner, repo, filePath);
-            setEditingPR(null);
+          setEditingPR(existingPR);
+          setIsRecentlyCreatedPR(isRecentlyCreatedPR);
+          console.log(`[PageEditor] Existing PR detected: #${existingPR.number}${isRecentlyCreatedPR ? ' (recently created)' : ''}`);
+          console.log(`[PageEditor] isRecentlyCreatedPR state set to: ${isRecentlyCreatedPR}`);
+          console.log(`[PageEditor] Save button will be ${isRecentlyCreatedPR ? 'DISABLED' : 'ENABLED'} (if there are unsaved changes)`);
+
+          const storageKey = `pr-content-${sectionId}-${pageId}-${existingPR.number}`;
+          const storedDataStr = localStorage.getItem(storageKey);
+
+          if (storedDataStr) {
+            try {
+              const storedData = JSON.parse(storedDataStr);
+              const ageInMinutes = (Date.now() - storedData.timestamp) / 1000 / 60;
+
+              // Use stored content if it's less than 60 minutes old
+              if (ageInMinutes < 60) {
+                console.log(`[PageEditor] ✓ Using locally stored PR content (${ageInMinutes.toFixed(1)} minutes old)`);
+
+                // CRITICAL: Fetch the SHA from the PR branch, not main branch
+                // When committing to an existing PR, we need the SHA from the PR branch
+                let realSha = null;
+                try {
+                  // Get the PR branch name (strip fork prefix if present)
+                  let prBranch = existingPR.head.ref;
+                  let prOwner = owner;
+                  let prRepo = repo;
+
+                  // Handle fork branches (format: "username:branch-name")
+                  if (prBranch.includes(':')) {
+                    const parts = prBranch.split(':');
+                    prBranch = parts[1]; // Just the branch name
+                    // Use fork repo info if available
+                    if (existingPR.head.repo) {
+                      prOwner = existingPR.head.repo.owner.login;
+                      prRepo = existingPR.head.repo.name;
+                    }
+                  }
+
+                  console.log(`[PageEditor] Fetching SHA from PR branch: ${prOwner}/${prRepo}:${prBranch}`);
+                  const realFileData = await getFileContent(prOwner, prRepo, filePath, prBranch);
+                  realSha = realFileData.sha;
+                  console.log(`[PageEditor] Fetched real SHA from PR branch for commit operations: ${realSha}`);
+                } catch (err) {
+                  console.warn(`[PageEditor] Could not fetch SHA from PR branch, falling back to main:`, err);
+                  // Fallback to main branch SHA
+                  try {
+                    const realFileData = await getFileContent(owner, repo, filePath, currentBranch);
+                    realSha = realFileData.sha;
+                    console.log(`[PageEditor] Fetched fallback SHA from main branch: ${realSha}`);
+                  } catch (fallbackErr) {
+                    console.error(`[PageEditor] Could not fetch SHA from either PR branch or main:`, fallbackErr);
+                  }
+                }
+
+                fileData = {
+                  content: storedData.content,
+                  sha: realSha || 'stored-locally', // Use real SHA if available
+                };
+              } else {
+                console.log(`[PageEditor] Stored content too old (${ageInMinutes.toFixed(1)} minutes), fetching from GitHub`);
+                localStorage.removeItem(storageKey); // Clean up old data
+              }
+            } catch (err) {
+              console.warn(`[PageEditor] Failed to parse stored content:`, err);
+              localStorage.removeItem(storageKey); // Clean up corrupted data
+            }
           }
-        } else {
-          // No PR found, load from main branch
-          console.log(`[PageEditor] No existing PR found, loading from main branch`);
-          fileData = await getFileContent(owner, repo, filePath);
-          setEditingPR(null);
+        }
+
+        // If no stored content, load from main branch
+        if (!fileData) {
+          console.log(`[PageEditor] Loading from main branch`);
+          fileData = await getFileContent(owner, repo, filePath, currentBranch);
         }
 
         if (!fileData) {
@@ -233,6 +405,53 @@ Include any supplementary details, notes, or related information.
 
     loadPage();
   }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading, user, authLoading]);
+
+  // Periodically check if recently created PR is now available in GitHub API
+  useEffect(() => {
+    if (!isRecentlyCreatedPR || !editingPR || !user?.login || !config) {
+      setPrCheckAttempts(0); // Reset counter when not checking
+      return;
+    }
+
+    // Check every 5 seconds for up to 3 minutes (36 attempts)
+    const maxAttempts = 36;
+    if (prCheckAttempts >= maxAttempts) {
+      console.log('[PageEditor] Stopped checking for PR after max attempts');
+      setIsRecentlyCreatedPR(false); // Give up and remove banner
+      setPrCheckAttempts(0); // Reset counter
+      return;
+    }
+
+    const checkInterval = setInterval(async () => {
+      try {
+        console.log(`[PageEditor] Checking if PR #${editingPR.number} is now in GitHub API (attempt ${prCheckAttempts + 1}/${maxAttempts})`);
+
+        const { owner, repo } = config.wiki.repository;
+        const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+
+        if (foundPR && foundPR.number === editingPR.number) {
+          console.log(`[PageEditor] ✓ PR #${editingPR.number} is now available in GitHub API!`);
+          setIsRecentlyCreatedPR(false); // Remove the "configuring" banner
+          setEditingPR(foundPR); // Update with full PR data
+          setPrCheckAttempts(0); // Reset counter
+
+          // Clean up the recent PR localStorage entry
+          const recentPRKey = `recent-pr-${sectionId}-${pageId}-${user.login}`;
+          localStorage.removeItem(recentPRKey);
+          console.log('[PageEditor] Cleaned up recent PR localStorage entry');
+
+          clearInterval(checkInterval);
+        } else {
+          setPrCheckAttempts(prev => prev + 1);
+        }
+      } catch (err) {
+        console.warn('[PageEditor] Failed to check for PR:', err);
+        setPrCheckAttempts(prev => prev + 1);
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(checkInterval);
+  }, [isRecentlyCreatedPR, editingPR, user, config, sectionId, pageId, prCheckAttempts]);
 
   /**
    * Handle anonymous edit submission
@@ -633,6 +852,23 @@ Include any supplementary details, notes, or related information.
         setIsUpdatingExistingPR(true);
         console.log(`\n[PageEditor] ✓ Successfully added commit to existing PR #${existingPR.number}\n`);
 
+        // Store the updated content locally for immediate access on next edit
+        const storageKey = `pr-content-${sectionId}-${pageIdFromMetadata}-${existingPR.number}`;
+        const storageData = {
+          content: newContent,
+          timestamp: Date.now(),
+          prNumber: existingPR.number,
+          prUrl: existingPR.url,
+        };
+        localStorage.setItem(storageKey, JSON.stringify(storageData));
+        console.log(`[PageEditor] Updated stored PR content: ${storageKey}`);
+
+        // Invalidate PR cache so the updated PR can be found immediately
+        const store = useGitHubDataStore.getState();
+        store.invalidatePRCache();
+        store.invalidatePRsForUser(user.login);
+        console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
           invalidatePrestige(user.login);
@@ -716,6 +952,37 @@ Include any supplementary details, notes, or related information.
 
         console.log(`\n[PageEditor] ✓ Successfully created new PR #${pr.number}`);
         console.log(`[PageEditor] URL: ${pr.url}\n`);
+
+        // Store the edited content locally for immediate access on next edit
+        // This bypasses GitHub's 2-3 minute cache delay
+        const storageKey = `pr-content-${sectionId}-${pageIdFromMetadata}-${pr.number}`;
+        const storageData = {
+          content: newContent,
+          timestamp: Date.now(),
+          prNumber: pr.number,
+          prUrl: pr.url,
+          branch: pr.head?.ref || branchName,
+        };
+        localStorage.setItem(storageKey, JSON.stringify(storageData));
+        console.log(`[PageEditor] Stored PR content locally: ${storageKey}`);
+
+        // Also store as "recently created" so we can find it even if GitHub API doesn't show it yet
+        const recentPRKey = `recent-pr-${sectionId}-${pageIdFromMetadata}-${user.login}`;
+        const recentPRData = {
+          prNumber: pr.number,
+          prUrl: pr.url,
+          branch: pr.head?.ref || branchName,
+          createdAt: Date.now(),
+          username: user.login,
+        };
+        localStorage.setItem(recentPRKey, JSON.stringify(recentPRData));
+        console.log(`[PageEditor] Stored recent PR info: ${recentPRKey}`);
+
+        // Invalidate PR cache so the new PR can be found immediately
+        const store = useGitHubDataStore.getState();
+        store.invalidatePRCache();
+        store.invalidatePRsForUser(user.login);
+        console.log(`[PageEditor] Invalidated PR cache for immediate access`);
 
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
@@ -1474,6 +1741,28 @@ Include any supplementary details, notes, or related information.
         </div>
       )}
 
+      {/* Recently Created PR Banner - Configuring */}
+      {isRecentlyCreatedPR && editingPR && (
+        <div className="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="animate-spin h-5 w-5 text-yellow-600 dark:text-yellow-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200">
+                ⚙️ Configuring your edit request... You're viewing your submitted content. Feel free to make additional changes!
+              </p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                Edit Request #{editingPR.number} • This message will disappear once ready (checking every 5 seconds)
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Editor - only render when metadata is loaded to prevent empty fields */}
       {metadata && (
         <PageEditor
@@ -1482,7 +1771,8 @@ Include any supplementary details, notes, or related information.
           initialMetadata={metadata}
           onSave={handleSave}
           onCancel={handleCancel}
-          isSaving={isSaving}
+          isSaving={isSaving || isRecentlyCreatedPR}
+          isConfiguringPR={isRecentlyCreatedPR}
           contentProcessor={getContentProcessor()}
           customComponents={getCustomComponents()}
           renderSpellPreview={getSpellPreview()}

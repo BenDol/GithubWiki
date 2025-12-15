@@ -6,17 +6,34 @@ import { getOctokit } from './api';
 
 /**
  * Get file content with SHA
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} path - File path
+ * @param {string} branch - Branch name or commit SHA
+ * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
-export const getFileContent = async (owner, repo, path, branch = 'main') => {
+export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
   const octokit = getOctokit();
 
   try {
-    const { data } = await octokit.rest.repos.getContent({
+    const params = {
       owner,
       repo,
       path,
       ref: branch,
-    });
+    };
+
+    // Cache busting for fresh content (e.g., just after PR creation)
+    // GitHub's CDN can cache content for 2-3 minutes, so we add a timestamp
+    if (bustCache) {
+      console.log('[Content] Using cache-busting for fresh content');
+      params.headers = {
+        'Cache-Control': 'no-cache',
+        'If-None-Match': '', // Force revalidation
+      };
+    }
+
+    const { data } = await octokit.rest.repos.getContent(params);
 
     if (data.type !== 'file') {
       throw new Error('Path is not a file');
