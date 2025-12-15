@@ -47,6 +47,19 @@ async function getHighscoreCacheIssue(owner, repo) {
       labels: ['highscore-cache', 'automated'],
     });
 
+    // Lock the issue to prevent unwanted comments
+    try {
+      await octokit.rest.issues.lock({
+        owner,
+        repo,
+        issue_number: newIssue.number,
+        lock_reason: 'off-topic',
+      });
+      console.log('[Highscore] Locked cache issue to collaborators only');
+    } catch (lockError) {
+      console.warn('[Highscore] Failed to lock issue (may not have permissions):', lockError.message);
+    }
+
     return newIssue;
   } catch (error) {
     if (error.status === 403 || error.status === 401) {

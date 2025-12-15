@@ -211,9 +211,29 @@ export const isAdmin = async (username, owner, repo, config) => {
     return true;
   }
 
-  // Check admin list
+  // Fetch user ID for comparison
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+  } catch (error) {
+    console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    // Continue without userId, will fallback to username comparison
+  }
+
+  // Check admin list (prefer userId, fallback to username for backwards compatibility)
   const admins = await getAdmins(owner, repo, config);
-  return admins.some(admin => admin.username.toLowerCase() === username.toLowerCase());
+  return admins.some(admin => {
+    // Primary check: userId (immutable, survives username changes)
+    if (userId && admin.userId && admin.userId === userId) {
+      return true;
+    }
+    // Fallback: username (for old entries without userId)
+    return admin.username.toLowerCase() === username.toLowerCase();
+  });
 };
 
 /**
@@ -225,8 +245,29 @@ export const isAdmin = async (username, owner, repo, config) => {
  * @returns {Promise<boolean>} True if user is banned
  */
 export const isBanned = async (username, owner, repo, config) => {
+  // Fetch user ID for comparison
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+  } catch (error) {
+    console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    // Continue without userId, will fallback to username comparison
+  }
+
+  // Check ban list (prefer userId, fallback to username for backwards compatibility)
   const bannedUsers = await getBannedUsers(owner, repo, config);
-  return bannedUsers.some(user => user.username.toLowerCase() === username.toLowerCase());
+  return bannedUsers.some(user => {
+    // Primary check: userId (immutable, survives username changes)
+    if (userId && user.userId && user.userId === userId) {
+      return true;
+    }
+    // Fallback: username (for old entries without userId)
+    return user.username.toLowerCase() === username.toLowerCase();
+  });
 };
 
 /**
@@ -247,14 +288,36 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
   const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
-  // Check if already admin
-  if (admins.some(admin => admin.username.toLowerCase() === username.toLowerCase())) {
+  // Fetch user info from GitHub to get their ID
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+    console.log(`[Admin] Fetched userId ${userId} for ${username}`);
+  } catch (error) {
+    console.error(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    throw new Error(`User ${username} not found on GitHub`);
+  }
+
+  // Check if already admin (by userId or username)
+  const alreadyAdmin = admins.some(admin => {
+    if (admin.userId && admin.userId === userId) {
+      return true;
+    }
+    return admin.username.toLowerCase() === username.toLowerCase();
+  });
+
+  if (alreadyAdmin) {
     throw new Error(`${username} is already an admin`);
   }
 
-  // Add new admin
+  // Add new admin with userId
   const newAdmin = {
     username,
+    userId, // Store GitHub user ID (immutable, survives username changes)
     addedBy,
     addedAt: new Date().toISOString(),
   };
@@ -265,7 +328,7 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, admins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  console.log(`[Admin] Added admin: ${username}`);
+  console.log(`[Admin] Added admin: ${username} (ID: ${userId})`);
   return admins;
 };
 
@@ -287,10 +350,32 @@ export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
-  // Filter out the admin
-  const updatedAdmins = admins.filter(
-    admin => admin.username.toLowerCase() !== username.toLowerCase()
-  );
+  // Fetch user ID for comparison
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+    console.log(`[Admin] Fetched userId ${userId} for ${username}`);
+  } catch (error) {
+    console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    // Continue without userId, will use username comparison
+  }
+
+  // Filter out the admin (by userId or username)
+  const updatedAdmins = admins.filter(admin => {
+    // Primary check: userId (immutable, survives username changes)
+    if (userId && admin.userId && admin.userId === userId) {
+      return false; // Remove this admin
+    }
+    // Fallback: username (for old entries without userId)
+    if (admin.username.toLowerCase() === username.toLowerCase()) {
+      return false; // Remove this admin
+    }
+    return true; // Keep this admin
+  });
 
   if (updatedAdmins.length === admins.length) {
     throw new Error(`${username} is not an admin`);
@@ -300,7 +385,7 @@ export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, updatedAdmins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  console.log(`[Admin] Removed admin: ${username}`);
+  console.log(`[Admin] Removed admin: ${username} (ID: ${userId})`);
   return updatedAdmins;
 };
 
@@ -335,14 +420,36 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
   const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
   const bannedUsers = parseUserListFromIssue(issue.body);
 
-  // Check if already banned
-  if (bannedUsers.some(user => user.username.toLowerCase() === username.toLowerCase())) {
+  // Fetch user info from GitHub to get their ID
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+    console.log(`[Admin] Fetched userId ${userId} for ${username}`);
+  } catch (error) {
+    console.error(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    throw new Error(`User ${username} not found on GitHub`);
+  }
+
+  // Check if already banned (by userId or username)
+  const alreadyBanned = bannedUsers.some(user => {
+    if (user.userId && user.userId === userId) {
+      return true;
+    }
+    return user.username.toLowerCase() === username.toLowerCase();
+  });
+
+  if (alreadyBanned) {
     throw new Error(`${username} is already banned`);
   }
 
-  // Add banned user
+  // Add banned user with userId
   const bannedUser = {
     username,
+    userId, // Store GitHub user ID (immutable, survives username changes)
     reason,
     bannedBy,
     bannedAt: new Date().toISOString(),
@@ -354,7 +461,7 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
   const newBody = updateUserListInIssue(issue.body, bannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  console.log(`[Admin] Banned user: ${username}`);
+  console.log(`[Admin] Banned user: ${username} (ID: ${userId})`);
   return bannedUsers;
 };
 
@@ -377,10 +484,32 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
   const bannedUsers = parseUserListFromIssue(issue.body);
 
-  // Filter out the unbanned user
-  const updatedBannedUsers = bannedUsers.filter(
-    user => user.username.toLowerCase() !== username.toLowerCase()
-  );
+  // Fetch user ID for comparison
+  const octokit = getOctokit();
+  let userId;
+  try {
+    const { data: userData } = await octokit.rest.users.getByUsername({
+      username,
+    });
+    userId = userData.id;
+    console.log(`[Admin] Fetched userId ${userId} for ${username}`);
+  } catch (error) {
+    console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
+    // Continue without userId, will use username comparison
+  }
+
+  // Filter out the unbanned user (by userId or username)
+  const updatedBannedUsers = bannedUsers.filter(user => {
+    // Primary check: userId (immutable, survives username changes)
+    if (userId && user.userId && user.userId === userId) {
+      return false; // Remove this user
+    }
+    // Fallback: username (for old entries without userId)
+    if (user.username.toLowerCase() === username.toLowerCase()) {
+      return false; // Remove this user
+    }
+    return true; // Keep this user
+  });
 
   if (updatedBannedUsers.length === bannedUsers.length) {
     throw new Error(`${username} is not banned`);
@@ -390,7 +519,7 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, updatedBannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  console.log(`[Admin] Unbanned user: ${username}`);
+  console.log(`[Admin] Unbanned user: ${username} (ID: ${userId})`);
   return updatedBannedUsers;
 };
 

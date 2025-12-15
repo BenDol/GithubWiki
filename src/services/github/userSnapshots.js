@@ -193,6 +193,20 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
         body: issueBody,
         labels,
       });
+
+      // Lock the issue to prevent unwanted comments
+      try {
+        await octokit.rest.issues.lock({
+          owner,
+          repo,
+          issue_number: newIssue.number,
+          lock_reason: 'off-topic',
+        });
+        console.log(`[UserSnapshot] Locked snapshot issue for ${username} to collaborators only`);
+      } catch (lockError) {
+        console.warn(`[UserSnapshot] Failed to lock issue for ${username} (may not have permissions):`, lockError.message);
+      }
+
       return newIssue;
     }
   } catch (error) {

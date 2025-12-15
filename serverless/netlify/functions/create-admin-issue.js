@@ -66,13 +66,31 @@ export const handler = async function(event) {
       // Check 2: Is user in the admin list?
       console.log(`[Bot Function] User is not owner, checking admin list...`);
 
+      // Fetch user ID for comparison (immutable, survives username changes)
+      let userId;
+      try {
+        const { data: userData } = await userOctokit.rest.users.getByUsername({
+          username,
+        });
+        userId = userData.id;
+        console.log(`[Bot Function] Fetched userId ${userId} for ${username}`);
+      } catch (error) {
+        console.warn(`[Bot Function] Failed to fetch user ID for ${username}:`, error.message);
+        // Continue without userId, will fallback to username comparison
+      }
+
       // Fetch the admin list issue to verify user is an admin
+      // Use cache-busting headers to ensure fresh data
       const { data: issues } = await userOctokit.rest.issues.listForRepo({
         owner,
         repo,
         labels: 'wiki-admin-list',
         state: 'open',
         per_page: 1,
+        headers: {
+          'If-None-Match': '', // Bypass GitHub's ETag cache
+          'Cache-Control': 'no-cache',
+        },
       });
 
       if (issues.length === 0) {
@@ -108,10 +126,19 @@ export const handler = async function(event) {
       }
 
       const admins = JSON.parse(adminListMatch[1]);
-      const isAdmin = admins.some(admin => admin.username.toLowerCase() === username.toLowerCase());
+
+      // Check admin list (prefer userId, fallback to username for backwards compatibility)
+      const isAdmin = admins.some(admin => {
+        // Primary check: userId (immutable, survives username changes)
+        if (userId && admin.userId && admin.userId === userId) {
+          return true;
+        }
+        // Fallback: username (for old entries without userId)
+        return admin.username.toLowerCase() === username.toLowerCase();
+      });
 
       if (!isAdmin) {
-        console.log(`[Bot Function] Permission denied: ${username} is not an admin`);
+        console.log(`[Bot Function] Permission denied: ${username} (ID: ${userId}) is not an admin`);
         return {
           statusCode: 403,
           headers: {
@@ -125,7 +152,7 @@ export const handler = async function(event) {
         };
       }
 
-      console.log(`[Bot Function] Permission granted: ${username} is an admin`);
+      console.log(`[Bot Function] Permission granted: ${username} (ID: ${userId}) is an admin`);
     } else {
       console.log(`[Bot Function] Permission granted: ${username} is the repository owner`);
     }

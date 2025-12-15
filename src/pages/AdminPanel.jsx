@@ -21,7 +21,7 @@ import {
 const AdminPanel = () => {
   const { config } = useWikiConfig();
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
   const [adminStatus, setAdminStatus] = useState({ isOwner: false, isAdmin: false, username: null });
@@ -204,6 +204,15 @@ const AdminPanel = () => {
     }
   };
 
+  // ✅ CORRECT - Check loading states FIRST before authentication
+  if (authLoading || loading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -212,14 +221,6 @@ const AdminPanel = () => {
             Please sign in to access the admin panel.
           </p>
         </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <LoadingSpinner />
       </div>
     );
   }
