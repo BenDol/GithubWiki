@@ -197,7 +197,7 @@ const ProfilePage = () => {
     };
 
     loadProfile();
-  }, [isAuthenticated, currentUser, config, branch, branchLoading, refreshKey, urlUsername, targetUsername, isOwnProfile]);
+  }, [isAuthenticated, currentUser, config, branch, branchLoading, refreshKey, urlUsername]);
 
   // Check if profile user is banned
   useEffect(() => {
