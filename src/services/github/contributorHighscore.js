@@ -39,7 +39,7 @@ async function getHighscoreCacheIssue(owner, repo) {
         lastUpdated: null,
         contributors: [],
       }, null, 2),
-      labels: ['highscore-cache', 'automation'],
+      labels: ['highscore-cache', 'automated'],
     });
 
     return newIssue;
