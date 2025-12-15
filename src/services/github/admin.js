@@ -302,6 +302,13 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
     throw new Error(`User ${username} not found on GitHub`);
   }
 
+  // Check if user is banned
+  const userIsBanned = await isBanned(username, owner, repo, config);
+  if (userIsBanned) {
+    console.warn(`[Admin] Cannot add banned user ${username} as admin`);
+    throw new Error(`Cannot add ${username} as admin - user is banned`);
+  }
+
   // Check if already admin (by userId or username)
   const alreadyAdmin = admins.some(admin => {
     if (admin.userId && admin.userId === userId) {

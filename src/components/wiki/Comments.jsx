@@ -488,6 +488,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       return;
     }
 
+    if (userIsBanned) {
+      alert('You are banned from reacting to comments on this wiki');
+      return;
+    }
+
     const { owner, repo } = config.wiki.repository;
     const reactions = commentReactions[commentId] || [];
 
@@ -833,13 +838,13 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => handleReaction(comment.id, '+1')}
-                      disabled={reactionLoading[`${comment.id}-+1`]}
+                      disabled={reactionLoading[`${comment.id}-+1`] || userIsBanned}
                       className={`flex items-center space-x-1 px-2 py-1 rounded text-sm transition-colors ${
                         hasUserReacted(comment.id, '+1')
                           ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      } ${reactionLoading[`${comment.id}-+1`] ? 'opacity-70 cursor-wait' : ''}`}
-                      title="Thumbs up"
+                      } ${reactionLoading[`${comment.id}-+1`] || userIsBanned ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      title={userIsBanned ? 'You are banned from reacting' : 'Thumbs up'}
                     >
                       {reactionLoading[`${comment.id}-+1`] ? (
                         <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -853,13 +858,13 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                     </button>
                     <button
                       onClick={() => handleReaction(comment.id, '-1')}
-                      disabled={reactionLoading[`${comment.id}--1`]}
+                      disabled={reactionLoading[`${comment.id}--1`] || userIsBanned}
                       className={`flex items-center space-x-1 px-2 py-1 rounded text-sm transition-colors ${
                         hasUserReacted(comment.id, '-1')
                           ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      } ${reactionLoading[`${comment.id}--1`] ? 'opacity-70 cursor-wait' : ''}`}
-                      title="Thumbs down"
+                      } ${reactionLoading[`${comment.id}--1`] || userIsBanned ? 'opacity-70 cursor-not-allowed' : ''}`}
+                      title={userIsBanned ? 'You are banned from reacting' : 'Thumbs down'}
                     >
                       {reactionLoading[`${comment.id}--1`] ? (
                         <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">

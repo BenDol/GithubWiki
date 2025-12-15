@@ -14,6 +14,7 @@ import { useBranchNamespace } from '../hooks/useBranchNamespace';
 import { getDisplayTitle } from '../utils/textUtils';
 import { useAuthStore } from '../store/authStore';
 import { getFileContent } from '../services/github/content';
+import { isBanned } from '../services/github/admin';
 
 /**
  * Page viewer page component
@@ -33,8 +34,9 @@ const PageViewerPage = ({ sectionId }) => {
   const section = useSection(sectionId);
   const showToc = useFeature('tableOfContents');
   const autoFormatTitles = config?.features?.autoFormatPageTitles ?? false;
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const { branch } = useBranchNamespace();
+  const [userIsBanned, setUserIsBanned] = useState(false);
 
   // Check if this is a framework/hardcoded page (no editing allowed)
   const isFrameworkPage = section?.allowContributions === false;
@@ -44,8 +46,8 @@ const PageViewerPage = ({ sectionId }) => {
   const requireAuth = config?.features?.editRequestCreator?.permissions?.requireAuth ?? true;
 
   // Determine if edit button should be shown
-  // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available)
-  const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth));
+  // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available) AND user is not banned
+  const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth)) && !userIsBanned;
 
   useEffect(() => {
     const loadPage = async () => {
@@ -141,6 +143,31 @@ const PageViewerPage = ({ sectionId }) => {
 
     loadPage();
   }, [sectionId, pageId, cachePage, getCachedPage, autoFormatTitles, config, branch]);
+
+  // Check if user is banned
+  useEffect(() => {
+    const checkBanStatus = async () => {
+      if (!isAuthenticated || !user || !config?.wiki?.repository) {
+        setUserIsBanned(false);
+        return;
+      }
+
+      try {
+        const { owner, repo } = config.wiki.repository;
+        const banned = await isBanned(user.login, owner, repo, config);
+        setUserIsBanned(banned);
+
+        if (banned) {
+          console.log(`[PageViewer] User ${user.login} is banned - hiding edit button`);
+        }
+      } catch (error) {
+        console.error('[PageViewer] Failed to check ban status:', error);
+        setUserIsBanned(false); // Fail open - allow access on error
+      }
+    };
+
+    checkBanStatus();
+  }, [isAuthenticated, user, config]);
 
   // Scroll to anchor or top after page loads
   useEffect(() => {

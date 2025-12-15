@@ -11,6 +11,7 @@ import { createWikiEditPR, createCrossRepoPR, findExistingPRForPage, commitToExi
 import { hasWriteAccess } from '../services/github/permissions';
 import { getOrCreateFork } from '../services/github/forks';
 import { submitAnonymousEdit } from '../services/github/anonymousEdits';
+import { isBanned } from '../services/github/admin';
 import PageEditor from '../components/wiki/PageEditor';
 import PendingEditRequests from '../components/wiki/PendingEditRequests';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -52,6 +53,8 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const [editingPR, setEditingPR] = useState(null); // Track if editing content from an existing PR
   const [isRecentlyCreatedPR, setIsRecentlyCreatedPR] = useState(false); // Track if PR was just created (not yet in GitHub API)
   const [prCheckAttempts, setPrCheckAttempts] = useState(0); // Track how many times we've checked for PR
+  const [userIsBanned, setUserIsBanned] = useState(false); // Track if user is banned
+  const [checkingBanStatus, setCheckingBanStatus] = useState(true); // Track if we're checking ban status
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -60,8 +63,8 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const anonymousEnabled = config?.features?.editRequestCreator?.anonymous?.enabled ?? false;
   const requireAuth = config?.features?.editRequestCreator?.permissions?.requireAuth ?? true;
 
-  // Check permissions - allow editing if authenticated OR anonymous mode is enabled
-  const canEdit = section?.allowContributions && (isAuthenticated || (anonymousEnabled && !requireAuth));
+  // Check permissions - allow editing if authenticated OR anonymous mode is enabled AND user is not banned
+  const canEdit = section?.allowContributions && (isAuthenticated || (anonymousEnabled && !requireAuth)) && !userIsBanned;
 
   useEffect(() => {
     const loadPage = async () => {
@@ -76,6 +79,13 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
         return; // Keep loading until auth is ready
       }
 
+      // Wait for ban check to complete before proceeding
+      if (checkingBanStatus) {
+        console.log('[PageEditor] Waiting for ban check to complete...');
+        return;
+      }
+
+      // After auth and ban check, if not authenticated, stop loading
       if (!isAuthenticated) {
         setLoading(false);
         return;
@@ -404,7 +414,38 @@ Include any supplementary details, notes, or related information.
     };
 
     loadPage();
-  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading, user, authLoading]);
+  }, [config, section, sectionId, pageId, isAuthenticated, isNewPage, currentBranch, branchLoading, user, authLoading, checkingBanStatus]);
+
+  // Check if user is banned
+  useEffect(() => {
+    const checkBanStatus = async () => {
+      if (!isAuthenticated || !user || !config?.wiki?.repository) {
+        setUserIsBanned(false);
+        setCheckingBanStatus(false);
+        return;
+      }
+
+      try {
+        setCheckingBanStatus(true);
+        const { owner, repo } = config.wiki.repository;
+        const banned = await isBanned(user.login, owner, repo, config);
+        setUserIsBanned(banned);
+
+        if (banned) {
+          console.log(`[PageEditor] User ${user.login} is banned - blocking page edit access`);
+          setError('You are banned from editing pages on this wiki');
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('[PageEditor] Failed to check ban status:', error);
+        setUserIsBanned(false); // Fail open - allow access on error
+      } finally {
+        setCheckingBanStatus(false);
+      }
+    };
+
+    checkBanStatus();
+  }, [isAuthenticated, user, config]);
 
   // Periodically check if recently created PR is now available in GitHub API
   useEffect(() => {
@@ -1265,13 +1306,14 @@ Include any supplementary details, notes, or related information.
   }, [loading]);
 
   // Loading state (must check BEFORE permission checks to avoid flashing messages)
-  if (loading || !section || branchLoading) {
+  // CRITICAL: Check authLoading AND checkingBanStatus FIRST to prevent flickering
+  if (authLoading || loading || !section || branchLoading || checkingBanStatus) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-center">
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">
-            {branchLoading ? 'Detecting branch...' : 'Loading editor...'}
+            {authLoading ? 'Authenticating...' : checkingBanStatus ? 'Checking permissions...' : branchLoading ? 'Detecting branch...' : 'Loading editor...'}
           </p>
         </div>
       </div>

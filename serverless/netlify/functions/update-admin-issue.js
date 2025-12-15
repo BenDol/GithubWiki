@@ -163,6 +163,93 @@ export const handler = async function(event) {
       userAgent: 'GitHub-Wiki-Bot/1.0',
     });
 
+    // SERVER-SIDE VALIDATION: Check if adding admins when this is an admin list update
+    // Extract the issue title to determine which list is being updated
+    const { data: existingIssue } = await botOctokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: issueNumber,
+    });
+
+    const isAdminList = existingIssue.title === '[Admin List]';
+
+    if (isAdminList) {
+      console.log('[Bot Function] Validating admin list update...');
+
+      // Parse new admin list from request body
+      const newAdminListMatch = body.match(/```json\n([\s\S]*?)\n```/);
+      if (newAdminListMatch) {
+        const newAdmins = JSON.parse(newAdminListMatch[1]);
+
+        // Parse current admin list
+        const currentAdminListMatch = existingIssue.body.match(/```json\n([\s\S]*?)\n```/);
+        const currentAdmins = currentAdminListMatch ? JSON.parse(currentAdminListMatch[1]) : [];
+
+        // Find newly added admins (by userId or username)
+        const currentAdminIds = new Set(currentAdmins.map(a => a.userId).filter(Boolean));
+        const currentAdminNames = new Set(currentAdmins.map(a => a.username.toLowerCase()));
+
+        const newlyAddedAdmins = newAdmins.filter(admin => {
+          const isNew = !(
+            (admin.userId && currentAdminIds.has(admin.userId)) ||
+            currentAdminNames.has(admin.username.toLowerCase())
+          );
+          return isNew;
+        });
+
+        // Check if any newly added admins are banned
+        if (newlyAddedAdmins.length > 0) {
+          console.log(`[Bot Function] Checking ${newlyAddedAdmins.length} newly added admins for ban status...`);
+
+          // Fetch ban list
+          const { data: banIssues } = await botOctokit.rest.issues.listForRepo({
+            owner,
+            repo,
+            labels: 'wiki-ban-list',
+            state: 'open',
+            per_page: 1,
+          });
+
+          if (banIssues.length > 0) {
+            const banIssue = banIssues.find(issue => issue.title === '[Ban List]');
+            if (banIssue) {
+              const banListMatch = banIssue.body.match(/```json\n([\s\S]*?)\n```/);
+              if (banListMatch) {
+                const bannedUsers = JSON.parse(banListMatch[1]);
+
+                // Check each new admin against ban list
+                for (const newAdmin of newlyAddedAdmins) {
+                  const isBanned = bannedUsers.some(banned => {
+                    if (newAdmin.userId && banned.userId && newAdmin.userId === banned.userId) {
+                      return true;
+                    }
+                    return banned.username.toLowerCase() === newAdmin.username.toLowerCase();
+                  });
+
+                  if (isBanned) {
+                    console.warn(`[Bot Function] BLOCKED: Cannot add banned user ${newAdmin.username} as admin`);
+                    return {
+                      statusCode: 403,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                      },
+                      body: JSON.stringify({
+                        error: 'Forbidden',
+                        message: `Cannot add ${newAdmin.username} as admin - user is banned`,
+                      }),
+                    };
+                  }
+                }
+
+                console.log('[Bot Function] All new admins are not banned - proceeding with update');
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Update the issue using bot token
     const { data: issue } = await botOctokit.rest.issues.update({
       owner,

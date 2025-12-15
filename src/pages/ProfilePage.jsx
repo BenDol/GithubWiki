@@ -10,7 +10,7 @@ import UserActionMenu from '../components/common/UserActionMenu';
 import { getPrestigeTier, getProgressToNextTier } from '../utils/prestige';
 import { getOctokit } from '../services/github/api';
 import { getUserContributionStats } from '../services/github/contributorHighscore';
-import { addAdmin } from '../services/github/admin';
+import { addAdmin, isBanned } from '../services/github/admin';
 import { getUserSnapshot } from '../services/github/userSnapshots';
 
 /**
@@ -19,7 +19,7 @@ import { getUserSnapshot } from '../services/github/userSnapshots';
  */
 const ProfilePage = () => {
   const { username: urlUsername } = useParams();
-  const { user: currentUser, isAuthenticated } = useAuthStore();
+  const { user: currentUser, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const { config } = useWikiConfig();
   const { branch, loading: branchLoading } = useBranchNamespace();
   const [pullRequests, setPullRequests] = useState([]);
@@ -32,6 +32,7 @@ const ProfilePage = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [expandedPRs, setExpandedPRs] = useState(new Set());
   const [showClosed, setShowClosed] = useState(false);
+  const [userIsBanned, setUserIsBanned] = useState(false);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -198,6 +199,31 @@ const ProfilePage = () => {
     loadProfile();
   }, [isAuthenticated, currentUser, config, branch, branchLoading, refreshKey, urlUsername, targetUsername, isOwnProfile]);
 
+  // Check if profile user is banned
+  useEffect(() => {
+    const checkBanStatus = async () => {
+      if (!profileUser || !config?.wiki?.repository) {
+        setUserIsBanned(false);
+        return;
+      }
+
+      try {
+        const { owner, repo } = config.wiki.repository;
+        const banned = await isBanned(profileUser.login, owner, repo, config);
+        setUserIsBanned(banned);
+
+        if (banned) {
+          console.log(`[Profile] User ${profileUser.login} is banned`);
+        }
+      } catch (error) {
+        console.error('[Profile] Failed to check ban status:', error);
+        setUserIsBanned(false); // Fail open
+      }
+    };
+
+    checkBanStatus();
+  }, [profileUser, config]);
+
   // Reset to page 1 when filter changes
   useEffect(() => {
     setCurrentPage(1);
@@ -255,13 +281,14 @@ const ProfilePage = () => {
     }
   };
 
-  if (loading || branchLoading) {
+  // CRITICAL: Check authLoading FIRST to prevent flickering of "Authentication Required" message
+  if (authLoading || loading || branchLoading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-center">
           <LoadingSpinner size="lg" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">
-            {branchLoading ? 'Detecting branch...' : 'Loading profile...'}
+            {authLoading ? 'Authenticating...' : branchLoading ? 'Detecting branch...' : 'Loading profile...'}
           </p>
         </div>
       </div>
@@ -373,9 +400,19 @@ const ProfilePage = () => {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-            {isOwnProfile ? 'My Profile' : `${profileUser?.login}'s Profile`}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+              {isOwnProfile ? 'My Profile' : `${profileUser?.login}'s Profile`}
+            </h1>
+            {userIsBanned && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-200 dark:border-red-800">
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                Banned
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {profileUser && (
               <a
@@ -509,9 +546,19 @@ const ProfilePage = () => {
 
               {/* User Info */}
               <div className="flex-1">
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                  {profileUser.name || profileUser.login}
-                </h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {profileUser.name || profileUser.login}
+                  </h3>
+                  {userIsBanned && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-200 dark:border-red-800">
+                      <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                      </svg>
+                      Banned
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                   @{profileUser.login}
                 </p>
