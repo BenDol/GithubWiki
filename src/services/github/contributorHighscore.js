@@ -112,6 +112,37 @@ async function fetchRepositoryCollaborators(owner, repo) {
 }
 
 /**
+ * Calculate a fair contributor score that prevents gaming
+ * Formula: (contributions * 100) + (quality_bonus * 2)
+ *
+ * - Base score from contributions (heavily weighted at 100x)
+ * - Quality bonus from average lines per contribution (2x weight)
+ * - This rewards both volume AND quality, preventing spam contributions
+ *
+ * @param {Object} contributor - Contributor data
+ * @returns {number} Calculated score
+ */
+function calculateContributorScore(contributor) {
+  const contributions = contributor.contributions || 0;
+  const additions = contributor.additions || 0;
+  const deletions = contributor.deletions || 0;
+
+  // Base score: contributions heavily weighted
+  const baseScore = contributions * 100;
+
+  // Quality bonus: average lines changed per contribution
+  // High value = meaningful contributions, Low value = spam
+  const totalLines = additions + deletions;
+  const averageLinesPerContribution = contributions > 0 ? totalLines / contributions : 0;
+  const qualityBonus = averageLinesPerContribution * 2;
+
+  // Final score
+  const score = baseScore + qualityBonus;
+
+  return Math.round(score);
+}
+
+/**
  * Apply filters to contributor list based on config
  */
 async function applyContributorFilters(contributors, owner, repo, config = {}) {
@@ -180,30 +211,152 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
     console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} total users`);
   }
 
-  // Sort by contributions (descending)
-  filteredContributors.sort((a, b) => b.contributions - a.contributions);
+  // Calculate scores for all contributors
+  filteredContributors = filteredContributors.map(contributor => ({
+    ...contributor,
+    score: calculateContributorScore(contributor),
+  }));
+
+  // Sort by score (descending), fallback to contributions if scores are equal
+  filteredContributors.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return b.contributions - a.contributions;
+  });
+
+  console.log(`[Highscore] Calculated scores for ${filteredContributors.length} contributors`);
 
   return filteredContributors;
 }
 
 /**
- * Fetch commits within a date range and aggregate by author
+ * Fetch merged PRs within a date range and aggregate additions/deletions by author
+ * This provides accurate line change statistics for the scoring system
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} since - Start date (ISO 8601)
+ * @param {string} until - End date (ISO 8601)
+ * @param {string} branch - Branch to filter PRs by (default: 'main')
  */
-async function fetchCommitsInDateRange(owner, repo, since, until) {
+async function fetchMergedPRsInDateRange(owner, repo, since, until, branch = 'main') {
   const octokit = getOctokit();
 
   try {
-    console.log(`[Highscore] Fetching commits from ${since} to ${until}...`);
+    console.log(`[Highscore] Fetching merged PRs from ${since} to ${until} targeting branch '${branch}'...`);
+
+    const allPRs = [];
+    let page = 1;
+    const perPage = 100;
+
+    // Fetch all merged PRs (state=closed with merged_at not null)
+    while (true) {
+      const { data } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        state: 'closed',
+        base: branch, // Only PRs targeting the main branch
+        sort: 'updated',
+        direction: 'desc',
+        per_page: perPage,
+        page,
+      });
+
+      if (data.length === 0) break;
+
+      // Filter to only merged PRs within date range
+      const mergedPRsInRange = data.filter(pr => {
+        if (!pr.merged_at) return false;
+        const mergedDate = new Date(pr.merged_at);
+        return mergedDate >= new Date(since) && mergedDate <= new Date(until);
+      });
+
+      allPRs.push(...mergedPRsInRange);
+
+      // If we got fewer than perPage, we've reached the end
+      // Also stop if the last PR is before our start date (optimization)
+      if (data.length < perPage) break;
+      const lastPRDate = data[data.length - 1].updated_at;
+      if (new Date(lastPRDate) < new Date(since)) break;
+
+      page++;
+    }
+
+    console.log(`[Highscore] Found ${allPRs.length} merged PRs in date range`);
+
+    // Aggregate PRs by author (use user ID as key for permanent identification)
+    const contributorMap = new Map();
+
+    for (const pr of allPRs) {
+      const author = pr.user;
+      const login = author?.login;
+      const userId = author?.id;
+
+      // Skip PRs without a GitHub user
+      if (!login) continue;
+
+      // Use user ID as key (permanent), fallback to login
+      const key = userId ? userId.toString() : `legacy:${login}`;
+
+      if (contributorMap.has(key)) {
+        const existing = contributorMap.get(key);
+        existing.contributions++;
+        existing.additions += pr.additions || 0;
+        existing.deletions += pr.deletions || 0;
+        // Update login in case username changed
+        existing.login = login;
+      } else {
+        contributorMap.set(key, {
+          userId: userId || null,
+          login,
+          avatarUrl: author.avatar_url,
+          contributions: 1,
+          additions: pr.additions || 0,
+          deletions: pr.deletions || 0,
+          profileUrl: author.html_url,
+          prestige: 0,
+          type: author.type || 'User',
+        });
+      }
+    }
+
+    // Convert map to array
+    const contributors = Array.from(contributorMap.values());
+
+    console.log(`[Highscore] Found ${contributors.length} unique contributors from merged PRs`);
+    return contributors;
+  } catch (error) {
+    console.error('[Highscore] Failed to fetch merged PRs in date range:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch commits within a date range and aggregate by author
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} since - Start date (ISO 8601)
+ * @param {string} until - End date (ISO 8601)
+ * @param {string} branch - Branch to fetch commits from (default: 'main')
+ * @deprecated Use fetchMergedPRsInDateRange for accurate additions/deletions
+ */
+async function fetchCommitsInDateRange(owner, repo, since, until, branch = 'main') {
+  const octokit = getOctokit();
+
+  try {
+    console.log(`[Highscore] Fetching commits from ${since} to ${until} on branch '${branch}'...`);
 
     const commits = [];
     let page = 1;
     const perPage = 100;
 
     // Fetch all commits in date range (with pagination)
+    // Use sha parameter to explicitly specify the branch
     while (true) {
       const { data } = await octokit.rest.repos.listCommits({
         owner,
         repo,
+        sha: branch, // Explicitly specify branch to only count main branch commits
         since,
         until,
         per_page: perPage,
@@ -244,6 +397,8 @@ async function fetchCommitsInDateRange(owner, repo, since, until) {
           login, // Current username (may change)
           avatarUrl: author.avatar_url,
           contributions: 1,
+          additions: 0, // Note: commit data doesn't include line changes
+          deletions: 0, // Note: commit data doesn't include line changes
           profileUrl: author.html_url,
           prestige: 0,
           type: author.type || 'User',
@@ -251,9 +406,8 @@ async function fetchCommitsInDateRange(owner, repo, since, until) {
       }
     }
 
-    // Convert map to array and sort by contributions
+    // Convert map to array and calculate scores (handled by applyContributorFilters)
     const contributors = Array.from(contributorMap.values());
-    contributors.sort((a, b) => b.contributions - a.contributions);
 
     console.log(`[Highscore] Found ${contributors.length} unique contributors in date range`);
     return contributors;
@@ -265,6 +419,7 @@ async function fetchCommitsInDateRange(owner, repo, since, until) {
 
 /**
  * Fetch fresh contributor statistics from GitHub API (all-time)
+ * Enhanced with PR data for additions/deletions
  */
 async function fetchFreshContributorStats(owner, repo, config = {}) {
   const octokit = getOctokit();
@@ -279,19 +434,70 @@ async function fetchFreshContributorStats(owner, repo, config = {}) {
       per_page: 100,
     });
 
-    // Format contributor data (include user ID for permanent identification)
-    const formattedContributors = contributors.map(contributor => ({
-      userId: contributor.id, // Permanent identifier (usernames can change!)
-      login: contributor.login, // Current username (may change)
-      avatarUrl: contributor.avatar_url,
-      contributions: contributor.contributions,
-      profileUrl: contributor.html_url,
-      prestige: 0, // Will be calculated separately if needed
-      type: contributor.type, // 'User' or 'Bot'
-    }));
+    // Format contributor data with base stats
+    const contributorMap = new Map();
+    contributors.forEach(contributor => {
+      contributorMap.set(contributor.id, {
+        userId: contributor.id,
+        login: contributor.login,
+        avatarUrl: contributor.avatar_url,
+        contributions: contributor.contributions,
+        additions: 0,
+        deletions: 0,
+        profileUrl: contributor.html_url,
+        prestige: 0,
+        type: contributor.type,
+      });
+    });
+
+    // Enhance with PR data to get additions/deletions
+    console.log('[Highscore] Fetching all merged PRs for additions/deletions data...');
+    const branch = config?.wiki?.repository?.branch || 'main';
+
+    let page = 1;
+    const perPage = 100;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data: prs } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        state: 'closed',
+        base: branch,
+        per_page: perPage,
+        page,
+      });
+
+      if (prs.length === 0) break;
+
+      // Only process merged PRs
+      const mergedPRs = prs.filter(pr => pr.merged_at);
+
+      for (const pr of mergedPRs) {
+        const userId = pr.user?.id;
+        if (userId && contributorMap.has(userId)) {
+          const contributor = contributorMap.get(userId);
+          contributor.additions += pr.additions || 0;
+          contributor.deletions += pr.deletions || 0;
+        }
+      }
+
+      hasMore = prs.length === perPage;
+      page++;
+
+      // Safety limit to prevent excessive API calls
+      if (page > 50) {
+        console.warn('[Highscore] Reached page limit (50) for PR fetching');
+        break;
+      }
+    }
+
+    const formattedContributors = Array.from(contributorMap.values());
+    console.log(`[Highscore] Enhanced ${formattedContributors.length} contributors with PR data`);
 
     // Don't apply filters here - they'll be applied when data is returned
     // This keeps cached data unfiltered so filters can be changed dynamically
+    // Scores will be calculated by applyContributorFilters()
     return formattedContributors;
   } catch (error) {
     console.error('[Highscore] Failed to fetch contributor stats:', error);
@@ -301,6 +507,7 @@ async function fetchFreshContributorStats(owner, repo, config = {}) {
 
 /**
  * Fetch all category data (all-time, this month, this week)
+ * Uses merged PR data for accurate additions/deletions statistics
  */
 async function fetchAllCategoryData(owner, repo, config = {}) {
   console.log('[Highscore] Fetching all category data...');
@@ -309,11 +516,15 @@ async function fetchAllCategoryData(owner, repo, config = {}) {
   const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  // Fetch all three categories in parallel
+  // Get configured branch (default to 'main')
+  const branch = config?.wiki?.repository?.branch || 'main';
+  console.log(`[Highscore] Using branch: ${branch}`);
+
+  // Fetch all three categories in parallel using merged PR data
   const [allTimeContributors, thisMonthContributors, thisWeekContributors] = await Promise.all([
     fetchFreshContributorStats(owner, repo, config),
-    fetchCommitsInDateRange(owner, repo, oneMonthAgo.toISOString(), now.toISOString()),
-    fetchCommitsInDateRange(owner, repo, oneWeekAgo.toISOString(), now.toISOString()),
+    fetchMergedPRsInDateRange(owner, repo, oneMonthAgo.toISOString(), now.toISOString(), branch),
+    fetchMergedPRsInDateRange(owner, repo, oneWeekAgo.toISOString(), now.toISOString(), branch),
   ]);
 
   return {

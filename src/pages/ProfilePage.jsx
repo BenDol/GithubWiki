@@ -366,14 +366,16 @@ const ProfilePage = () => {
   const paginatedPullRequests = filteredPullRequests.slice(startIndex, endIndex);
 
   // Calculate contribution statistics from PRs
+  // ONLY count additions/deletions/files from MERGED PRs (not closed without merging)
+  const mergedPRsList = pullRequests.filter(pr => pr.merged_at || pr.state === 'merged');
   const stats = {
     totalPRs: pullRequests.length,
     openPRs: pullRequests.filter(pr => pr.state === 'open').length,
-    mergedPRs: pullRequests.filter(pr => pr.merged_at || pr.state === 'merged').length,
+    mergedPRs: mergedPRsList.length,
     closedPRs: pullRequests.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
-    totalAdditions: pullRequests.reduce((sum, pr) => sum + (pr.additions || 0), 0),
-    totalDeletions: pullRequests.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
-    totalFiles: pullRequests.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
+    totalAdditions: mergedPRsList.reduce((sum, pr) => sum + (pr.additions || 0), 0),
+    totalDeletions: mergedPRsList.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
+    totalFiles: mergedPRsList.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
     mostRecentEdit: pullRequests.length > 0
       ? new Date(Math.max(...pullRequests.map(pr => new Date(pr.created_at).getTime())))
       : null,
