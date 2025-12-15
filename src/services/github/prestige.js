@@ -78,13 +78,13 @@ function isCacheValid(lastUpdated, cacheHours = 24) {
  * @returns {Promise<Object>} Prestige data map { username: { tier, badge, color, contributions, ... } }
  */
 export async function getAllPrestigeData(owner, repo) {
-  console.log('[Prestige] Fetching prestige data (cache: 24 hours)');
+  console.log('[Prestige] Fetching prestige data (cache: 4 hours)');
 
-  // Step 1: Check browser localStorage cache
+  // Step 1: Check browser localStorage cache (4 hour TTL)
   const localCache = localStorage.getItem(PRESTIGE_CACHE_KEY);
   if (localCache) {
     const localData = JSON.parse(localCache);
-    if (isCacheValid(localData.lastUpdated, 24)) {
+    if (isCacheValid(localData.lastUpdated, 4)) {
       console.log('[Prestige] Using browser cache (age: ' +
         Math.round((new Date() - new Date(localData.lastUpdated)) / 1000 / 60 / 60) + ' hours)');
       return localData.prestigeData || {};
@@ -92,13 +92,13 @@ export async function getAllPrestigeData(owner, repo) {
     console.log('[Prestige] Browser cache expired');
   }
 
-  // Step 2: Check GitHub issue cache
+  // Step 2: Check GitHub issue cache (4 hour TTL)
   const cacheIssue = await getPrestigeCacheIssue(owner, repo);
 
   if (cacheIssue) {
     const githubCacheData = parseCacheData(cacheIssue.body);
 
-    if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, 24)) {
+    if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, 4)) {
       console.log('[Prestige] Using GitHub cache (age: ' +
         Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60 / 60) + ' hours)');
 
@@ -140,7 +140,7 @@ export function clearPrestigeCache() {
 
 /**
  * Get cached prestige data synchronously (without API call)
- * Returns null if not cached or expired
+ * Returns null if not cached or expired (4 hour TTL)
  *
  * @param {string} username - GitHub username
  * @returns {Object|null} Cached prestige data or null
@@ -151,7 +151,7 @@ export function getCachedPrestigeDataSync(username) {
 
   try {
     const localData = JSON.parse(localCache);
-    if (!isCacheValid(localData.lastUpdated, 24)) {
+    if (!isCacheValid(localData.lastUpdated, 4)) {
       return null;
     }
 

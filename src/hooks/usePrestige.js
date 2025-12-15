@@ -57,7 +57,7 @@ export const useUserPrestige = (username) => {
         return;
       }
 
-      // Check localStorage cache synchronously (24 hour TTL)
+      // Check localStorage cache synchronously (4 hour TTL)
       const syncCached = getCachedPrestigeDataSync(username);
       if (syncCached) {
         console.log(`[Prestige] Using cached data for ${username} from localStorage`);
