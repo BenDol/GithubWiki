@@ -243,27 +243,50 @@ export async function buildUserSnapshot(owner, repo, username) {
 
     console.log(`[UserSnapshot] Found ${allPRs.length} PRs for ${username}`);
 
-    // Calculate statistics
+    // Fetch detailed data for each PR (additions, deletions, changed_files)
+    // pulls.list() doesn't include these fields, need pulls.get() for each PR
+    console.log(`[UserSnapshot] Fetching detailed PR data (additions, deletions, files)...`);
+    const detailedPRs = [];
+
+    for (const pr of allPRs) {
+      try {
+        const { data: detailedPR } = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: pr.number,
+        });
+
+        detailedPRs.push(detailedPR);
+      } catch (error) {
+        console.warn(`[UserSnapshot] Failed to fetch details for PR #${pr.number}:`, error.message);
+        // Use the basic PR data as fallback (will have 0 for additions/deletions/files)
+        detailedPRs.push(pr);
+      }
+    }
+
+    console.log(`[UserSnapshot] Fetched detailed data for ${detailedPRs.length} PRs`);
+
+    // Calculate statistics (use detailedPRs which has additions/deletions/files)
     const stats = {
-      totalPRs: allPRs.length,
-      openPRs: allPRs.filter(pr => pr.state === 'open').length,
-      mergedPRs: allPRs.filter(pr => pr.merged_at || pr.state === 'merged').length,
-      closedPRs: allPRs.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
-      totalAdditions: allPRs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
-      totalDeletions: allPRs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
-      totalFiles: allPRs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
-      mostRecentEdit: allPRs.length > 0
-        ? new Date(Math.max(...allPRs.map(pr => new Date(pr.created_at).getTime()))).toISOString()
+      totalPRs: detailedPRs.length,
+      openPRs: detailedPRs.filter(pr => pr.state === 'open').length,
+      mergedPRs: detailedPRs.filter(pr => pr.merged_at || pr.state === 'merged').length,
+      closedPRs: detailedPRs.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
+      totalAdditions: detailedPRs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
+      totalDeletions: detailedPRs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
+      totalFiles: detailedPRs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
+      mostRecentEdit: detailedPRs.length > 0
+        ? new Date(Math.max(...detailedPRs.map(pr => new Date(pr.created_at).getTime()))).toISOString()
         : null,
     };
 
     // Build pull requests list (store essential data)
     // Limit to most recent PRs to stay within GitHub issue size limits (~65KB)
-    const recentPRs = allPRs
+    const recentPRs = detailedPRs
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, MAX_PRS_IN_SNAPSHOT);
 
-    console.log(`[UserSnapshot] Storing ${recentPRs.length} most recent PRs (out of ${allPRs.length} total)`);
+    console.log(`[UserSnapshot] Storing ${recentPRs.length} most recent PRs (out of ${detailedPRs.length} total)`);
 
     const pullRequests = recentPRs.map(pr => ({
       number: pr.number,
@@ -290,9 +313,9 @@ export async function buildUserSnapshot(owner, repo, username) {
       lastUpdated: new Date().toISOString(),
       stats,
       pullRequests,
-      pullRequestsCount: allPRs.length,
+      pullRequestsCount: detailedPRs.length,
       pullRequestsStored: recentPRs.length,
-      pullRequestsTruncated: allPRs.length > MAX_PRS_IN_SNAPSHOT,
+      pullRequestsTruncated: detailedPRs.length > MAX_PRS_IN_SNAPSHOT,
       user: {
         id: userData.id, // Store ID here too for easy access
         login: userData.login,
