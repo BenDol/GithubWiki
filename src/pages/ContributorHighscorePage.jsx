@@ -336,7 +336,7 @@ const ContributorHighscorePage = () => {
               </div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
+              <div className="text-2xl sm:text-3xl font-bold text-purple-600 dark:text-purple-400">
                 {highscoreData?.contributors?.reduce((sum, c) => sum + c.contributions, 0).toLocaleString() || 0}
               </div>
               <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
@@ -344,11 +344,11 @@ const ContributorHighscorePage = () => {
               </div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-bold text-purple-600 dark:text-purple-400">
-                {cacheMinutes}m
+              <div className="text-2xl sm:text-3xl font-bold text-green-600 dark:text-green-400">
+                {highscoreData?.contributors?.reduce((sum, c) => sum + (c.additions || 0), 0).toLocaleString() || 0}
               </div>
               <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
-                Cache Duration
+                Total Additions
               </div>
             </div>
           </div>

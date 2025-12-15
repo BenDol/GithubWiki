@@ -61,7 +61,7 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
         <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 font-semibold text-sm text-gray-600 dark:text-gray-400">
           <div className="col-span-1 text-center">Rank</div>
           <div className="col-span-7">Contributor</div>
-          <div className="col-span-4 text-right">Contributions</div>
+          <div className="col-span-4 text-right">Score</div>
         </div>
 
         {/* Contributors List */}
@@ -117,14 +117,14 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                   </div>
                 </div>
 
-                {/* Contributions */}
+                {/* Score */}
                 <div className="col-span-4 md:col-span-4 flex items-center justify-end">
                   <div className="text-right">
                     <div className="text-base sm:text-lg font-bold text-gray-900 dark:text-white">
-                      {contributor.contributions.toLocaleString()}
+                      {contributor.score?.toLocaleString() || contributor.contributions?.toLocaleString() || 0}
                     </div>
                     <div className="hidden sm:block text-xs text-gray-500 dark:text-gray-400">
-                      contributions
+                      score
                     </div>
                   </div>
                 </div>

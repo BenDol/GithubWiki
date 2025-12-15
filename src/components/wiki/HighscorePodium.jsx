@@ -90,7 +90,7 @@ const HighscorePodium = ({ topThree }) => {
                 {second.login}
               </h3>
               <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                {second.contributions.toLocaleString()}
+                {second.score?.toLocaleString() || second.contributions?.toLocaleString() || 0}
               </p>
             </div>
 
@@ -140,7 +140,7 @@ const HighscorePodium = ({ topThree }) => {
                 {first.login}
               </h3>
               <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 font-semibold">
-                {first.contributions.toLocaleString()}
+                {first.score?.toLocaleString() || first.contributions?.toLocaleString() || 0}
               </p>
             </div>
 
@@ -183,7 +183,7 @@ const HighscorePodium = ({ topThree }) => {
                 {third.login}
               </h3>
               <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
-                {third.contributions.toLocaleString()}
+                {third.score?.toLocaleString() || third.contributions?.toLocaleString() || 0}
               </p>
             </div>
 
