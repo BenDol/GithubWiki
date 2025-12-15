@@ -6,6 +6,8 @@
  * In development, can optionally use direct API calls for local testing
  */
 
+import { useAuthStore } from '../../store/authStore';
+
 // Development-only imports - tree-shaken in production builds
 let Octokit;
 if (import.meta.env.DEV) {
@@ -196,6 +198,15 @@ const lockIssueDirectly = async (owner, repo, issueNumber) => {
  */
 export const createAdminIssueWithBot = async (owner, repo, title, body, labels, lock = true) => {
   try {
+    // Get user credentials for server-side permission verification
+    const { user, getToken } = useAuthStore.getState();
+    const userToken = getToken();
+    const username = user?.login;
+
+    if (!userToken || !username) {
+      throw new Error('Authentication required to perform admin actions');
+    }
+
     // Development mode: Try direct API call first
     if (import.meta.env.DEV) {
       const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
@@ -230,6 +241,8 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
         body,
         labels,
         lock,
+        userToken,
+        username,
       }),
     });
 
@@ -258,6 +271,15 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
  */
 export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) => {
   try {
+    // Get user credentials for server-side permission verification
+    const { user, getToken } = useAuthStore.getState();
+    const userToken = getToken();
+    const username = user?.login;
+
+    if (!userToken || !username) {
+      throw new Error('Authentication required to perform admin actions');
+    }
+
     // Development mode: Try direct API call first
     if (import.meta.env.DEV) {
       const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
@@ -283,6 +305,8 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
         repo,
         issueNumber,
         body,
+        userToken,
+        username,
       }),
     });
 
