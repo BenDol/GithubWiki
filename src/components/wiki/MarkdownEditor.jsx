@@ -96,6 +96,16 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           view.dispatch({
             changes: { from: line.from, to: line.to, insert: text }
           });
+        },
+        getContent: () => {
+          const view = viewRef.current;
+          if (!view) return '';
+          return view.state.doc.toString();
+        },
+        getCursorPosition: () => {
+          const view = viewRef.current;
+          if (!view) return 0;
+          return view.state.selection.main.head;
         }
       };
       console.log('[MarkdownEditor] Editor API set up successfully');

@@ -978,10 +978,53 @@ const PageEditor = ({
     });
 
     if (color === null) {
-      // Clear color - just insert plain text
-      if (!selection.empty && selection.text) {
-        console.log('[PageEditor] Clearing color, inserting plain text:', selection.text);
-        // Use saved positions if available, otherwise current selection
+      // Clear color - detect and remove color span tags
+      console.log('[PageEditor] Clearing color');
+
+      // Get the full content and cursor position
+      const content = api.getContent();
+      const cursorPos = savedSelection?.from ?? api.getCursorPosition();
+
+      console.log('[PageEditor] Content length:', content.length, 'Cursor position:', cursorPos);
+
+      // Find color span tags that contain the cursor position
+      // Pattern: <span class="text-[color]-[shade]...">...</span>
+      const spanRegex = /<span\s+class="[^"]*text-[^"]*"[^>]*>(.*?)<\/span>/gs;
+      let match;
+      let foundSpan = null;
+
+      // Reset regex lastIndex to start from beginning
+      spanRegex.lastIndex = 0;
+
+      while ((match = spanRegex.exec(content)) !== null) {
+        const spanStart = match.index;
+        const spanEnd = match.index + match[0].length;
+
+        // Check if cursor is inside this span
+        if (cursorPos >= spanStart && cursorPos <= spanEnd) {
+          foundSpan = {
+            start: spanStart,
+            end: spanEnd,
+            fullMatch: match[0],
+            innerText: match[1]
+          };
+          console.log('[PageEditor] Found color span containing cursor:', foundSpan);
+          break;
+        }
+      }
+
+      if (foundSpan) {
+        // Remove the span wrapper, keep only inner text
+        console.log('[PageEditor] Removing span wrapper, keeping inner text:', foundSpan.innerText);
+        try {
+          api.replaceRange(foundSpan.start, foundSpan.end, foundSpan.innerText);
+          console.log('[PageEditor] Color span removed successfully');
+        } catch (error) {
+          console.error('[PageEditor] Failed to remove color span:', error);
+        }
+      } else if (!selection.empty && selection.text) {
+        // Fallback: if no span found but there's a selection, just clear any potential wrapper
+        console.log('[PageEditor] No span found at cursor, clearing selection text:', selection.text);
         if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
           console.log('[PageEditor] Using replaceRange with saved positions');
           try {
@@ -1000,7 +1043,7 @@ const PageEditor = ({
           }
         }
       } else {
-        console.warn('[PageEditor] No text to clear color from');
+        console.warn('[PageEditor] No color span found at cursor position and no text selected');
       }
     } else {
       // Apply color using span with Tailwind class
