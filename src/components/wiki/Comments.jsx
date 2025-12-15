@@ -126,8 +126,16 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           console.log(`[Comments] Found cached issue #${cachedIssueNumber}, loading directly...`);
           try {
             const { getIssue } = await import('../../services/github/issueOperations');
-            pageIssue = await getIssue(owner, repo, cachedIssueNumber);
-            console.log('[Comments] Loaded issue from cache:', pageIssue);
+            const cachedIssue = await getIssue(owner, repo, cachedIssueNumber);
+
+            // Validate that cached issue is still open (ignore closed issues)
+            if (cachedIssue.state === 'open') {
+              pageIssue = cachedIssue;
+              console.log('[Comments] Loaded issue from cache:', pageIssue);
+            } else {
+              console.log(`[Comments] Cached issue #${cachedIssueNumber} is closed, ignoring and searching for new issue`);
+              pageIssue = null;
+            }
           } catch (err) {
             console.warn('[Comments] Failed to load cached issue, falling back to search:', err);
             pageIssue = null;
@@ -137,7 +145,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         // If no cached issue or loading failed, search for it
         if (!pageIssue) {
           console.log('[Comments] Searching for page issue...');
-          pageIssue = await findPageIssue(owner, repo, pageTitle, branch);
+          pageIssue = await findPageIssue(owner, repo, sectionId, pageId, branch);
 
           // Cache the issue number if found
           if (pageIssue) {
@@ -305,7 +313,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       let pageIssue = issue;
       if (!pageIssue) {
         console.log('[Comments] No issue exists, creating new issue...');
-        pageIssue = await getOrCreatePageIssue(owner, repo, pageTitle, pageUrl, branch);
+        pageIssue = await getOrCreatePageIssue(owner, repo, sectionId, pageId, pageTitle, pageUrl, branch);
         console.log('[Comments] Created/found issue:', pageIssue);
         setIssue(pageIssue);
 

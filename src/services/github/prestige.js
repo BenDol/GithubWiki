@@ -2,10 +2,11 @@ import { getOctokit } from './api';
 
 /**
  * Contributor Prestige Service
- * Manages fetching prestige data from GitHub issue cache (updated daily by GitHub Action)
+ * DEPRECATED: Prestige data now comes from user snapshots.
+ * This service is kept for backwards compatibility with existing prestige cache issues.
  */
 
-const PRESTIGE_CACHE_ISSUE_TITLE = 'Contributor Prestige Cache [DO NOT DELETE]';
+const PRESTIGE_CACHE_ISSUE_TITLE = '[Cache] Contributor Prestige';
 const PRESTIGE_CACHE_KEY = 'contributor_prestige_cache';
 
 /**

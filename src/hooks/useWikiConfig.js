@@ -1,47 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useConfigStore } from '../store/configStore';
 
 /**
  * Hook to load and access wiki configuration
  * This is the foundation of the entire app - loads config from wiki-config.json
+ * Now uses centralized caching to prevent redundant fetches
  */
 export const useWikiConfig = () => {
-  const [config, setConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const { config, loading, error, loadConfig } = useConfigStore();
 
   useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        setLoading(true);
-        // Use import.meta.env.BASE_URL to respect Vite's base path
-        const response = await fetch(`${import.meta.env.BASE_URL}wiki-config.json`);
-
-        if (!response.ok) {
-          throw new Error('Failed to load wiki configuration');
-        }
-
-        const data = await response.json();
-
-        // Validate required fields
-        if (!data.wiki || !data.sections) {
-          throw new Error('Invalid wiki configuration format');
-        }
-
-        // Sort sections by order
-        data.sections.sort((a, b) => a.order - b.order);
-
-        setConfig(data);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading wiki config:', err);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadConfig();
-  }, []);
+    // Load config on mount (will use cache if available)
+    loadConfig().catch(err => {
+      console.error('[useWikiConfig] Failed to load config:', err);
+    });
+  }, [loadConfig]);
 
   return { config, loading, error };
 };
@@ -77,4 +50,13 @@ export const useFeature = (featureName) => {
   if (!config || !config.features) return false;
 
   return config.features[featureName] === true;
+};
+
+/**
+ * Hook to manually refresh the config (bypasses cache)
+ * Useful during development or when config changes are detected
+ */
+export const useConfigRefresh = () => {
+  const refreshConfig = useConfigStore(state => state.refreshConfig);
+  return refreshConfig;
 };

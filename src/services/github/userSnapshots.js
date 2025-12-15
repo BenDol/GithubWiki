@@ -8,10 +8,16 @@ import { getOctokit } from './api';
  * - Title: [User Snapshot] username
  * - Labels: user-snapshot, automated
  * - Body: JSON snapshot data (includes stats for prestige calculation)
+ *
+ * Limitations:
+ * - GitHub issues have a ~65KB body size limit
+ * - Snapshots store up to 100 most recent PRs to stay within limits
+ * - Full stats are always accurate (calculated from all PRs)
  */
 
 const SNAPSHOT_LABEL = 'user-snapshot';
 const SNAPSHOT_TITLE_PREFIX = '[User Snapshot]';
+const MAX_PRS_IN_SNAPSHOT = 100;
 
 /**
  * Get snapshot data for a specific user
@@ -171,7 +177,14 @@ export async function buildUserSnapshot(owner, repo, username) {
     };
 
     // Build pull requests list (store essential data)
-    const pullRequests = allPRs.map(pr => ({
+    // Limit to most recent PRs to stay within GitHub issue size limits (~65KB)
+    const recentPRs = allPRs
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, MAX_PRS_IN_SNAPSHOT);
+
+    console.log(`[UserSnapshot] Storing ${recentPRs.length} most recent PRs (out of ${allPRs.length} total)`);
+
+    const pullRequests = recentPRs.map(pr => ({
       number: pr.number,
       title: pr.title,
       state: pr.state,
@@ -195,6 +208,9 @@ export async function buildUserSnapshot(owner, repo, username) {
       lastUpdated: new Date().toISOString(),
       stats,
       pullRequests,
+      pullRequestsCount: allPRs.length,
+      pullRequestsStored: recentPRs.length,
+      pullRequestsTruncated: allPRs.length > MAX_PRS_IN_SNAPSHOT,
       user: {
         login: userData.login,
         name: userData.name,

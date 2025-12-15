@@ -9,30 +9,37 @@ import { getOctokit, getBotOctokit, hasBotToken } from './api';
  * Search for an existing issue for a specific wiki page (read-only, no auth required for public repos)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
- * @param {string} pageTitle - Page title
+ * @param {string} sectionId - Section ID
+ * @param {string} pageId - Page ID
  * @param {string} branch - Branch name for namespace filtering
  * @returns {Promise<Object|null>} Issue object or null if not found
  */
-export const findPageIssue = async (owner, repo, pageTitle, branch) => {
+export const findPageIssue = async (owner, repo, sectionId, pageId, branch) => {
   const octokit = getOctokit();
 
-  // Search for existing issue with this page title AND branch label
+  // Search by unique page ID label (more reliable than title)
+  const pageLabel = `page:${sectionId}/${pageId}`;
   const branchLabel = `branch:${branch}`;
-  const searchQuery = `repo:${owner}/${repo} is:issue label:"${branchLabel}" in:title "${pageTitle}"`;
 
-  console.log(`[Comments] Searching for page issue in branch: ${branch}`);
+  console.log(`[Comments] Searching for page issue: ${pageLabel} in branch: ${branch}`);
 
   try {
-    const { data: searchResults } = await octokit.rest.search.issuesAndPullRequests({
-      q: searchQuery,
+    // Search for issues with both the page label and branch label
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: `${pageLabel},${branchLabel}`,
+      state: 'open',
+      per_page: 1,
     });
 
-    // Check if we found an exact match
-    const existingIssue = searchResults.items.find(
-      issue => issue.title === `[Comments] ${pageTitle}`
-    );
+    if (issues.length > 0) {
+      console.log(`[Comments] Found existing issue #${issues[0].number} for ${pageLabel}`);
+      return issues[0];
+    }
 
-    return existingIssue || null;
+    console.log(`[Comments] No issue found for ${pageLabel}`);
+    return null;
   } catch (error) {
     console.error('Failed to search for page issue:', error);
     return null;
@@ -44,14 +51,16 @@ export const findPageIssue = async (owner, repo, pageTitle, branch) => {
  * Uses bot token if available, falls back to user token
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
- * @param {string} pageTitle - Page title
+ * @param {string} sectionId - Section ID
+ * @param {string} pageId - Page ID
+ * @param {string} pageTitle - Page title (for display)
  * @param {string} pageUrl - Page URL
  * @param {string} branch - Branch name for namespace
  * @returns {Promise<Object>} Issue object
  */
-export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, branch) => {
-  // First try to find existing issue
-  const existingIssue = await findPageIssue(owner, repo, pageTitle, branch);
+export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageTitle, pageUrl, branch) => {
+  // First try to find existing issue by page ID
+  const existingIssue = await findPageIssue(owner, repo, sectionId, pageId, branch);
   if (existingIssue) {
     return existingIssue;
   }
@@ -61,8 +70,9 @@ export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, bran
   // Will throw error if bot token not configured
   const octokit = getBotOctokit();
 
-  console.log('[Comments] Creating page issue with bot token (users cannot close)');
+  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot token (users cannot close)`);
 
+  const pageLabel = `page:${sectionId}/${pageId}`;
   const branchLabel = `branch:${branch}`;
 
   try {
@@ -70,11 +80,11 @@ export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, bran
       owner,
       repo,
       title: `[Comments] ${pageTitle}`,
-      body: `💬 **Comments for:** ${pageTitle}\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
-      labels: ['wiki-comments', branchLabel],
+      body: `💬 **Comments for:** ${pageTitle}\n📄 **Page ID:** \`${sectionId}/${pageId}\`\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
+      labels: ['wiki-comments', pageLabel, branchLabel],
     });
 
-    console.log(`[Comments] Created page issue #${newIssue.number} for ${pageTitle} in branch: ${branch} (bot)`);
+    console.log(`[Comments] Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
 
     return newIssue;
   } catch (error) {

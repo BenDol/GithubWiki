@@ -647,6 +647,9 @@ const ProfilePage = () => {
             {filteredPullRequests.length > 0 && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Showing {startIndex + 1}-{Math.min(endIndex, filteredPullRequests.length)} of {filteredPullRequests.length}
+                {snapshotData?.pullRequestsTruncated && !isOwnProfile && (
+                  <span className="text-gray-500 dark:text-gray-500"> • Most recent 100 shown</span>
+                )}
               </p>
             )}
           </div>

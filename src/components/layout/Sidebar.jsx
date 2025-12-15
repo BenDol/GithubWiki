@@ -390,20 +390,22 @@ const Sidebar = () => {
               />
 
               {/* Sidebar pages (e.g., Highscore, Contributing, etc.) */}
+              {/* These pages show in sidebar on mobile only, and in header on desktop */}
               {config.sidebar?.pages?.filter(page => page.path !== '/').map((page, index) => (
-                <TreeNode
-                  key={index}
-                  icon={page.icon}
-                  title={page.title}
-                  path={page.path}
-                  isActive={location.pathname === page.path}
-                  hasChildren={false}
-                  level={0}
-                  showTreeLines={showTreeLines}
-                  treeLineWidth={treeLineWidth}
-                  treeLineStyle={treeLineStyle}
-                  onNavigate={handleNavigate}
-                />
+                <div key={index} className="lg:hidden">
+                  <TreeNode
+                    icon={page.icon}
+                    title={page.title}
+                    path={page.path}
+                    isActive={location.pathname === page.path}
+                    hasChildren={false}
+                    level={0}
+                    showTreeLines={showTreeLines}
+                    treeLineWidth={treeLineWidth}
+                    treeLineStyle={treeLineStyle}
+                    onNavigate={handleNavigate}
+                  />
+                </div>
               ))}
 
               {/* Categories tree */}
