@@ -38,17 +38,12 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
 
   try {
     // Search for existing admins issue using listForRepo (fast, reliable)
-    // Use cache-busting headers to ensure fresh data
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner,
       repo,
       labels: `${ADMIN_LIST_LABEL},${branchLabel}`,
       state: 'open',
       per_page: 1,
-      headers: {
-        'If-None-Match': '', // Bypass GitHub's ETag cache
-        'Cache-Control': 'no-cache',
-      },
     });
 
     const existingIssue = issues.find(
@@ -95,17 +90,12 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
 
   try {
     // Search for existing banned users issue using listForRepo (fast, reliable)
-    // Use cache-busting headers to ensure fresh data
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner,
       repo,
       labels: `${BANNED_USERS_LABEL},${branchLabel}`,
       state: 'open',
       per_page: 1,
-      headers: {
-        'If-None-Match': '', // Bypass GitHub's ETag cache
-        'Cache-Control': 'no-cache',
-      },
     });
 
     const existingIssue = issues.find(
