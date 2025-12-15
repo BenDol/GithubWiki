@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useUserPrestige } from '../../hooks/usePrestige';
+import { getCurrentUserAdminStatus } from '../../services/github/admin';
 
 /**
  * UserMenu component with profile dropdown
@@ -14,10 +15,36 @@ const UserMenu = () => {
   const { user, logout } = useAuthStore();
   const { config } = useWikiConfig();
   const [isOpen, setIsOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminCheckLoading, setAdminCheckLoading] = useState(true);
   const menuRef = useRef(null);
 
   // Load prestige data for current user
   const { tier: prestigeTier } = useUserPrestige(user?.login);
+
+  // Check if user is admin
+  useEffect(() => {
+    if (!config || !user) {
+      setIsAdmin(false);
+      setAdminCheckLoading(false);
+      return;
+    }
+
+    const checkAdmin = async () => {
+      try {
+        const { owner, repo } = config.wiki.repository;
+        const status = await getCurrentUserAdminStatus(owner, repo);
+        setIsAdmin(status.isAdmin);
+      } catch (error) {
+        console.error('Failed to check admin status:', error);
+        setIsAdmin(false);
+      } finally {
+        setAdminCheckLoading(false);
+      }
+    };
+
+    checkAdmin();
+  }, [config, user]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -103,15 +130,29 @@ const UserMenu = () => {
           {/* Menu items */}
           <div className="py-1">
             <Link
-              to="/my-edits"
+              to="/profile"
               onClick={() => setIsOpen(false)}
               className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
               <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              My Edits
+              My Profile
             </Link>
+
+            {/* Admin Panel - only show for admins and owner */}
+            {!adminCheckLoading && isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center px-4 py-2 text-sm text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Admin Panel
+              </Link>
+            )}
 
             {/* Dev Tools - only show in development */}
             {import.meta.env.DEV && (

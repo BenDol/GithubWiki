@@ -2,22 +2,60 @@ import { useState, useEffect, useRef } from 'react';
 import { formatDistance } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { usePageHistory } from '../../hooks/usePageHistory';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useAuthStore } from '../../store/authStore';
 import LoadingSpinner from '../common/LoadingSpinner';
 import PrestigeAvatar from '../common/PrestigeAvatar';
+import UserActionMenu from '../common/UserActionMenu';
+import { addAdmin } from '../../services/github/admin';
 
 /**
  * PageHistory component
  * Displays commit history for a wiki page from GitHub
  */
 const PageHistory = ({ sectionId, pageId }) => {
+  const { config } = useWikiConfig();
+  const { user } = useAuthStore();
   const { commits, loading, error } = usePageHistory(sectionId, pageId);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // User action menu state
+  const [showUserActionMenu, setShowUserActionMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
+
   // Ref for commits section
   const commitsRef = useRef(null);
+
+  // Handle avatar click
+  const handleAvatarClick = (e, username) => {
+    if (!username) return;
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelectedUser(username);
+    setUserMenuPosition({ x: rect.left, y: rect.bottom - 20 });
+    setShowUserActionMenu(true);
+  };
+
+  const handleUserMenuClose = () => {
+    setShowUserActionMenu(false);
+    setSelectedUser(null);
+  };
+
+  const handleMakeAdmin = async (username) => {
+    if (!config?.wiki?.repository) return;
+    try {
+      const { owner, repo } = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login);
+      alert(`✅ Successfully added ${username} as administrator`);
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+      alert('❌ Failed to add admin: ' + error.message);
+    }
+  };
 
   // Reset to page 1 when commits change
   useEffect(() => {
@@ -116,6 +154,7 @@ const PageHistory = ({ sectionId, pageId }) => {
                     username={commit.author.username}
                     size="md"
                     showBadge={true}
+                    onClick={handleAvatarClick}
                   />
                 ) : (
                   <div className="h-10 w-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
@@ -275,6 +314,17 @@ const PageHistory = ({ sectionId, pageId }) => {
             Page {currentPage} of {totalPages}
           </span>
         </div>
+      )}
+
+      {/* User Action Menu */}
+      {showUserActionMenu && selectedUser && (
+        <UserActionMenu
+          username={selectedUser}
+          onClose={handleUserMenuClose}
+          position={userMenuPosition}
+          onBan={() => {}}
+          onMakeAdmin={handleMakeAdmin}
+        />
       )}
     </div>
   );

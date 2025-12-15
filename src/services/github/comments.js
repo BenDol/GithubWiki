@@ -203,10 +203,13 @@ export const deleteCommentReaction = async (owner, repo, commentId, reactionId) 
  * @param {number} commentId - Comment ID
  * @returns {Promise<Array>} Array of reactions
  */
-export const getCommentReactions = async (owner, repo, commentId) => {
+export const getCommentReactions = async (owner, repo, commentId, bustCache = false) => {
   const octokit = getOctokit();
 
   try {
+    // Note: We can't reliably bust GitHub's cache with headers through Octokit
+    // Instead, we rely on the delay (1 second) before fetching to let GitHub's
+    // cache update naturally. This is the most reliable approach.
     const { data: reactions } = await octokit.rest.reactions.listForIssueComment({
       owner,
       repo,

@@ -707,7 +707,9 @@ Include any supplementary details, notes, or related information.
             pageIdFromMetadata,
             branchName,
             editSummary,
-            baseBranch
+            baseBranch,
+            isNewPage,
+            isFirstEver
           );
           console.log(`[PageEditor] ✓ Created direct PR from ${branchName} on ${owner}/${repo}`);
         }
@@ -955,7 +957,9 @@ Include any supplementary details, notes, or related information.
           pageIdFromMetadata,
           branchName,
           `Request to delete page: ${pageTitle}`,
-          baseBranch
+          baseBranch,
+          false, // isNewPage - false for deletions
+          false  // isFirstContribution - deletions are not first contributions
         );
         console.log(`[PageEditor] ✓ Created direct deletion PR from ${branchName} on ${owner}/${repo}`);
       }

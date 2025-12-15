@@ -389,6 +389,23 @@ const Sidebar = () => {
                 onNavigate={handleNavigate}
               />
 
+              {/* Sidebar pages (e.g., Highscore, Contributing, etc.) */}
+              {config.sidebar?.pages?.filter(page => page.path !== '/').map((page, index) => (
+                <TreeNode
+                  key={index}
+                  icon={page.icon}
+                  title={page.title}
+                  path={page.path}
+                  isActive={location.pathname === page.path}
+                  hasChildren={false}
+                  level={0}
+                  showTreeLines={showTreeLines}
+                  treeLineWidth={treeLineWidth}
+                  treeLineStyle={treeLineStyle}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+
               {/* Categories tree */}
               {sortedCategories.map((category, categoryIndex) => {
                 const isExpanded = expandedCategories[category.id];

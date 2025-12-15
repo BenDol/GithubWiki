@@ -1,10 +1,51 @@
+import { useState } from 'react';
 import PrestigeAvatar from '../common/PrestigeAvatar';
+import UserActionMenu from '../common/UserActionMenu';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useAuthStore } from '../../store/authStore';
+import { addAdmin } from '../../services/github/admin';
 
 /**
  * HighscoreList Component
  * Displays remaining contributors in a ranked list
  */
 const HighscoreList = ({ contributors, startRank = 4 }) => {
+  const { config } = useWikiConfig();
+  const { user } = useAuthStore();
+
+  // User action menu state
+  const [showUserActionMenu, setShowUserActionMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
+
+  // Handle avatar click
+  const handleAvatarClick = (e, username) => {
+    if (!username) return;
+    e.stopPropagation();
+    e.preventDefault(); // Prevent link navigation
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelectedUser(username);
+    setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
+    setShowUserActionMenu(true);
+  };
+
+  const handleUserMenuClose = () => {
+    setShowUserActionMenu(false);
+    setSelectedUser(null);
+  };
+
+  const handleMakeAdmin = async (username) => {
+    if (!config?.wiki?.repository) return;
+    try {
+      const { owner, repo } = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login);
+      alert(`✅ Successfully added ${username} as administrator`);
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+      alert('❌ Failed to add admin: ' + error.message);
+    }
+  };
+
   if (!contributors || contributors.length === 0) {
     return null;
   }
@@ -60,6 +101,7 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                     username={contributor.login}
                     size={window.innerWidth < 640 ? 'sm' : 'md'}
                     showBadge={true}
+                    onClick={handleAvatarClick}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-1 sm:space-x-2">
@@ -91,6 +133,17 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
           })}
         </div>
       </div>
+
+      {/* User Action Menu */}
+      {showUserActionMenu && selectedUser && (
+        <UserActionMenu
+          username={selectedUser}
+          onClose={handleUserMenuClose}
+          position={userMenuPosition}
+          onBan={() => {}}
+          onMakeAdmin={handleMakeAdmin}
+        />
+      )}
     </div>
   );
 };

@@ -12,9 +12,10 @@ const PageEditorPage = lazy(() => import('./pages/PageEditorPage'));
 const SectionPage = lazy(() => import('./pages/SectionPage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const BuildViewerPage = lazy(() => import('./pages/BuildViewerPage'));
-const MyEditsPage = lazy(() => import('./pages/MyEditsPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const DevToolsPage = lazy(() => import('./pages/DevToolsPage'));
 const ContributorHighscorePage = lazy(() => import('./pages/ContributorHighscorePage'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Suspense wrapper component for lazy-loaded pages
@@ -69,12 +70,25 @@ export const createWikiRouter = (config) => {
           ),
         },
         {
-          path: 'my-edits',
-          element: (
-            <SuspenseWrapper>
-              <MyEditsPage />
-            </SuspenseWrapper>
-          ),
+          path: 'profile',
+          children: [
+            {
+              index: true,
+              element: (
+                <SuspenseWrapper>
+                  <ProfilePage />
+                </SuspenseWrapper>
+              ),
+            },
+            {
+              path: ':username',
+              element: (
+                <SuspenseWrapper>
+                  <ProfilePage />
+                </SuspenseWrapper>
+              ),
+            },
+          ],
         },
         {
           path: 'dev-tools',
@@ -89,6 +103,14 @@ export const createWikiRouter = (config) => {
           element: (
             <SuspenseWrapper>
               <ContributorHighscorePage />
+            </SuspenseWrapper>
+          ),
+        },
+        {
+          path: 'admin',
+          element: (
+            <SuspenseWrapper>
+              <AdminPanel />
             </SuspenseWrapper>
           ),
         },

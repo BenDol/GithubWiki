@@ -4,6 +4,7 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import LoadingSpinner from '../common/LoadingSpinner';
+import UserActionMenu from '../common/UserActionMenu';
 import {
   findPageIssue,
   getOrCreatePageIssue,
@@ -14,6 +15,7 @@ import {
   getCommentReactions,
 } from '../../services/github/comments';
 import { detectCurrentBranch } from '../../services/github/branchNamespace';
+import { isBanned, addAdmin } from '../../services/github/admin';
 
 /**
  * Comments component using GitHub Issues
@@ -31,6 +33,12 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [commentReactions, setCommentReactions] = useState({});
   const [reactionLoading, setReactionLoading] = useState({});
+  const [userIsBanned, setUserIsBanned] = useState(false);
+
+  // User action menu state
+  const [showUserActionMenu, setShowUserActionMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
   // Lazy loading state
   const [visibleCount, setVisibleCount] = useState(10); // Show 10 comments initially
@@ -53,7 +61,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     cooldownMs: 5000,   // 5 second cooldown between comments
   };
 
-  const pageUrl = `${window.location.origin}${window.location.pathname}#/${sectionId}/${pageId}`;
+  // Use configured production URL if available, otherwise fall back to current location
+  const baseUrl = config?.wiki?.url || `${window.location.origin}${window.location.pathname}`;
+  const pageUrl = `${baseUrl}#/${sectionId}/${pageId}`;
 
   // DEV: Enable fake comments for testing lazy loading (development only)
   const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data
@@ -95,6 +105,15 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
+
+        // Check if current user is banned
+        if (isAuthenticated && user) {
+          const banned = await isBanned(user.login, owner, repo);
+          setUserIsBanned(banned);
+          if (banned) {
+            console.warn(`[Comments] User ${user.login} is banned from commenting`);
+          }
+        }
 
         // Detect current branch for namespace isolation
         const branch = await detectCurrentBranch(config);
@@ -253,6 +272,12 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return;
+
+    // Check if user is banned
+    if (userIsBanned) {
+      alert('❌ You are banned from commenting on this wiki.\n\nIf you believe this is an error, please contact the repository owner.');
+      return;
+    }
 
     // Check client-side rate limiting
     const rateLimitCheck = checkCommentRateLimit();
@@ -490,8 +515,19 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           ...prev,
           [commentId]: reactions.filter(r => r.id !== existingReaction.id),
         }));
+
+        // Delete from GitHub - if this succeeds without error, we trust it worked
         await deleteCommentReaction(owner, repo, commentId, existingReaction.id);
+        console.log('[Comments] ✓ Reaction removed successfully');
       } else {
+        // Remove opposite reaction if exists (mutually exclusive)
+        let updatedReactions = reactions;
+        if (oppositeReaction) {
+          updatedReactions = reactions.filter(r => r.id !== oppositeReaction.id);
+          await deleteCommentReaction(owner, repo, commentId, oppositeReaction.id);
+          console.log('[Comments] ✓ Opposite reaction removed');
+        }
+
         // Add new reaction - optimistic update
         const optimisticReaction = {
           id: Date.now(), // Temporary ID
@@ -499,36 +535,33 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           user: { login: user.login },
         };
 
-        // Remove opposite reaction if exists
-        let updatedReactions = reactions;
-        if (oppositeReaction) {
-          updatedReactions = reactions.filter(r => r.id !== oppositeReaction.id);
-          await deleteCommentReaction(owner, repo, commentId, oppositeReaction.id);
-        }
-
-        // Add optimistic reaction
+        // Update UI with new reaction
         setCommentReactions(prev => ({
           ...prev,
           [commentId]: [...updatedReactions, optimisticReaction],
         }));
 
-        // Add new reaction to GitHub
+        // Add new reaction to GitHub - if this succeeds without error, we trust it worked
         await addCommentReaction(owner, repo, commentId, reactionType);
+        console.log('[Comments] ✓ Reaction added successfully');
       }
 
-      // Wait a bit for GitHub's cache to update, then reload reactions
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Reload reactions for this comment (confirms changes)
-      const confirmedReactions = await getCommentReactions(owner, repo, commentId);
-      setCommentReactions(prev => ({
-        ...prev,
-        [commentId]: confirmedReactions,
-      }));
-
-      console.log('[Comments] Reaction updated and confirmed from server');
+      // If we got here without errors, the API calls succeeded
+      // We keep the optimistic update - no need to validate with slow GitHub cache
+      console.log('[Comments] ✓ Reaction update complete - keeping optimistic UI state');
     } catch (err) {
       console.error('Failed to handle reaction:', err);
+
+      // Revert optimistic update by reloading actual state from server
+      try {
+        const actualReactions = await getCommentReactions(owner, repo, commentId);
+        setCommentReactions(prev => ({
+          ...prev,
+          [commentId]: actualReactions,
+        }));
+      } catch (reloadErr) {
+        console.error('Failed to reload reactions after error:', reloadErr);
+      }
 
       // Handle GitHub API rate limit (HTTP 403 with specific message)
       if (err.status === 403 && err.message?.includes('rate limit')) {
@@ -560,6 +593,54 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     if (!user) return false;
     const reactions = commentReactions[commentId] || [];
     return reactions.some(r => r.user.login === user.login && r.content === reactionType);
+  };
+
+  // Handle avatar click to show user action menu
+  const handleAvatarClick = (e, username) => {
+    if (!username) return;
+
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+
+    setSelectedUser(username);
+    setUserMenuPosition({
+      x: rect.left,
+      y: rect.bottom - 20,
+    });
+    setShowUserActionMenu(true);
+  };
+
+  const handleUserMenuClose = () => {
+    setShowUserActionMenu(false);
+    setSelectedUser(null);
+  };
+
+  const handleUserBanned = () => {
+    // Reload comments to reflect ban status changes
+    const loadComments = async () => {
+      if (!config || !issue) return;
+      try {
+        const { owner, repo } = config.wiki.repository;
+        const updatedComments = await getIssueComments(owner, repo, issue.number);
+        setComments(updatedComments);
+      } catch (err) {
+        console.error('Failed to reload comments:', err);
+      }
+    };
+    loadComments();
+  };
+
+  const handleMakeAdmin = async (username) => {
+    if (!config?.wiki?.repository) return;
+
+    try {
+      const { owner, repo } = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login);
+      alert(`✅ Successfully added ${username} as administrator`);
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+      alert('❌ Failed to add admin: ' + error.message);
+    }
   };
 
   // Check if comments are enabled
@@ -607,35 +688,47 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
       {/* Comment input */}
       {isAuthenticated ? (
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <PrestigeAvatar
-              src={user.avatar_url}
-              alt={user.name || user.login}
-              username={user.login}
-              size="md"
-              showBadge={true}
-            />
-            <div className="flex-1">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Leave a comment..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        userIsBanned ? (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+            <p className="text-red-900 dark:text-red-200 text-sm font-medium">
+              ❌ You are banned from commenting on this wiki
+            </p>
+            <p className="text-red-700 dark:text-red-300 text-xs mt-1">
+              If you believe this is an error, please contact the repository owner.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <PrestigeAvatar
+                src={user.avatar_url}
+                alt={user.name || user.login}
+                username={user.login}
+                size="md"
+                showBadge={true}
+                onClick={handleAvatarClick}
               />
-              <div className="mt-2 flex justify-end">
-                <button
-                  onClick={handleSubmitComment}
-                  disabled={!newComment.trim() || isSubmitting}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                >
-                  {isSubmitting ? 'Posting...' : 'Post Comment'}
-                </button>
+              <div className="flex-1">
+                <textarea
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Leave a comment..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={handleSubmitComment}
+                    disabled={!newComment.trim() || isSubmitting}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  >
+                    {isSubmitting ? 'Posting...' : 'Post Comment'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )
       ) : (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-center">
           <p className="text-blue-900 dark:text-blue-200 text-sm">
@@ -664,6 +757,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                   username={comment.user.login}
                   size="md"
                   showBadge={true}
+                  onClick={handleAvatarClick}
                 />
                 <div className="flex-1 min-w-0">
                   {/* Comment header */}
@@ -786,6 +880,17 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         </>
         )}
       </div>
+
+      {/* User Action Menu */}
+      {showUserActionMenu && selectedUser && (
+        <UserActionMenu
+          username={selectedUser}
+          onClose={handleUserMenuClose}
+          position={userMenuPosition}
+          onBan={handleUserBanned}
+          onMakeAdmin={handleMakeAdmin}
+        />
+      )}
     </div>
   );
 };

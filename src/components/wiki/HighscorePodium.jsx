@@ -1,18 +1,56 @@
 import { useState, useEffect } from 'react';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import SparkleEffect from '../effects/SparkleEffect';
+import UserActionMenu from '../common/UserActionMenu';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useAuthStore } from '../../store/authStore';
+import { addAdmin } from '../../services/github/admin';
 
 /**
  * HighscorePodium Component
  * Displays top 3 contributors on an arc-aligned podium with animations
  */
 const HighscorePodium = ({ topThree }) => {
+  const { config } = useWikiConfig();
+  const { user } = useAuthStore();
   const [isVisible, setIsVisible] = useState(false);
+
+  // User action menu state
+  const [showUserActionMenu, setShowUserActionMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     // Trigger entrance animation
     setTimeout(() => setIsVisible(true), 100);
   }, []);
+
+  // Handle avatar click
+  const handleAvatarClick = (e, username) => {
+    if (!username) return;
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelectedUser(username);
+    setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
+    setShowUserActionMenu(true);
+  };
+
+  const handleUserMenuClose = () => {
+    setShowUserActionMenu(false);
+    setSelectedUser(null);
+  };
+
+  const handleMakeAdmin = async (username) => {
+    if (!config?.wiki?.repository) return;
+    try {
+      const { owner, repo } = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login);
+      alert(`✅ Successfully added ${username} as administrator`);
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+      alert('❌ Failed to add admin: ' + error.message);
+    }
+  };
 
   if (!topThree || topThree.length === 0) {
     return null;
@@ -42,6 +80,7 @@ const HighscorePodium = ({ topThree }) => {
                 username={second.login}
                 size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
                 showBadge={true}
+                onClick={handleAvatarClick}
               />
             </div>
 
@@ -90,6 +129,7 @@ const HighscorePodium = ({ topThree }) => {
                   size={window.innerWidth < 640 ? 'xl' : window.innerWidth < 768 ? '2xl' : '2xl'}
                   showBadge={true}
                   badgeScale={0.85}
+                  onClick={handleAvatarClick}
                 />
               </div>
             </div>
@@ -133,6 +173,7 @@ const HighscorePodium = ({ topThree }) => {
                 username={third.login}
                 size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
                 showBadge={true}
+                onClick={handleAvatarClick}
               />
             </div>
 
@@ -161,6 +202,17 @@ const HighscorePodium = ({ topThree }) => {
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-radial from-yellow-400/20 via-transparent to-transparent blur-3xl animate-pulse"></div>
       </div>
+
+      {/* User Action Menu */}
+      {showUserActionMenu && selectedUser && (
+        <UserActionMenu
+          username={selectedUser}
+          onClose={handleUserMenuClose}
+          position={userMenuPosition}
+          onBan={() => {}}
+          onMakeAdmin={handleMakeAdmin}
+        />
+      )}
     </div>
   );
 };

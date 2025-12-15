@@ -112,9 +112,17 @@ export const createCrossRepoPR = async (
 
 /**
  * Generate PR title for page edit
+ * @param {string} pageTitle - The page title
+ * @param {string} sectionTitle - The section title (optional)
+ * @param {boolean} isNewPage - Whether this is a new page (create) or existing (edit)
+ * @param {string} pageId - The page ID (used for create operations)
  */
-export const generatePRTitle = (pageTitle, sectionTitle) => {
-  return `Update ${pageTitle}${sectionTitle ? ` in ${sectionTitle}` : ''}`;
+export const generatePRTitle = (pageTitle, sectionTitle, isNewPage = false, pageId = null) => {
+  const action = isNewPage ? 'Create' : 'Edit';
+  const pageName = pageTitle || pageId || 'Untitled';
+  const pageIdSuffix = isNewPage && pageId ? ` (${pageId})` : '';
+
+  return `${action}: ${pageName}${pageIdSuffix}`;
 };
 
 /**
@@ -451,18 +459,27 @@ export const createWikiEditPR = async (
   pageId,
   headBranch,
   summary = null,
-  baseBranch = 'main'
+  baseBranch = 'main',
+  isNewPage = false,
+  isFirstContribution = false
 ) => {
   // Generate PR details
-  const title = generatePRTitle(pageTitle, sectionTitle);
+  const title = generatePRTitle(pageTitle, sectionTitle, isNewPage, pageId);
   const body = await generatePRBody(pageTitle, sectionId, pageId, summary);
 
   // Create PR
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch);
 
+  // Build label list
+  const labels = ['wiki-edit', 'documentation'];
+  if (isFirstContribution) {
+    labels.push('first-contribution');
+    console.log('[PR] Adding first-contribution label');
+  }
+
   // Try to add labels
   try {
-    await addPRLabels(owner, repo, pr.number, ['wiki-edit', 'documentation']);
+    await addPRLabels(owner, repo, pr.number, labels);
   } catch (error) {
     // Labels might not exist, continue anyway
     console.warn('Could not add labels to PR:', error);

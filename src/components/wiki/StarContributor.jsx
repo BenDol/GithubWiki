@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { usePageHistory } from '../../hooks/usePageHistory';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import PrestigeAvatar from '../common/PrestigeAvatar';
+import UserActionMenu from '../common/UserActionMenu';
+import { addAdmin } from '../../services/github/admin';
+import { useAuthStore } from '../../store/authStore';
 
 /**
  * StarContributor component
@@ -10,6 +14,39 @@ import PrestigeAvatar from '../common/PrestigeAvatar';
 const StarContributor = ({ sectionId, pageId }) => {
   const { config } = useWikiConfig();
   const { commits, loading, error } = usePageHistory(sectionId, pageId);
+  const { user } = useAuthStore();
+
+  // User action menu state
+  const [showUserActionMenu, setShowUserActionMenu] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
+
+  // Handle avatar click
+  const handleAvatarClick = (e, username) => {
+    if (!username) return;
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setSelectedUser(username);
+    setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
+    setShowUserActionMenu(true);
+  };
+
+  const handleUserMenuClose = () => {
+    setShowUserActionMenu(false);
+    setSelectedUser(null);
+  };
+
+  const handleMakeAdmin = async (username) => {
+    if (!config?.wiki?.repository) return;
+    try {
+      const { owner, repo } = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login);
+      alert(`✅ Successfully added ${username} as administrator`);
+    } catch (error) {
+      console.error('Failed to add admin:', error);
+      alert('❌ Failed to add admin: ' + error.message);
+    }
+  };
 
   // Check if feature is enabled
   const starContributorConfig = config?.features?.starContributor;
@@ -150,6 +187,7 @@ const StarContributor = ({ sectionId, pageId }) => {
           username={topContributor.username}
           size="sm"
           showBadge={false}
+          onClick={handleAvatarClick}
         />
         {/* Star overlay */}
         <div
@@ -167,6 +205,17 @@ const StarContributor = ({ sectionId, pageId }) => {
           {topContributor.name}
         </span>
       </div>
+
+      {/* User Action Menu */}
+      {showUserActionMenu && selectedUser && (
+        <UserActionMenu
+          username={selectedUser}
+          onClose={handleUserMenuClose}
+          position={userMenuPosition}
+          onBan={() => {}}
+          onMakeAdmin={handleMakeAdmin}
+        />
+      )}
     </div>
   );
 };

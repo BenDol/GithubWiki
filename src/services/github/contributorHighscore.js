@@ -520,3 +520,121 @@ export function getTimeUntilRefresh(lastUpdated, cacheMinutes) {
 
   return Math.max(0, diffMs);
 }
+
+/**
+ * Fetch a specific user's contribution stats directly from GitHub API
+ */
+async function fetchUserContributionsFromAPI(owner, repo, username) {
+  const octokit = getOctokit();
+
+  try {
+    console.log(`[Highscore] Fetching ${username}'s contributions from GitHub API...`);
+
+    // Fetch all contributors and find the user
+    const { data: contributors } = await octokit.rest.repos.listContributors({
+      owner,
+      repo,
+      per_page: 100,
+      anon: 'true', // Include anonymous contributors
+    });
+
+    // GitHub API may paginate, let's check all pages
+    let allContributors = [...contributors];
+    let page = 2;
+    while (contributors.length === 100) {
+      const { data: nextPage } = await octokit.rest.repos.listContributors({
+        owner,
+        repo,
+        per_page: 100,
+        page,
+        anon: 'true',
+      });
+      if (nextPage.length === 0) break;
+      allContributors = [...allContributors, ...nextPage];
+      page++;
+    }
+
+    // Find the user in the contributors list
+    const userContribution = allContributors.find(
+      c => c.login && c.login.toLowerCase() === username.toLowerCase()
+    );
+
+    if (!userContribution) {
+      console.log(`[Highscore] User ${username} has no contributions to ${owner}/${repo}`);
+      return {
+        totalPRs: 0,
+        mergedPRs: 0,
+        openPRs: 0,
+        closedPRs: 0,
+        totalAdditions: 0,
+        totalDeletions: 0,
+        totalFiles: 0,
+        mostRecentEdit: null,
+      };
+    }
+
+    console.log(`[Highscore] Found ${userContribution.contributions} contributions for ${username}`);
+
+    return {
+      totalPRs: userContribution.contributions || 0,
+      mergedPRs: userContribution.contributions || 0, // Contributions are merged commits
+      openPRs: 0,
+      closedPRs: 0,
+      totalAdditions: 0, // Not available in contributors API
+      totalDeletions: 0,
+      totalFiles: 0,
+      mostRecentEdit: null,
+    };
+  } catch (error) {
+    console.error(`[Highscore] Failed to fetch contributions from API for ${username}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get a specific user's contribution stats
+ * Tries highscore cache first, falls back to GitHub API
+ */
+export async function getUserContributionStats(owner, repo, username, config, category = 'allTime') {
+  try {
+    console.log(`[Highscore] Fetching stats for user: ${username} (category: ${category})`);
+
+    // Try to fetch from highscore cache first (faster, includes filtering)
+    if (config?.features?.contributorHighscore?.enabled) {
+      try {
+        const highscoreData = await getContributorHighscore(owner, repo, config, category);
+
+        // Find the user in the contributors list
+        const userStats = highscoreData.contributors.find(
+          contributor => contributor.login.toLowerCase() === username.toLowerCase()
+        );
+
+        if (userStats) {
+          console.log(`[Highscore] Found stats for ${username} in cache:`, userStats);
+
+          // Convert to prestige-compatible format
+          return {
+            totalPRs: userStats.contributions || 0,
+            mergedPRs: userStats.contributions || 0,
+            openPRs: 0,
+            closedPRs: 0,
+            totalAdditions: 0,
+            totalDeletions: 0,
+            totalFiles: 0,
+            mostRecentEdit: null,
+          };
+        }
+
+        console.log(`[Highscore] User ${username} not in cache (may not be in top 100), fetching from API...`);
+      } catch (error) {
+        console.warn('[Highscore] Failed to fetch from cache, falling back to API:', error);
+      }
+    }
+
+    // Fall back to direct API fetch
+    return await fetchUserContributionsFromAPI(owner, repo, username);
+  } catch (error) {
+    console.error(`[Highscore] Failed to fetch stats for user ${username}:`, error);
+    return null;
+  }
+}

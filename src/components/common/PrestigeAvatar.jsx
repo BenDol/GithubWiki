@@ -24,6 +24,8 @@ const PrestigeAvatar = ({
   className = '',
   showBadge = true,
   badgeScale = 1.0,
+  onClick = null,
+  enableUserActions = false,
 }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
@@ -68,12 +70,25 @@ const PrestigeAvatar = ({
   // Uncomment if debugging prestige issues:
   // console.log('PrestigeAvatar Debug:', { prestigeTier, finalStats });
 
+  const handleClick = (e) => {
+    if (onClick) {
+      onClick(e, targetUsername);
+    }
+  };
+
+  const isClickable = onClick !== null || enableUserActions;
+
   return (
-    <div className={`relative inline-block ${className}`}>
+    <div
+      className={`relative inline-block ${className} ${isClickable ? 'cursor-pointer' : ''}`}
+      onClick={isClickable ? handleClick : undefined}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+    >
       <img
         src={src}
         alt={alt}
-        className={`${sizeClasses[size]} rounded-full object-cover`}
+        className={`${sizeClasses[size]} rounded-full object-cover ${isClickable ? 'transition-opacity hover:opacity-80' : ''}`}
       />
 
       {/* Prestige badge overlay */}
