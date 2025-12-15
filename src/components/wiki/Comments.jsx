@@ -373,11 +373,10 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     } catch (err) {
       console.error('Failed to submit comment:', err);
 
-      // Handle bot token not configured error
+      // Handle bot token not configured error (should not happen - we fall back to user token)
       if (err.message?.includes('Bot token not configured')) {
-        alert('❌ Comments are disabled. Bot token not configured.\n\n' +
-              'The wiki administrator needs to configure VITE_WIKI_BOT_TOKEN to enable comments.\n' +
-              'See BOT-SETUP.md for setup instructions.');
+        alert('❌ Comments system error.\n\n' +
+              'Please ensure you are signed in and try again.');
       }
       // Handle GitHub API rate limit errors
       else if (err.status === 403 && err.message?.includes('rate limit')) {

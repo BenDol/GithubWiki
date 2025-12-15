@@ -66,11 +66,12 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
   }
 
   // Create new issue for this page
-  // Requires bot token (prevents users from closing the issue)
-  // Will throw error if bot token not configured
-  const octokit = getBotOctokit();
+  // Uses bot token if available (prevents users from closing the issue)
+  // Falls back to user token if bot not configured
+  const octokit = getBotOctokit(true); // true = fallback to user token
 
-  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot token (users cannot close)`);
+  const usingBot = hasBotToken();
+  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} ${usingBot ? 'with bot token (users cannot close)' : 'with user token'}`);
 
   const pageLabel = `page:${sectionId}/${pageId}`;
   const branchLabel = `branch:${branch}`;

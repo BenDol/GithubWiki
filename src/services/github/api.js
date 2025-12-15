@@ -48,21 +48,27 @@ export const clearOctokit = () => {
 /**
  * Initialize Bot Octokit with bot token
  * Used for creating comment issues (so users can't close them)
- * Automatically reads from import.meta.env.VITE_WIKI_BOT_TOKEN if no token provided
- * @param {string} botToken - Optional bot token. If not provided, reads from environment.
+ *
+ * SECURITY: Bot token should NEVER be in client-side code.
+ * Bot operations should only run server-side (GitHub Actions, Netlify Functions, etc.)
+ *
+ * For now, comment issues are created by authenticated users instead of bot.
+ * This is safer and doesn't expose any tokens.
+ *
+ * @param {string} botToken - Bot token (server-side only, not from env vars)
  */
 export const initializeBotOctokit = (botToken = null) => {
-  // Try to get bot token from parameter or environment
-  const token = botToken || import.meta.env.VITE_WIKI_BOT_TOKEN;
+  // SECURITY: Do NOT read from import.meta.env - that bundles secrets into client code!
+  // Bot token should only be passed explicitly from server-side code.
 
-  if (!token) {
-    console.info('[Bot] Bot token not configured (VITE_WIKI_BOT_TOKEN)');
-    console.info('[Bot] Comment issues will be created by users. Configure a bot token to prevent users from closing comment issues.');
+  if (!botToken) {
+    console.info('[Bot] Bot token not configured');
+    console.info('[Bot] Comment issues will be created by authenticated users.');
     return null;
   }
 
   botOctokitInstance = new Octokit({
-    auth: token,
+    auth: botToken,
     userAgent: 'GitHub-Wiki-Bot/1.0',
   });
 
