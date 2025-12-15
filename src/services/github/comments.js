@@ -29,7 +29,7 @@ export const findPageIssue = async (owner, repo, pageTitle, branch) => {
 
     // Check if we found an exact match
     const existingIssue = searchResults.items.find(
-      issue => issue.title === `Comments: ${pageTitle}`
+      issue => issue.title === `[Comments] ${pageTitle}`
     );
 
     return existingIssue || null;
@@ -69,7 +69,7 @@ export const getOrCreatePageIssue = async (owner, repo, pageTitle, pageUrl, bran
     const { data: newIssue } = await octokit.rest.issues.create({
       owner,
       repo,
-      title: `Comments: ${pageTitle}`,
+      title: `[Comments] ${pageTitle}`,
       body: `💬 **Comments for:** ${pageTitle}\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
       labels: ['wiki-comments', branchLabel],
     });

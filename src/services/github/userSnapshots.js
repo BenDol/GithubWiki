@@ -7,7 +7,7 @@ import { getOctokit } from './api';
  * Issue Format:
  * - Title: [User Snapshot] username
  * - Labels: user-snapshot, automated
- * - Body: JSON snapshot data
+ * - Body: JSON snapshot data (includes stats for prestige calculation)
  */
 
 const SNAPSHOT_LABEL = 'user-snapshot';

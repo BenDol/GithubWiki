@@ -122,7 +122,7 @@ export const generatePRTitle = (pageTitle, sectionTitle, isNewPage = false, page
   const pageName = pageTitle || pageId || 'Untitled';
   const pageIdSuffix = isNewPage && pageId ? ` (${pageId})` : '';
 
-  return `${action}: ${pageName}${pageIdSuffix}`;
+  return `[${action}] ${pageName}${pageIdSuffix}`;
 };
 
 /**

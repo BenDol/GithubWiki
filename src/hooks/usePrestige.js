@@ -4,12 +4,13 @@ import { useWikiConfig } from './useWikiConfig';
 import { getPrestigeTier } from '../utils/prestige';
 import { getUserPullRequests } from '../services/github/pullRequests';
 import { getUserPrestigeData, getCachedPrestigeDataSync } from '../services/github/prestige';
+import { getUserSnapshot } from '../services/github/userSnapshots';
 
 /**
  * Prestige data hook
  *
- * Uses centralized prestige cache updated daily by GitHub Action.
- * Falls back to PR-based calculation for authenticated user if cache unavailable.
+ * Fetches prestige data from user snapshots (primary source).
+ * Falls back to prestige cache, then PR-based calculation for authenticated user.
  */
 
 // In-memory cache for user prestige data (short-term, 5 minutes)
@@ -90,13 +91,38 @@ export const useUserPrestige = (username) => {
 
         const { owner, repo } = config.wiki.repository;
 
-        // Try to fetch from GitHub issue cache (updated daily by GitHub Action)
-        console.log(`[Prestige] Fetching prestige data for ${username} from GitHub cache`);
+        // First try: Fetch from user snapshot (primary source)
+        console.log(`[Prestige] Fetching prestige data for ${username} from snapshot`);
+        try {
+          const snapshot = await getUserSnapshot(owner, repo, username);
+
+          if (snapshot && snapshot.stats) {
+            console.log(`[Prestige] Found ${username} in snapshot, calculating prestige from stats`);
+
+            // Calculate prestige tier from snapshot stats
+            const tier = getPrestigeTier(snapshot.stats, config.prestige.tiers);
+
+            const data = {
+              tier,
+              stats: snapshot.stats,
+            };
+
+            // Cache the result
+            prestigeCache.set(username, { data, timestamp: Date.now() });
+            setPrestigeData(data);
+            return;
+          }
+        } catch (snapshotError) {
+          console.warn(`[Prestige] Failed to fetch snapshot for ${username}:`, snapshotError);
+        }
+
+        // Second try: Fallback to old prestige cache (for backwards compatibility)
+        console.log(`[Prestige] No snapshot for ${username}, trying GitHub prestige cache`);
         const prestigeData = await getUserPrestigeData(owner, repo, username);
 
         if (prestigeData) {
-          // Found in cache
-          console.log(`[Prestige] Found ${username} in GitHub cache with tier: ${prestigeData.prestigeTier}`);
+          // Found in old cache
+          console.log(`[Prestige] Found ${username} in prestige cache with tier: ${prestigeData.prestigeTier}`);
           const data = {
             tier: {
               id: prestigeData.prestigeTier,
@@ -111,8 +137,11 @@ export const useUserPrestige = (username) => {
           // Cache the result
           prestigeCache.set(username, { data, timestamp: Date.now() });
           setPrestigeData(data);
-        } else if (isAuthenticated && user && username === user.login) {
-          // Fallback: Calculate from PRs for authenticated user only
+          return;
+        }
+
+        // Third try: Calculate from PRs for authenticated user only
+        if (isAuthenticated && user && username === user.login) {
           console.log(`[Prestige] No cache for ${username}, calculating from PRs (authenticated user)`);
           const prs = await getUserPullRequests(owner, repo, username);
 
