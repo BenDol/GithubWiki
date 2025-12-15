@@ -5,9 +5,13 @@ import { getOctokit } from './api';
  * Stores comprehensive user profile data in GitHub Issues as a database
  *
  * Issue Format:
- * - Title: [User Snapshot] username
- * - Labels: user-snapshot, automated
- * - Body: JSON snapshot data (includes stats for prestige calculation)
+ * - Title: [User Snapshot] username (human-readable, updated on username changes)
+ * - Labels: user-snapshot, user-id:12345, automated
+ * - Body: JSON snapshot data (includes userId and stats for prestige calculation)
+ *
+ * Indexing:
+ * - Primary: User ID label (user-id:12345) - permanent, immune to username changes
+ * - Fallback: Username in title - for legacy snapshots (automatically migrated on update)
  *
  * Limitations:
  * - GitHub issues have a ~65KB body size limit
@@ -21,12 +25,14 @@ const MAX_PRS_IN_SNAPSHOT = 100;
 
 /**
  * Get snapshot data for a specific user
+ * Searches by user ID label (permanent) first, falls back to username title match (legacy)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - GitHub username
+ * @param {number} [userId] - Optional GitHub user ID for faster lookup
  * @returns {Object|null} Snapshot data or null if not found
  */
-export async function getUserSnapshot(owner, repo, username) {
+export async function getUserSnapshot(owner, repo, username, userId = null) {
   try {
     const octokit = getOctokit();
 
@@ -39,10 +45,32 @@ export async function getUserSnapshot(owner, repo, username) {
       per_page: 100,
     });
 
-    // Find the specific user's snapshot
-    const snapshotIssue = issues.find(
-      issue => issue.title === `${SNAPSHOT_TITLE_PREFIX} ${username}`
-    );
+    let snapshotIssue = null;
+
+    // First try: Search by user ID label (permanent identifier, preferred)
+    if (userId) {
+      snapshotIssue = issues.find(issue =>
+        issue.labels.some(label =>
+          (typeof label === 'string' && label === `user-id:${userId}`) ||
+          (typeof label === 'object' && label.name === `user-id:${userId}`)
+        )
+      );
+
+      if (snapshotIssue) {
+        console.log(`[UserSnapshot] Found snapshot for user ${username} by ID: ${userId}`);
+      }
+    }
+
+    // Second try: Search by username in title (legacy snapshots or no user ID provided)
+    if (!snapshotIssue) {
+      snapshotIssue = issues.find(
+        issue => issue.title === `${SNAPSHOT_TITLE_PREFIX} ${username}`
+      );
+
+      if (snapshotIssue) {
+        console.log(`[UserSnapshot] Found legacy snapshot for ${username} by title`);
+      }
+    }
 
     if (!snapshotIssue) {
       console.log(`[UserSnapshot] No snapshot found for user: ${username}`);
@@ -66,10 +94,11 @@ export async function getUserSnapshot(owner, repo, username) {
 
 /**
  * Save or update snapshot data for a user
+ * Uses user ID for permanent identification (usernames can change)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - GitHub username
- * @param {Object} snapshotData - Profile snapshot data
+ * @param {Object} snapshotData - Profile snapshot data (must include userId)
  * @returns {Object} Created/updated issue
  */
 export async function saveUserSnapshot(owner, repo, username, snapshotData) {
@@ -85,32 +114,84 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
       per_page: 100,
     });
 
-    const existingIssue = issues.find(
-      issue => issue.title === `${SNAPSHOT_TITLE_PREFIX} ${username}`
-    );
+    let existingIssue = null;
+
+    // First try: Search by user ID label (permanent identifier, preferred)
+    if (snapshotData.userId) {
+      existingIssue = issues.find(issue =>
+        issue.labels.some(label =>
+          (typeof label === 'string' && label === `user-id:${snapshotData.userId}`) ||
+          (typeof label === 'object' && label.name === `user-id:${snapshotData.userId}`)
+        )
+      );
+
+      if (existingIssue) {
+        console.log(`[UserSnapshot] Found existing snapshot for user ${username} by ID: ${snapshotData.userId}`);
+      }
+    }
+
+    // Second try: Search by username in title (legacy snapshots)
+    if (!existingIssue) {
+      existingIssue = issues.find(
+        issue => issue.title === `${SNAPSHOT_TITLE_PREFIX} ${username}`
+      );
+
+      if (existingIssue) {
+        console.log(`[UserSnapshot] Found legacy snapshot for ${username} by title, will migrate to user ID label`);
+      }
+    }
 
     const issueTitle = `${SNAPSHOT_TITLE_PREFIX} ${username}`;
     const issueBody = JSON.stringify(snapshotData, null, 2);
+    const userIdLabel = snapshotData.userId ? `user-id:${snapshotData.userId}` : null;
 
     if (existingIssue) {
-      // Update existing snapshot
+      // Update existing snapshot (update both title and labels in case username changed or migration needed)
       console.log(`[UserSnapshot] Updating snapshot for ${username} (issue #${existingIssue.number})`);
+
+      // Update title and body
       const { data: updatedIssue } = await octokit.rest.issues.update({
         owner,
         repo,
         issue_number: existingIssue.number,
+        title: issueTitle, // Update title to reflect current username
         body: issueBody,
       });
+
+      // Add user ID label if missing (migration for legacy snapshots)
+      if (userIdLabel) {
+        const hasUserIdLabel = existingIssue.labels.some(label =>
+          (typeof label === 'string' && label.startsWith('user-id:')) ||
+          (typeof label === 'object' && label.name?.startsWith('user-id:'))
+        );
+
+        if (!hasUserIdLabel) {
+          console.log(`[UserSnapshot] Adding user-id label to legacy snapshot for ${username}`);
+          await octokit.rest.issues.addLabels({
+            owner,
+            repo,
+            issue_number: existingIssue.number,
+            labels: [userIdLabel],
+          });
+        }
+      }
+
       return updatedIssue;
     } else {
-      // Create new snapshot
-      console.log(`[UserSnapshot] Creating new snapshot for ${username}`);
+      // Create new snapshot with user ID label
+      console.log(`[UserSnapshot] Creating new snapshot for ${username}${userIdLabel ? ` (ID: ${snapshotData.userId})` : ''}`);
+
+      const labels = [SNAPSHOT_LABEL, 'automated'];
+      if (userIdLabel) {
+        labels.push(userIdLabel);
+      }
+
       const { data: newIssue } = await octokit.rest.issues.create({
         owner,
         repo,
         title: issueTitle,
         body: issueBody,
-        labels: [SNAPSHOT_LABEL, 'automated'],
+        labels,
       });
       return newIssue;
     }
@@ -202,9 +283,10 @@ export async function buildUserSnapshot(owner, repo, username) {
       })),
     }));
 
-    // Build snapshot object
+    // Build snapshot object (use user ID as primary identifier)
     const snapshot = {
-      username: username,
+      userId: userData.id, // Permanent identifier (usernames can change!)
+      username: userData.login, // Current username (may change)
       lastUpdated: new Date().toISOString(),
       stats,
       pullRequests,
@@ -212,6 +294,7 @@ export async function buildUserSnapshot(owner, repo, username) {
       pullRequestsStored: recentPRs.length,
       pullRequestsTruncated: allPRs.length > MAX_PRS_IN_SNAPSHOT,
       user: {
+        id: userData.id, // Store ID here too for easy access
         login: userData.login,
         name: userData.name,
         avatar_url: userData.avatar_url,

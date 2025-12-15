@@ -3,6 +3,11 @@ import { getOctokit } from './api';
 /**
  * Contributor Highscore Service
  * Manages fetching and caching contributor statistics using GitHub Issues as a data store
+ *
+ * Indexing:
+ * - Primary: User ID (permanent, immune to username changes)
+ * - Fallback: Username (for display and legacy data)
+ * - All contributor objects include both userId and login fields
  */
 
 const HIGHSCORE_ISSUE_TITLE = 'Contributor Highscore Cache [DO NOT DELETE]';
@@ -167,21 +172,28 @@ async function fetchCommitsInDateRange(owner, repo, since, until) {
 
     console.log(`[Highscore] Found ${commits.length} commits in date range`);
 
-    // Aggregate commits by author
+    // Aggregate commits by author (use user ID as key for permanent identification)
     const contributorMap = new Map();
 
     for (const commit of commits) {
       const author = commit.author || commit.commit.author;
       const login = author?.login;
+      const userId = author?.id;
 
       // Skip commits without a GitHub user (e.g., local git commits)
       if (!login) continue;
 
-      if (contributorMap.has(login)) {
-        contributorMap.get(login).contributions++;
+      // Use user ID as key (permanent), fallback to login for local commits
+      const key = userId ? userId.toString() : `legacy:${login}`;
+
+      if (contributorMap.has(key)) {
+        contributorMap.get(key).contributions++;
+        // Update login in case username changed
+        contributorMap.get(key).login = login;
       } else {
-        contributorMap.set(login, {
-          login,
+        contributorMap.set(key, {
+          userId: userId || null, // Permanent identifier (usernames can change!)
+          login, // Current username (may change)
           avatarUrl: author.avatar_url,
           contributions: 1,
           profileUrl: author.html_url,
@@ -219,9 +231,10 @@ async function fetchFreshContributorStats(owner, repo, config = {}) {
       per_page: 100,
     });
 
-    // Format contributor data
+    // Format contributor data (include user ID for permanent identification)
     const formattedContributors = contributors.map(contributor => ({
-      login: contributor.login,
+      userId: contributor.id, // Permanent identifier (usernames can change!)
+      login: contributor.login, // Current username (may change)
       avatarUrl: contributor.avatar_url,
       contributions: contributor.contributions,
       profileUrl: contributor.html_url,
@@ -523,6 +536,7 @@ export function getTimeUntilRefresh(lastUpdated, cacheMinutes) {
 
 /**
  * Fetch a specific user's contribution stats directly from GitHub API
+ * Returns user ID along with stats for permanent identification
  */
 async function fetchUserContributionsFromAPI(owner, repo, username) {
   const octokit = getOctokit();
@@ -562,6 +576,7 @@ async function fetchUserContributionsFromAPI(owner, repo, username) {
     if (!userContribution) {
       console.log(`[Highscore] User ${username} has no contributions to ${owner}/${repo}`);
       return {
+        userId: null,
         totalPRs: 0,
         mergedPRs: 0,
         openPRs: 0,
@@ -573,9 +588,10 @@ async function fetchUserContributionsFromAPI(owner, repo, username) {
       };
     }
 
-    console.log(`[Highscore] Found ${userContribution.contributions} contributions for ${username}`);
+    console.log(`[Highscore] Found ${userContribution.contributions} contributions for ${username} (ID: ${userContribution.id})`);
 
     return {
+      userId: userContribution.id, // Permanent identifier
       totalPRs: userContribution.contributions || 0,
       mergedPRs: userContribution.contributions || 0, // Contributions are merged commits
       openPRs: 0,
@@ -612,8 +628,9 @@ export async function getUserContributionStats(owner, repo, username, config, ca
         if (userStats) {
           console.log(`[Highscore] Found stats for ${username} in cache:`, userStats);
 
-          // Convert to prestige-compatible format
+          // Convert to prestige-compatible format (include userId)
           return {
+            userId: userStats.userId || null, // Permanent identifier
             totalPRs: userStats.contributions || 0,
             mergedPRs: userStats.contributions || 0,
             openPRs: 0,

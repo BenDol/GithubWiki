@@ -21,8 +21,14 @@ export const useGitHubDataStore = create((set, get) => ({
   // Branch Data: { branchName: { data, cachedAt } }
   branches: {},
 
-  // Permission Data: { username: { level, cachedAt } }
+  // Permission Data: { owner/repo/username: { level, cachedAt } }
+  // Note: Indexed by username because GitHub API requires username for permission checks
+  // When username changes are detected, use invalidatePermissionsForUser() to clean up
   permissions: {},
+
+  // User ID to username mapping for handling username changes
+  // Format: { userId: currentUsername }
+  userIdToUsername: {},
 
   // Fork Data: { owner/repo: { status, cachedAt } }
   forks: {},
@@ -246,6 +252,65 @@ export const useGitHubDataStore = create((set, get) => ({
     } else {
       console.log('[GitHub Cache] Invalidating ALL permission cache');
       set({ permissions: {} });
+    }
+  },
+
+  // Handle username changes: invalidate old cache entries and update mapping
+  handleUsernameChange: (userId, oldUsername, newUsername) => {
+    console.log(`[GitHub Cache] Username changed for user ID ${userId}: ${oldUsername} → ${newUsername}`);
+
+    set(state => {
+      const newPermissions = {};
+      const newPRs = {};
+
+      // Invalidate old permission cache entries
+      Object.keys(state.permissions).forEach(key => {
+        // If key contains old username, don't copy it (invalidate)
+        if (key.includes(`/${oldUsername}`)) {
+          console.log(`[GitHub Cache] Invalidating old permission entry: ${key}`);
+        } else {
+          newPermissions[key] = state.permissions[key];
+        }
+      });
+
+      // Invalidate old PR cache entries
+      Object.keys(state.pullRequests).forEach(key => {
+        // If key contains old username, don't copy it (invalidate)
+        if (key.includes(`/user/${oldUsername}`)) {
+          console.log(`[GitHub Cache] Invalidating old PR cache entry: ${key}`);
+        } else {
+          newPRs[key] = state.pullRequests[key];
+        }
+      });
+
+      // Update user ID to username mapping
+      const newMapping = { ...state.userIdToUsername };
+      newMapping[userId] = newUsername;
+
+      return {
+        permissions: newPermissions,
+        pullRequests: newPRs,
+        userIdToUsername: newMapping
+      };
+    });
+  },
+
+  // Track user ID to username mapping (helps detect username changes)
+  updateUserMapping: (userId, username) => {
+    const currentMapping = get().userIdToUsername[userId];
+
+    // Detect username change
+    if (currentMapping && currentMapping !== username) {
+      console.log(`[GitHub Cache] Detected username change for ID ${userId}: ${currentMapping} → ${username}`);
+      get().handleUsernameChange(userId, currentMapping, username);
+    } else {
+      // Just update mapping
+      set(state => ({
+        userIdToUsername: {
+          ...state.userIdToUsername,
+          [userId]: username
+        }
+      }));
     }
   },
 
