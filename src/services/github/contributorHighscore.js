@@ -11,7 +11,7 @@ import { getBannedUsers } from './admin';
  * - All contributor objects include both userId and login fields
  */
 
-const HIGHSCORE_ISSUE_TITLE = 'Contributor Highscore Cache [DO NOT DELETE]';
+const HIGHSCORE_ISSUE_TITLE = '[Cache] Contributor Highscore';
 const HIGHSCORE_CACHE_KEY = 'contributor_highscore_cache';
 
 /**
@@ -28,11 +28,14 @@ async function getHighscoreCacheIssue(owner, repo) {
       repo,
       state: 'open',
       labels: 'highscore-cache',
-      per_page: 1,
+      per_page: 100,
     });
 
-    if (issues.length > 0) {
-      return issues[0];
+    // Find issue with exact title match
+    const existingIssue = issues.find(issue => issue.title === HIGHSCORE_ISSUE_TITLE);
+
+    if (existingIssue) {
+      return existingIssue;
     }
 
     // Create cache issue if it doesn't exist (requires write permissions)
