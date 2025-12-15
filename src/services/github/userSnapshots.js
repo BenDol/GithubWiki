@@ -300,6 +300,12 @@ export async function buildUserSnapshot(owner, repo, username) {
       deletions: pr.deletions,
       changed_files: pr.changed_files,
       html_url: pr.html_url,
+      user: {
+        login: pr.user.login,
+        id: pr.user.id,
+        avatar_url: pr.user.avatar_url,
+        html_url: pr.user.html_url,
+      },
       labels: pr.labels.map(label => ({
         name: label.name,
         color: label.color,

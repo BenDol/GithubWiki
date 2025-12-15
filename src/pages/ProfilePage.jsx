@@ -821,11 +821,11 @@ const ProfilePage = () => {
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <PrestigeAvatar
-                      src={pr.user.avatar_url}
-                      alt={pr.user.login}
+                      src={pr.user?.avatar_url || profileUser?.avatar_url}
+                      alt={pr.user?.login || profileUser?.login}
                       size="md"
-                      stats={pr.user.login === profileUser?.login ? stats : null}
-                      showBadge={pr.user.login === profileUser?.login}
+                      stats={pr.user?.login === profileUser?.login ? stats : null}
+                      showBadge={pr.user?.login === profileUser?.login}
                       className="flex-shrink-0"
                     />
                     <div className="flex-1 min-w-0 text-left">
@@ -906,7 +906,7 @@ const ProfilePage = () => {
 
                       {/* PR number and created date */}
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                        #{pr.number} opened {new Date(pr.created_at).toLocaleDateString()} by {pr.user.login}
+                        #{pr.number} opened {new Date(pr.created_at).toLocaleDateString()} by {pr.user?.login || profileUser?.login || 'Unknown'}
                       </p>
 
                       {/* Changes stats */}
@@ -987,11 +987,11 @@ const ProfilePage = () => {
 
                     {/* Avatar */}
                     <PrestigeAvatar
-                      src={pr.user.avatar_url}
-                      alt={pr.user.login}
+                      src={pr.user?.avatar_url || profileUser?.avatar_url}
+                      alt={pr.user?.login || profileUser?.login}
                       size="lg"
-                      stats={pr.user.login === profileUser?.login ? stats : null}
-                      showBadge={pr.user.login === profileUser?.login}
+                      stats={pr.user?.login === profileUser?.login ? stats : null}
+                      showBadge={pr.user?.login === profileUser?.login}
                       className="ml-4 flex-shrink-0"
                     />
                   </div>
