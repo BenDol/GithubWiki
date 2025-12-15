@@ -5,10 +5,23 @@ import { getBannedUsers } from './admin';
  * Contributor Highscore Service
  * Manages fetching and caching contributor statistics using GitHub Issues as a data store
  *
+ * ARCHITECTURE (Updated):
+ * - GitHub Actions workflow calculates ALL highscore data (additions/deletions/scores)
+ * - Calculations include detailed commit stats from the main branch
+ * - Client ONLY reads from cache (localStorage → GitHub Issue cache)
+ * - Client NEVER calculates highscores (too expensive, rate limit concerns)
+ * - If no cache exists, user must run GitHub Actions workflow first
+ *
  * Indexing:
  * - Primary: User ID (permanent, immune to username changes)
  * - Fallback: Username (for display and legacy data)
  * - All contributor objects include both userId and login fields
+ *
+ * Scoring Formula (calculated by GitHub Actions):
+ * - score = (contributions * 100) + ((additions + deletions) / contributions * 2)
+ * - Heavily weights contribution count (100x)
+ * - Quality bonus from average lines per contribution (2x)
+ * - Prevents gaming through spam contributions
  */
 
 const HIGHSCORE_ISSUE_TITLE = '[Cache] Contributor Highscore';
@@ -230,362 +243,13 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
   return filteredContributors;
 }
 
-/**
- * Fetch commits within a date range with detailed additions/deletions by author
- * This gives credit to all contributions, whether through PRs or direct commits
- * @param {string} owner - Repository owner
- * @param {string} repo - Repository name
- * @param {string} since - Start date (ISO 8601)
- * @param {string} until - End date (ISO 8601)
- * @param {string} branch - Branch to fetch commits from (default: 'main')
- */
-async function fetchCommitsWithStatsInDateRange(owner, repo, since, until, branch = 'main') {
-  const octokit = getOctokit();
+// NOTE: Client-side highscore calculation has been removed.
+// All highscore data is now calculated by GitHub Actions and stored in the cache issue.
+// The client only reads from the cache - it never calculates fresh data.
 
-  try {
-    console.log(`[Highscore] Fetching commits from ${since} to ${until} on branch '${branch}'...`);
-
-    const commits = [];
-    let page = 1;
-    const perPage = 100;
-
-    // Fetch all commits in date range
-    while (true) {
-      const { data } = await octokit.rest.repos.listCommits({
-        owner,
-        repo,
-        sha: branch, // Explicitly specify branch
-        since,
-        until,
-        per_page: perPage,
-        page,
-      });
-
-      if (data.length === 0) break;
-      commits.push(...data);
-
-      // If we got fewer than perPage, we've reached the end
-      if (data.length < perPage) break;
-      page++;
-    }
-
-    console.log(`[Highscore] Found ${commits.length} commits in date range`);
-
-    // Aggregate commits by author (use user ID as key for permanent identification)
-    const contributorMap = new Map();
-
-    // Fetch detailed commit data to get additions/deletions (listCommits doesn't include them)
-    console.log(`[Highscore] Fetching detailed stats for ${commits.length} commits...`);
-    for (const commit of commits) {
-      const author = commit.author || commit.commit.author;
-      const login = author?.login;
-      const userId = author?.id;
-
-      // Skip commits without a GitHub user (e.g., local git commits)
-      if (!login) continue;
-
-      try {
-        // repos.listCommits() doesn't include additions/deletions, need repos.getCommit()
-        const { data: detailedCommit } = await octokit.rest.repos.getCommit({
-          owner,
-          repo,
-          ref: commit.sha,
-        });
-
-        // Calculate stats from commit
-        const stats = detailedCommit.stats || {};
-        const additions = stats.additions || 0;
-        const deletions = stats.deletions || 0;
-
-        // Use user ID as key (permanent), fallback to login
-        const key = userId ? userId.toString() : `legacy:${login}`;
-
-        if (contributorMap.has(key)) {
-          const existing = contributorMap.get(key);
-          existing.contributions++;
-          existing.additions += additions;
-          existing.deletions += deletions;
-          // Update login in case username changed
-          existing.login = login;
-        } else {
-          contributorMap.set(key, {
-            userId: userId || null,
-            login,
-            avatarUrl: author.avatar_url,
-            contributions: 1,
-            additions,
-            deletions,
-            profileUrl: author.html_url,
-            prestige: 0,
-            type: author.type || 'User',
-          });
-        }
-      } catch (error) {
-        console.warn(`[Highscore] Failed to fetch details for commit ${commit.sha}:`, error.message);
-      }
-    }
-
-    // Convert map to array
-    const contributors = Array.from(contributorMap.values());
-
-    console.log(`[Highscore] Found ${contributors.length} unique contributors from commits`);
-    return contributors;
-  } catch (error) {
-    console.error('[Highscore] Failed to fetch commits in date range:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch commits within a date range and aggregate by author
- * @param {string} owner - Repository owner
- * @param {string} repo - Repository name
- * @param {string} since - Start date (ISO 8601)
- * @param {string} until - End date (ISO 8601)
- * @param {string} branch - Branch to fetch commits from (default: 'main')
- * @deprecated Use fetchMergedPRsInDateRange for accurate additions/deletions
- */
-async function fetchCommitsInDateRange(owner, repo, since, until, branch = 'main') {
-  const octokit = getOctokit();
-
-  try {
-    console.log(`[Highscore] Fetching commits from ${since} to ${until} on branch '${branch}'...`);
-
-    const commits = [];
-    let page = 1;
-    const perPage = 100;
-
-    // Fetch all commits in date range (with pagination)
-    // Use sha parameter to explicitly specify the branch
-    while (true) {
-      const { data } = await octokit.rest.repos.listCommits({
-        owner,
-        repo,
-        sha: branch, // Explicitly specify branch to only count main branch commits
-        since,
-        until,
-        per_page: perPage,
-        page,
-      });
-
-      if (data.length === 0) break;
-      commits.push(...data);
-
-      // If we got fewer than perPage, we've reached the end
-      if (data.length < perPage) break;
-      page++;
-    }
-
-    console.log(`[Highscore] Found ${commits.length} commits in date range`);
-
-    // Aggregate commits by author (use user ID as key for permanent identification)
-    const contributorMap = new Map();
-
-    for (const commit of commits) {
-      const author = commit.author || commit.commit.author;
-      const login = author?.login;
-      const userId = author?.id;
-
-      // Skip commits without a GitHub user (e.g., local git commits)
-      if (!login) continue;
-
-      // Use user ID as key (permanent), fallback to login for local commits
-      const key = userId ? userId.toString() : `legacy:${login}`;
-
-      if (contributorMap.has(key)) {
-        contributorMap.get(key).contributions++;
-        // Update login in case username changed
-        contributorMap.get(key).login = login;
-      } else {
-        contributorMap.set(key, {
-          userId: userId || null, // Permanent identifier (usernames can change!)
-          login, // Current username (may change)
-          avatarUrl: author.avatar_url,
-          contributions: 1,
-          additions: 0, // Note: commit data doesn't include line changes
-          deletions: 0, // Note: commit data doesn't include line changes
-          profileUrl: author.html_url,
-          prestige: 0,
-          type: author.type || 'User',
-        });
-      }
-    }
-
-    // Convert map to array and calculate scores (handled by applyContributorFilters)
-    const contributors = Array.from(contributorMap.values());
-
-    console.log(`[Highscore] Found ${contributors.length} unique contributors in date range`);
-    return contributors;
-  } catch (error) {
-    console.error('[Highscore] Failed to fetch commits in date range:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch fresh contributor statistics from GitHub API (all-time)
- * Enhanced with PR data for additions/deletions
- */
-async function fetchFreshContributorStats(owner, repo, config = {}) {
-  const octokit = getOctokit();
-
-  try {
-    console.log('[Highscore] Fetching fresh contributor stats...');
-
-    // Get all contributors with their contribution counts
-    const { data: contributors } = await octokit.rest.repos.listContributors({
-      owner,
-      repo,
-      per_page: 100,
-    });
-
-    // Format contributor data with base stats
-    const contributorMap = new Map();
-    contributors.forEach(contributor => {
-      contributorMap.set(contributor.id, {
-        userId: contributor.id,
-        login: contributor.login,
-        avatarUrl: contributor.avatar_url,
-        contributions: contributor.contributions,
-        additions: 0,
-        deletions: 0,
-        profileUrl: contributor.html_url,
-        prestige: 0,
-        type: contributor.type,
-      });
-    });
-
-    // Enhance with commit data to get additions/deletions
-    console.log('[Highscore] Fetching all commits for additions/deletions data...');
-    const branch = config?.wiki?.repository?.branch || 'main';
-
-    let page = 1;
-    const perPage = 100;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data: commits } = await octokit.rest.repos.listCommits({
-        owner,
-        repo,
-        sha: branch,
-        per_page: perPage,
-        page,
-      });
-
-      if (commits.length === 0) break;
-
-      console.log(`[Highscore] Page ${page}: Processing ${commits.length} commits...`);
-
-      // Fetch detailed commit data to get additions/deletions
-      for (const commit of commits) {
-        const author = commit.author || commit.commit.author;
-        const userId = author?.id;
-
-        if (userId && contributorMap.has(userId)) {
-          try {
-            // repos.listCommits() doesn't include additions/deletions, need repos.getCommit()
-            const { data: detailedCommit } = await octokit.rest.repos.getCommit({
-              owner,
-              repo,
-              ref: commit.sha,
-            });
-
-            const stats = detailedCommit.stats || {};
-            const contributor = contributorMap.get(userId);
-            contributor.additions += stats.additions || 0;
-            contributor.deletions += stats.deletions || 0;
-          } catch (error) {
-            console.warn(`[Highscore] Failed to fetch details for commit ${commit.sha.substring(0, 7)}:`, error.message);
-          }
-        }
-      }
-
-      hasMore = commits.length === perPage;
-      page++;
-
-      // Safety limit to prevent excessive API calls
-      if (page > 50) {
-        console.warn('[Highscore] Reached page limit (50) for commit fetching');
-        break;
-      }
-    }
-
-    const formattedContributors = Array.from(contributorMap.values());
-    console.log(`[Highscore] Enhanced ${formattedContributors.length} contributors with commit data`);
-
-    // Don't apply filters here - they'll be applied when data is returned
-    // This keeps cached data unfiltered so filters can be changed dynamically
-    // Scores will be calculated by applyContributorFilters()
-    return formattedContributors;
-  } catch (error) {
-    console.error('[Highscore] Failed to fetch contributor stats:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetch all category data (all-time, this month, this week)
- * Uses merged PR data for accurate additions/deletions statistics
- */
-async function fetchAllCategoryData(owner, repo, config = {}) {
-  console.log('[Highscore] Fetching all category data...');
-
-  const now = new Date();
-  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-  // Get configured branch (default to 'main')
-  const branch = config?.wiki?.repository?.branch || 'main';
-  console.log(`[Highscore] Using branch: ${branch}`);
-
-  // Fetch all three categories in parallel using commit data (includes both PR and direct commits)
-  const [allTimeContributors, thisMonthContributors, thisWeekContributors] = await Promise.all([
-    fetchFreshContributorStats(owner, repo, config),
-    fetchCommitsWithStatsInDateRange(owner, repo, oneMonthAgo.toISOString(), now.toISOString(), branch),
-    fetchCommitsWithStatsInDateRange(owner, repo, oneWeekAgo.toISOString(), now.toISOString(), branch),
-  ]);
-
-  return {
-    lastUpdated: now.toISOString(),
-    categories: {
-      allTime: {
-        contributors: allTimeContributors,
-      },
-      thisMonth: {
-        startDate: oneMonthAgo.toISOString(),
-        endDate: now.toISOString(),
-        contributors: thisMonthContributors,
-      },
-      thisWeek: {
-        startDate: oneWeekAgo.toISOString(),
-        endDate: now.toISOString(),
-        contributors: thisWeekContributors,
-      },
-    },
-  };
-}
-
-/**
- * Update the cache issue with fresh data
- */
-async function updateCacheIssue(owner, repo, issueNumber, cacheData) {
-  const octokit = getOctokit();
-
-  try {
-    await octokit.rest.issues.update({
-      owner,
-      repo,
-      issue_number: issueNumber,
-      body: JSON.stringify(cacheData, null, 2),
-    });
-
-    console.log('[Highscore] Cache issue updated successfully');
-    return cacheData;
-  } catch (error) {
-    console.error('[Highscore] Failed to update cache issue:', error);
-    throw error;
-  }
-}
+// All client-side calculation functions have been removed.
+// Highscore data is now ONLY calculated by GitHub Actions.
+// The client reads from cache only - never calculates fresh data.
 
 /**
  * Detect if cache data is old format (pre-categories)
@@ -633,20 +297,21 @@ function isCacheValid(lastUpdated, cacheMinutes) {
 }
 
 /**
- * Get contributor highscore with intelligent caching
+ * Get contributor highscore from cache ONLY
+ * The client never calculates highscores - only reads from cache
  * 1. Check browser localStorage cache
- * 2. If expired, check GitHub issue cache
- * 3. If expired, fetch fresh data and update both caches
+ * 2. If expired/missing, check GitHub issue cache
+ * 3. If no cache available, return error (user must trigger GitHub Actions)
  */
 export async function getContributorHighscore(owner, repo, config, category = 'allTime') {
-  const cacheMinutes = config?.features?.contributorHighscore?.cacheMinutes ?? 30;
+  const cacheMinutes = config?.features?.contributorHighscore?.cacheMinutes ?? 1440; // 24 hours default
   const enabled = config?.features?.contributorHighscore?.enabled ?? false;
 
   if (!enabled) {
     throw new Error('Contributor highscore feature is not enabled');
   }
 
-  console.log(`[Highscore] Fetching contributor highscore for category: ${category} (cache: ${cacheMinutes} minutes)`);
+  console.log(`[Highscore] Fetching contributor highscore for category: ${category} (cache only)`);
 
   // Step 1: Check browser localStorage cache
   const localCache = localStorage.getItem(HIGHSCORE_CACHE_KEY);
@@ -658,27 +323,27 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
       localData = migrateOldCacheFormat(localData);
     }
 
-    if (isCacheValid(localData.lastUpdated, cacheMinutes)) {
-      console.log('[Highscore] Using browser cache (age: ' +
-        Math.round((new Date() - new Date(localData.lastUpdated)) / 1000 / 60) + ' minutes)');
+    // Always use localStorage cache if it exists (even if "expired")
+    // The cache is updated by GitHub Actions on a schedule
+    console.log('[Highscore] Using browser cache (age: ' +
+      Math.round((new Date() - new Date(localData.lastUpdated)) / 1000 / 60) + ' minutes)');
 
-      // Get contributors for the requested category
-      const categoryData = localData.categories?.[category];
-      if (categoryData && categoryData.contributors) {
-        // Apply filters to cached data before returning
-        const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
-        return {
-          lastUpdated: localData.lastUpdated,
-          category,
-          contributors: filteredContributors,
-          allCategories: localData.categories,
-        };
-      }
+    // Get contributors for the requested category
+    const categoryData = localData.categories?.[category];
+    if (categoryData && categoryData.contributors) {
+      // Apply filters to cached data before returning
+      const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
+      return {
+        lastUpdated: localData.lastUpdated,
+        category,
+        contributors: filteredContributors,
+        allCategories: localData.categories,
+      };
     }
-    console.log('[Highscore] Browser cache expired or category missing');
   }
 
-  // Step 2: Check GitHub issue cache (if accessible)
+  // Step 2: Check GitHub issue cache (always, since we don't generate fresh)
+  console.log('[Highscore] No browser cache, checking GitHub issue cache...');
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
 
   if (cacheIssue) {
@@ -689,8 +354,8 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
       githubCacheData = migrateOldCacheFormat(githubCacheData);
     }
 
-    if (githubCacheData && isCacheValid(githubCacheData.lastUpdated, cacheMinutes)) {
-      console.log('[Highscore] Using GitHub cache (age: ' +
+    if (githubCacheData) {
+      console.log('[Highscore] Using GitHub issue cache (age: ' +
         Math.round((new Date() - new Date(githubCacheData.lastUpdated)) / 1000 / 60) + ' minutes)');
 
       // Get contributors for the requested category
@@ -705,96 +370,33 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
           allCategories: githubCacheData.categories,
         };
 
-        // Update browser cache with unfiltered data (filters are applied at read time)
+        // Update browser cache for faster future access
         localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
         return filteredData;
       }
     }
-
-    console.log('[Highscore] GitHub cache expired or category missing, fetching fresh data...');
-  } else {
-    console.log('[Highscore] No access to GitHub cache, fetching fresh data...');
   }
 
-  // Step 3: Fetch fresh data for all categories
-  const freshData = await fetchAllCategoryData(owner, repo, config);
-
-  // Try to update GitHub cache if we have access (requires write permissions)
-  if (cacheIssue) {
-    try {
-      await updateCacheIssue(owner, repo, cacheIssue.number, freshData);
-    } catch (error) {
-      // If permission denied (403), continue without updating GitHub cache
-      // Only repo admins can update the cache issue
-      if (error.status === 403) {
-        console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
-        console.log('[Highscore] Using fresh data without updating GitHub cache');
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  // Update browser cache with unfiltered data
-  localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
-
-  // Get contributors for the requested category
-  const categoryData = freshData.categories[category];
-  const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
-
-  return {
-    lastUpdated: freshData.lastUpdated,
-    category,
-    contributors: filteredContributors,
-    allCategories: freshData.categories,
-  };
+  // Step 3: No cache available - return error
+  console.error('[Highscore] No cache data available. GitHub Actions workflow must be run first.');
+  throw new Error(
+    'Highscore data not available. The repository administrator needs to run the "Update Contributor Highscore Cache" GitHub Actions workflow to generate the initial cache.'
+  );
 }
 
 /**
- * Force refresh the highscore cache (fetches all categories)
+ * Force refresh the highscore cache from GitHub issue
+ * Clears browser cache and re-fetches from GitHub issue cache only
+ * Does NOT calculate fresh data - that's done by GitHub Actions
  */
 export async function refreshHighscoreCache(owner, repo, config = {}, category = 'allTime') {
-  console.log('[Highscore] Force refreshing cache for all categories...');
+  console.log('[Highscore] Refreshing cache from GitHub issue...');
 
-  // Clear browser cache
+  // Clear browser cache to force re-fetch from GitHub
   localStorage.removeItem(HIGHSCORE_CACHE_KEY);
 
-  // Fetch fresh data for all categories
-  const freshData = await fetchAllCategoryData(owner, repo, config);
-
-  // Try to update GitHub cache if we have access (requires write permissions)
-  const cacheIssue = await getHighscoreCacheIssue(owner, repo);
-
-  if (cacheIssue) {
-    try {
-      await updateCacheIssue(owner, repo, cacheIssue.number, freshData);
-    } catch (error) {
-      // If permission denied (403), continue without updating GitHub cache
-      // Only repo admins can update the cache issue
-      if (error.status === 403) {
-        console.warn('[Highscore] Cannot update GitHub cache (requires admin permissions)');
-        console.log('[Highscore] Using fresh data without updating GitHub cache');
-      } else {
-        throw error;
-      }
-    }
-  } else {
-    console.log('[Highscore] No access to GitHub cache');
-  }
-
-  // Update browser cache with unfiltered data
-  localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(freshData));
-
-  // Get contributors for the requested category and apply filters
-  const categoryData = freshData.categories[category];
-  const filteredContributors = await applyContributorFilters(categoryData.contributors, owner, repo, config);
-
-  return {
-    lastUpdated: freshData.lastUpdated,
-    category,
-    contributors: filteredContributors,
-    allCategories: freshData.categories,
-  };
+  // Re-fetch from GitHub issue cache (will also update localStorage)
+  return getContributorHighscore(owner, repo, config, category);
 }
 
 /**
