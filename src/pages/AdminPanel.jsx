@@ -40,7 +40,17 @@ const AdminPanel = () => {
   const [addAdminLoading, setAddAdminLoading] = useState(false);
 
   useEffect(() => {
-    if (!config || !isAuthenticated) return;
+    // Wait for auth to finish loading before checking access
+    if (authLoading) {
+      console.log('[AdminPanel] Waiting for auth to complete...');
+      return;
+    }
+
+    if (!config || !isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+
     if (!config.wiki?.repository) {
       console.error('[Admin] Config missing wiki.repository');
       return;
@@ -74,7 +84,7 @@ const AdminPanel = () => {
     };
 
     checkAccess();
-  }, [config, isAuthenticated, navigate]);
+  }, [config, isAuthenticated, authLoading, navigate]);
 
   const loadData = async () => {
     if (!config?.wiki?.repository) return;

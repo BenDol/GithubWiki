@@ -6,6 +6,61 @@
 
 import { Octokit } from 'octokit';
 
+/**
+ * Check if a user is banned (server-side)
+ * This is a server-side implementation to prevent bypassing client checks
+ */
+async function isBanned(octokit, owner, repo, username, userId) {
+  try {
+    console.log(`[Ban Check] Checking if user ${username} (ID: ${userId}) is banned...`);
+
+    // Search for ban list issue
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: 'wiki-ban-list',
+      state: 'open',
+      per_page: 1,
+    });
+
+    const banIssue = issues.find(issue => issue.title === '[Ban List]');
+
+    if (!banIssue) {
+      console.log('[Ban Check] No ban list found');
+      return false;
+    }
+
+    // Extract JSON from issue body
+    const jsonMatch = banIssue.body.match(/```json\n([\s\S]*?)\n```/);
+    if (!jsonMatch) {
+      console.log('[Ban Check] No JSON found in ban list');
+      return false;
+    }
+
+    const bannedUsers = JSON.parse(jsonMatch[1]);
+
+    // Check if user is banned (by userId or username)
+    const banned = bannedUsers.some(user => {
+      if (userId && user.userId && user.userId === userId) {
+        return true;
+      }
+      return user.username.toLowerCase() === username.toLowerCase();
+    });
+
+    if (banned) {
+      console.log(`[Ban Check] User ${username} IS BANNED`);
+    } else {
+      console.log(`[Ban Check] User ${username} is not banned`);
+    }
+
+    return banned;
+  } catch (error) {
+    console.error('[Ban Check] Error checking ban status:', error);
+    // On error, allow the request (fail open)
+    return false;
+  }
+}
+
 export const handler = async function(event) {
   // Only allow POST requests
   if (event.httpMethod !== 'POST') {
@@ -33,7 +88,7 @@ export const handler = async function(event) {
 
   try {
     // Parse the request body
-    const { owner, repo, title, body, labels } = JSON.parse(event.body);
+    const { owner, repo, title, body, labels, requestedBy, requestedByUserId } = JSON.parse(event.body);
 
     // Validate required fields
     if (!owner || !repo || !title || !body || !labels) {
@@ -55,6 +110,26 @@ export const handler = async function(event) {
       auth: botToken,
       userAgent: 'GitHub-Wiki-Bot/1.0',
     });
+
+    // SERVER-SIDE BAN CHECK: Prevent banned users from creating comment threads
+    if (requestedBy && requestedByUserId) {
+      const userIsBanned = await isBanned(octokit, owner, repo, requestedBy, requestedByUserId);
+
+      if (userIsBanned) {
+        console.log(`[Bot Function] BLOCKED: Banned user ${requestedBy} attempted to create comment issue`);
+        return {
+          statusCode: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+          body: JSON.stringify({
+            error: 'Forbidden',
+            message: 'You are banned from commenting on this wiki',
+          }),
+        };
+      }
+    }
 
     // Create the issue using bot token
     const { data: issue } = await octokit.rest.issues.create({

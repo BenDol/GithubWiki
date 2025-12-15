@@ -322,7 +322,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       }
 
       console.log('[Comments] Creating comment on issue #', pageIssue.number);
-      const createdComment = await createIssueComment(owner, repo, pageIssue.number, newComment);
+      const createdComment = await createIssueComment(owner, repo, pageIssue.number, newComment, config);
       console.log('[Comments] Comment created:', createdComment);
 
       // Reload comments

@@ -1,6 +1,7 @@
 import { getOctokit, getAuthenticatedUser, deduplicatedRequest } from './api';
 import { updateFileContent } from './content';
 import { useGitHubDataStore } from '../../store/githubDataStore';
+import { isBanned } from './admin';
 
 /**
  * GitHub Pull Request operations
@@ -15,10 +16,32 @@ export const createPullRequest = async (
   title,
   body,
   headBranch,
-  baseBranch = 'main'
+  baseBranch = 'main',
+  config = null
 ) => {
   const octokit = getOctokit();
   const store = useGitHubDataStore.getState();
+
+  // Check if user is banned
+  if (config) {
+    try {
+      const user = await getAuthenticatedUser();
+      const userIsBanned = await isBanned(user.login, owner, repo, config);
+
+      if (userIsBanned) {
+        console.warn(`[PR] Banned user ${user.login} attempted to create pull request`);
+        throw new Error('You are banned from creating edit requests on this wiki');
+      }
+    } catch (error) {
+      // If error is our ban message, re-throw it
+      if (error.message === 'You are banned from creating edit requests on this wiki') {
+        throw error;
+      }
+      // Otherwise, log and continue (might be authentication error)
+      console.warn('[PR] Failed to check ban status:', error);
+    }
+  }
+
   store.incrementAPICall();
 
   const { data } = await octokit.rest.pulls.create({
@@ -473,14 +496,15 @@ export const createWikiEditPR = async (
   summary = null,
   baseBranch = 'main',
   isNewPage = false,
-  isFirstContribution = false
+  isFirstContribution = false,
+  config = null
 ) => {
   // Generate PR details
   const title = generatePRTitle(pageTitle, sectionTitle, isNewPage, pageId);
   const body = await generatePRBody(pageTitle, sectionId, pageId, summary);
 
   // Create PR
-  const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch);
+  const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch, config);
 
   // Invalidate PR cache immediately so new PR shows up in pending edits
   const store = useGitHubDataStore.getState();

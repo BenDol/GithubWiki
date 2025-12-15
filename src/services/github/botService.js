@@ -72,6 +72,12 @@ const createIssueDirectly = async (owner, repo, title, body, labels) => {
  */
 export const createCommentIssueWithBot = async (owner, repo, title, body, labels) => {
   try {
+    // Get current user for server-side ban checking
+    const authStore = useAuthStore.getState();
+    const currentUser = authStore.user;
+    const requestedBy = currentUser?.login || null;
+    const requestedByUserId = currentUser?.id || null;
+
     // Development mode: Try direct API call first (if token available), then fall back to function
     if (import.meta.env.DEV) {
       const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
@@ -98,6 +104,8 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
         title,
         body,
         labels,
+        requestedBy,
+        requestedByUserId,
       }),
     });
 

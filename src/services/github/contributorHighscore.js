@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { getBannedUsers } from './admin';
 
 /**
  * Contributor Highscore Service
@@ -119,6 +120,7 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
 
   // Track which users to exclude
   const excludedUsers = new Set();
+  const excludedUserIds = new Set();
 
   if (ignoreOwner) {
     console.log('[Highscore] Filtering out repository owner:', owner);
@@ -138,11 +140,41 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
     }
   }
 
+  // ALWAYS filter out banned users
+  try {
+    console.log('[Highscore] Fetching banned users list...');
+    const bannedUsers = await getBannedUsers(owner, repo, config);
+
+    if (bannedUsers.length > 0) {
+      bannedUsers.forEach(user => {
+        excludedUsers.add(user.username);
+        if (user.userId) {
+          excludedUserIds.add(user.userId);
+        }
+      });
+      console.log(`[Highscore] Filtering out ${bannedUsers.length} banned users:`, bannedUsers.map(u => u.username));
+    } else {
+      console.log('[Highscore] No banned users to filter');
+    }
+  } catch (error) {
+    console.error('[Highscore] Failed to fetch banned users:', error);
+    // Continue without filtering banned users if fetch fails
+  }
+
   // Apply all filters at once
-  if (excludedUsers.size > 0) {
+  if (excludedUsers.size > 0 || excludedUserIds.size > 0) {
     const beforeCount = filteredContributors.length;
-    filteredContributors = filteredContributors.filter(c => !excludedUsers.has(c.login));
-    console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} users:`, Array.from(excludedUsers));
+    filteredContributors = filteredContributors.filter(c => {
+      // Check both userId and username for maximum coverage
+      if (c.userId && excludedUserIds.has(c.userId)) {
+        return false;
+      }
+      if (excludedUsers.has(c.login)) {
+        return false;
+      }
+      return true;
+    });
+    console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} total users`);
   }
 
   // Sort by contributions (descending)

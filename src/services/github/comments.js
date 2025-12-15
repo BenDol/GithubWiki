@@ -1,5 +1,6 @@
-import { getOctokit } from './api';
+import { getOctokit, getAuthenticatedUser } from './api';
 import { createCommentIssueWithBot } from './botService';
+import { isBanned } from './admin';
 
 /**
  * GitHub Comments API functions
@@ -141,10 +142,29 @@ export const getIssueComments = async (owner, repo, issueNumber) => {
  * @param {string} repo - Repository name
  * @param {number} issueNumber - Issue number
  * @param {string} body - Comment body
+ * @param {Object} config - Wiki config for ban checking
  * @returns {Promise<Object>} Created comment
  */
-export const createIssueComment = async (owner, repo, issueNumber, body) => {
+export const createIssueComment = async (owner, repo, issueNumber, body, config) => {
   const octokit = getOctokit();
+
+  // Check if user is banned
+  try {
+    const user = await getAuthenticatedUser();
+    const userIsBanned = await isBanned(user.login, owner, repo, config);
+
+    if (userIsBanned) {
+      console.warn(`[Comments] Banned user ${user.login} attempted to create comment`);
+      throw new Error('You are banned from commenting on this wiki');
+    }
+  } catch (error) {
+    // If error is our ban message, re-throw it
+    if (error.message === 'You are banned from commenting on this wiki') {
+      throw error;
+    }
+    // Otherwise, log and continue (might be authentication error)
+    console.warn('[Comments] Failed to check ban status:', error);
+  }
 
   try {
     const { data: comment } = await octokit.rest.issues.createComment({

@@ -411,16 +411,13 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
     throw new Error('Cannot ban the repository owner');
   }
 
-  // Cannot ban other admins
+  // Cannot ban other admins (unless you're the owner)
   const targetIsAdmin = await isAdmin(username, owner, repo, config);
   if (targetIsAdmin && !isRepositoryOwner(bannedBy, owner)) {
     throw new Error('Only the repository owner can ban admins');
   }
 
-  const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
-  const bannedUsers = parseUserListFromIssue(issue.body);
-
-  // Fetch user info from GitHub to get their ID
+  // Fetch user info from GitHub to get their ID (do this once upfront)
   const octokit = getOctokit();
   let userId;
   try {
@@ -433,6 +430,40 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
     console.error(`[Admin] Failed to fetch user ID for ${username}:`, error);
     throw new Error(`User ${username} not found on GitHub`);
   }
+
+  // If target is an admin and owner is banning them, remove them from admin list first
+  if (targetIsAdmin && isRepositoryOwner(bannedBy, owner)) {
+    console.log(`[Admin] Target is an admin, removing from admin list before banning...`);
+    try {
+      // Get admin list issue
+      const adminIssue = await getOrCreateAdminsIssue(owner, repo, config);
+      const admins = parseUserListFromIssue(adminIssue.body);
+
+      // Remove from admin list (by userId or username)
+      const updatedAdmins = admins.filter(admin => {
+        if (userId && admin.userId && admin.userId === userId) {
+          return false;
+        }
+        if (admin.username.toLowerCase() === username.toLowerCase()) {
+          return false;
+        }
+        return true;
+      });
+
+      // Update admin list
+      if (updatedAdmins.length < admins.length) {
+        const newAdminBody = updateUserListInIssue(adminIssue.body, updatedAdmins);
+        await updateAdminIssueWithBot(owner, repo, adminIssue.number, newAdminBody);
+        console.log(`[Admin] Removed ${username} from admin list before banning`);
+      }
+    } catch (error) {
+      console.error(`[Admin] Failed to remove admin before banning:`, error);
+      throw new Error(`Failed to remove ${username} from admin list: ${error.message}`);
+    }
+  }
+
+  const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
+  const bannedUsers = parseUserListFromIssue(issue.body);
 
   // Check if already banned (by userId or username)
   const alreadyBanned = bannedUsers.some(user => {
