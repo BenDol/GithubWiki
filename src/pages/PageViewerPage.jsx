@@ -37,6 +37,7 @@ const PageViewerPage = ({ sectionId }) => {
   const { isAuthenticated, user } = useAuthStore();
   const { branch } = useBranchNamespace();
   const [userIsBanned, setUserIsBanned] = useState(false);
+  const [checkingBanStatus, setCheckingBanStatus] = useState(false);
 
   // Check if this is a framework/hardcoded page (no editing allowed)
   const isFrameworkPage = section?.allowContributions === false;
@@ -46,8 +47,8 @@ const PageViewerPage = ({ sectionId }) => {
   const requireAuth = config?.features?.editRequestCreator?.permissions?.requireAuth ?? true;
 
   // Determine if edit button should be shown
-  // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available) AND user is not banned
-  const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth)) && !userIsBanned;
+  // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available) AND user is not banned AND not checking ban status
+  const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth)) && !userIsBanned && !checkingBanStatus;
 
   useEffect(() => {
     const loadPage = async () => {
@@ -149,10 +150,12 @@ const PageViewerPage = ({ sectionId }) => {
     const checkBanStatus = async () => {
       if (!isAuthenticated || !user || !config?.wiki?.repository) {
         setUserIsBanned(false);
+        setCheckingBanStatus(false);
         return;
       }
 
       try {
+        setCheckingBanStatus(true);
         const { owner, repo } = config.wiki.repository;
         const banned = await isBanned(user.login, owner, repo, config);
         setUserIsBanned(banned);
@@ -163,6 +166,8 @@ const PageViewerPage = ({ sectionId }) => {
       } catch (error) {
         console.error('[PageViewer] Failed to check ban status:', error);
         setUserIsBanned(false); // Fail open - allow access on error
+      } finally {
+        setCheckingBanStatus(false);
       }
     };
 

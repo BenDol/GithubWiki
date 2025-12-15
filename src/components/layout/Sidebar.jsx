@@ -4,6 +4,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { getDisplayTitle } from '../../utils/textUtils';
+import { isBanned } from '../../services/github/admin';
 
 /**
  * TreeNode component for rendering expandable tree items
@@ -155,7 +156,8 @@ const Sidebar = () => {
   const { config } = useWikiConfig();
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const [userIsBanned, setUserIsBanned] = useState(false);
 
   const [expandedCategories, setExpandedCategories] = useState(() => {
     // Initialize expanded categories based on config
@@ -300,6 +302,31 @@ const Sidebar = () => {
     }
   }, [location.pathname, config, pages]);
 
+  // Check if user is banned
+  useEffect(() => {
+    const checkBanStatus = async () => {
+      if (!isAuthenticated || !user || !config?.wiki?.repository) {
+        setUserIsBanned(false);
+        return;
+      }
+
+      try {
+        const { owner, repo } = config.wiki.repository;
+        const banned = await isBanned(user.login, owner, repo, config);
+        setUserIsBanned(banned);
+
+        if (banned) {
+          console.log(`[Sidebar] User ${user.login} is banned - hiding create page buttons`);
+        }
+      } catch (error) {
+        console.error('[Sidebar] Failed to check ban status:', error);
+        setUserIsBanned(false);
+      }
+    };
+
+    checkBanStatus();
+  }, [isAuthenticated, user, config]);
+
   if (!config) return null;
 
   const categories = config.categories || [];
@@ -436,7 +463,7 @@ const Sidebar = () => {
                     {isExpanded && categorySections.map((section, sectionIndex) => {
                       const isSectionExpanded = expandedSections[section.id];
                       const sectionPages = pagesBySection[section.id] || [];
-                      const canAddPage = isAuthenticated && section.allowContributions;
+                      const canAddPage = isAuthenticated && section.allowContributions && !userIsBanned;
                       const isLastSection = sectionIndex === categorySections.length - 1;
 
                       return (
