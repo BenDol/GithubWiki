@@ -468,11 +468,11 @@ const ImageDatabaseManager = () => {
       const result = await response.json();
       alert(`Success! Removed ${result.deleted} orphaned database entries.`);
 
-      // Reload the image indexes
-      await loadImageIndexes();
+      // Reload the image indexes and get fresh data
+      const freshIndex = await loadImageIndexes();
 
-      // Re-run resolve to update results
-      await resolveOrphans();
+      // Re-run resolve with fresh data to update results
+      await resolveOrphans(freshIndex);
 
     } catch (error) {
       console.error('Failed to delete orphans:', error);
@@ -507,11 +507,11 @@ const ImageDatabaseManager = () => {
       const result = await response.json();
       alert(`Success! Added ${result.added} missing database entries.`);
 
-      // Reload the image indexes
-      await loadImageIndexes();
+      // Reload the image indexes and get fresh data
+      const freshIndex = await loadImageIndexes();
 
-      // Re-run resolve to update results
-      await resolveOrphans();
+      // Re-run resolve with fresh data to update results
+      await resolveOrphans(freshIndex);
 
     } catch (error) {
       console.error('Failed to add missing entries:', error);
