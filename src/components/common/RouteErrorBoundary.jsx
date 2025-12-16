@@ -18,20 +18,23 @@ const RouteErrorBoundary = () => {
     if (error) {
       const logError = async () => {
         try {
-          await fetch('/api/log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: 'error',
-              message: `Route Error: ${error.message || error.statusText || 'Unknown error'}`,
-              data: {
-                status: error.status,
-                statusText: error.statusText,
-                path: window.location.hash,
-              },
-              stack: error.stack || error.error?.stack,
-            }),
-          });
+          // Only call log endpoint in development
+          if (import.meta.env.DEV) {
+            await fetch('/api/log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'error',
+                message: `Route Error: ${error.message || error.statusText || 'Unknown error'}`,
+                data: {
+                  status: error.status,
+                  statusText: error.statusText,
+                  path: window.location.hash,
+                },
+                stack: error.stack || error.error?.stack,
+              }),
+            });
+          }
         } catch (err) {
           console.error('Failed to log error:', err);
         }

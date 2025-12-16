@@ -134,6 +134,11 @@
       "name": "branch:main",
       "description": "Items for main branch namespace",
       "color": "0e8a16"
+    },
+    {
+      "name": "security:warning",
+      "description": "Potential security issue detected (HTML injection, XSS, etc.)",
+      "color": "d73a4a"
     }
   ],
   "branchLabelPattern": {

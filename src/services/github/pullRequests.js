@@ -179,13 +179,11 @@ export const getPRBranchContent = async (owner, repo, branch, filePath, sha = nu
       ref: targetBranch,  // Use the branch name without prefix
     };
 
-    // Cache busting for fresh PR content (always enabled by default for PRs)
+    // Note: Cache busting with custom headers causes CORS errors with GitHub API
+    // GitHub's CDN may cache content for 2-3 minutes, but custom Cache-Control
+    // headers are not allowed in browser CORS requests to GitHub API
     if (bustCache) {
-      console.log('[PR Branch] Using cache-busting headers');
-      params.headers = {
-        'Cache-Control': 'no-cache',
-        'If-None-Match': '', // Force revalidation
-      };
+      console.log('[PR Branch] Cache-busting requested (GitHub CDN may still cache for 2-3 minutes)');
     }
 
     console.log(`[PR Branch] Final request: GET /repos/${owner}/${repo}/contents/${filePath}?ref=${targetBranch}`);

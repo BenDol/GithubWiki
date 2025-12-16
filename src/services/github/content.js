@@ -23,14 +23,11 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
       ref: branch,
     };
 
-    // Cache busting for fresh content (e.g., just after PR creation)
-    // GitHub's CDN can cache content for 2-3 minutes, so we add a timestamp
+    // Note: Cache busting with custom headers causes CORS errors with GitHub API
+    // GitHub's CDN may cache content for 2-3 minutes, but custom Cache-Control
+    // headers are not allowed in browser CORS requests to GitHub API
     if (bustCache) {
-      console.log('[Content] Using cache-busting for fresh content');
-      params.headers = {
-        'Cache-Control': 'no-cache',
-        'If-None-Match': '', // Force revalidation
-      };
+      console.log('[Content] Cache-busting requested (GitHub CDN may still cache for 2-3 minutes)');
     }
 
     const { data } = await octokit.rest.repos.getContent(params);

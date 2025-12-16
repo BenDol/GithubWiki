@@ -11,7 +11,10 @@ const DevPanel = () => {
 
   const clearLogFile = async () => {
     try {
-      await fetch('/api/log', { method: 'DELETE' });
+      // Only call log endpoint in development
+      if (import.meta.env.DEV) {
+        await fetch('/api/log', { method: 'DELETE' });
+      }
       clearLogs();
 
       // Add a fake success log to the panel (not written to file)

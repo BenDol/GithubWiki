@@ -3,6 +3,7 @@ import { createHashRouter, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
+import { getCustomRoutes } from './utils/routeRegistry';
 
 // Lazy load page components for code splitting
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -114,6 +115,15 @@ export const createWikiRouter = (config) => {
             </SuspenseWrapper>
           ),
         },
+        // Custom routes registered by parent project
+        ...getCustomRoutes().map((route) => ({
+          path: route.path,
+          element: route.suspense !== false ? (
+            <SuspenseWrapper>
+              {route.component}
+            </SuspenseWrapper>
+          ) : route.component,
+        })),
         // Dynamic routes for each section
         ...( config?.sections || []).map((section) => ({
           path: section.path,

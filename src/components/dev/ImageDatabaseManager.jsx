@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File } from 'lucide-react';
+import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File, Eye, Copy, CheckSquare, Square } from 'lucide-react';
 
 /**
  * Image Database Manager - Dev Tool
@@ -46,10 +46,44 @@ const ImageDatabaseManager = () => {
   const [expandedDirs, setExpandedDirs] = useState(new Set());
   const [flattenedRows, setFlattenedRows] = useState([]);
 
+  // Row selection for shift+click
+  const [lastClickedIndex, setLastClickedIndex] = useState(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState(null);
+
   // Load image indexes
   useEffect(() => {
     loadImageIndexes();
   }, []);
+
+  // Close context menu on click outside, scroll, or escape
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenu(null);
+    };
+
+    const handleScroll = () => {
+      setContextMenu(null);
+    };
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+      }
+    };
+
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('scroll', handleScroll, true);
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+        document.removeEventListener('scroll', handleScroll, true);
+        document.removeEventListener('keydown', handleEscape);
+      };
+    }
+  }, [contextMenu]);
 
   const loadImageIndexes = async () => {
     setLoading(true);
@@ -297,6 +331,7 @@ const ImageDatabaseManager = () => {
     setFlattenedRows(flattened);
 
     setCurrentPage(1); // Reset to first page on new search
+    setLastClickedIndex(null); // Reset shift+click tracking on new search
   };
 
   // Toggle directory expansion
@@ -439,6 +474,100 @@ const ImageDatabaseManager = () => {
     setSelectedImages(newSelected);
   };
 
+  // Handle row click with shift+click range selection support
+  const handleRowClick = (imagePath, currentIndex, event) => {
+    // If shift key is pressed and we have a last clicked index, select range
+    if (event.shiftKey && lastClickedIndex !== null) {
+      const fileRows = paginatedResults.filter(row => row.type === 'file');
+      const startIndex = Math.min(lastClickedIndex, currentIndex);
+      const endIndex = Math.max(lastClickedIndex, currentIndex);
+
+      const newSelected = new Set(selectedImages);
+      for (let i = startIndex; i <= endIndex; i++) {
+        if (fileRows[i]) {
+          newSelected.add(fileRows[i].path);
+        }
+      }
+
+      setSelectedImages(newSelected);
+    } else {
+      // Normal click - toggle selection
+      toggleSelection(imagePath);
+      setLastClickedIndex(currentIndex);
+    }
+  };
+
+  // Handle right-click context menu
+  const handleContextMenu = (event, imagePath, imageData) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // If right-clicked image is not selected, select only it
+    if (!selectedImages.has(imagePath)) {
+      setSelectedImages(new Set([imagePath]));
+    }
+
+    // Calculate position to prevent menu from going off-screen
+    const menuWidth = 200;
+    const menuHeight = 300; // Approximate
+    const x = event.clientX + menuWidth > window.innerWidth
+      ? event.clientX - menuWidth
+      : event.clientX;
+    const y = event.clientY + menuHeight > window.innerHeight
+      ? event.clientY - menuHeight
+      : event.clientY;
+
+    setContextMenu({
+      x,
+      y,
+      imagePath,
+      imageData,
+      selectedCount: selectedImages.has(imagePath) ? selectedImages.size : 1
+    });
+  };
+
+  // Context menu actions
+  const handleContextMove = () => {
+    setContextMenu(null);
+    moveSelectedImages();
+  };
+
+  const handleContextDelete = () => {
+    setContextMenu(null);
+    deleteSelectedImages();
+  };
+
+  const handleContextSelectOnly = () => {
+    if (contextMenu) {
+      setSelectedImages(new Set([contextMenu.imagePath]));
+    }
+    setContextMenu(null);
+  };
+
+  const handleContextDeselect = () => {
+    if (contextMenu) {
+      const newSelected = new Set(selectedImages);
+      newSelected.delete(contextMenu.imagePath);
+      setSelectedImages(newSelected);
+    }
+    setContextMenu(null);
+  };
+
+  const handleContextViewImage = () => {
+    if (contextMenu?.imageData) {
+      window.open(contextMenu.imageData.path, '_blank');
+    }
+    setContextMenu(null);
+  };
+
+  const handleContextCopyPath = () => {
+    if (contextMenu?.imagePath) {
+      navigator.clipboard.writeText(contextMenu.imagePath);
+      alert(`Copied to clipboard: ${contextMenu.imagePath}`);
+    }
+    setContextMenu(null);
+  };
+
   // Select all visible files (not directories)
   const selectAll = () => {
     const allFiles = flattenedRows.length > 0
@@ -451,6 +580,7 @@ const ImageDatabaseManager = () => {
   // Clear selection
   const clearSelection = () => {
     setSelectedImages(new Set());
+    setLastClickedIndex(null);
   };
 
   // Move selected images
@@ -464,7 +594,7 @@ const ImageDatabaseManager = () => {
   };
 
   // Execute move operation
-  const executeMoveOperation = () => {
+  const executeMoveOperation = async () => {
     if (!moveTarget.trim()) {
       alert('Please enter a target directory');
       return;
@@ -472,18 +602,59 @@ const ImageDatabaseManager = () => {
 
     const imagesToMove = Array.from(selectedImages);
 
-    console.log('Would move images:', imagesToMove);
-    console.log('To directory:', moveTarget);
-
-    alert(`Would move ${imagesToMove.length} images to: ${moveTarget}\n\nIn production, this would:\n1. Move physical files\n2. Update image-index.json\n3. Update image-search-index.json`);
+    if (!confirm(`Move ${imagesToMove.length} images to: /images/${moveTarget}/\n\nThis will update both the filesystem and database.`)) {
+      return;
+    }
 
     setShowMoveDialog(false);
-    setMoveTarget('');
-    clearSelection();
+
+    try {
+      const response = await fetch('/api/image-db/move-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imagePaths: imagesToMove,
+          targetCategory: moveTarget
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('API response error:', response.status, text);
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+
+      if (result.failed > 0) {
+        alert(`Move completed with some issues:\n\nMoved: ${result.moved}\nFailed: ${result.failed}\n\nCheck console for details.`);
+        console.error('Failed moves:', result.failedMoves);
+      } else {
+        alert(`Success! Moved ${result.moved} images to: /images/${moveTarget}/`);
+      }
+
+      // Reload the image indexes to reflect changes
+      await loadImageIndexes();
+
+      // Clear search to show updated state
+      setSearchQuery('');
+      setSearchResults([]);
+      setDirectoryTree([]);
+      setFlattenedRows([]);
+
+    } catch (error) {
+      console.error('Failed to move images:', error);
+      alert(`Failed to move images: ${error.message}`);
+    } finally {
+      setMoveTarget('');
+      clearSelection();
+    }
   };
 
   // Delete selected images
-  const deleteSelectedImages = () => {
+  const deleteSelectedImages = async () => {
     if (selectedImages.size === 0) {
       alert('No images selected');
       return;
@@ -491,15 +662,51 @@ const ImageDatabaseManager = () => {
 
     const imagesToDelete = Array.from(selectedImages);
 
-    if (!confirm(`Are you sure you want to delete ${imagesToDelete.length} images? This cannot be undone.`)) {
+    if (!confirm(`⚠️ WARNING: Delete ${imagesToDelete.length} images?\n\nThis will PERMANENTLY delete the files from the filesystem and remove them from the database.\n\nThis action CANNOT be undone!`)) {
       return;
     }
 
-    console.log('Would delete images:', imagesToDelete);
+    try {
+      const response = await fetch('/api/image-db/delete-images', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imagePaths: imagesToDelete
+        })
+      });
 
-    alert(`Would delete ${imagesToDelete.length} images.\n\nIn production, this would:\n1. Delete physical files\n2. Remove from image-index.json\n3. Remove from image-search-index.json`);
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('API response error:', response.status, text);
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
 
-    clearSelection();
+      const result = await response.json();
+
+      if (result.failed > 0) {
+        alert(`Delete completed with some issues:\n\nDeleted: ${result.deleted}\nFailed: ${result.failed}\n\nCheck console for details.`);
+        console.error('Failed deletes:', result.failedDeletes);
+      } else {
+        alert(`Success! Deleted ${result.deleted} images.`);
+      }
+
+      // Reload the image indexes to reflect changes
+      await loadImageIndexes();
+
+      // Clear search to show updated state
+      setSearchQuery('');
+      setSearchResults([]);
+      setDirectoryTree([]);
+      setFlattenedRows([]);
+
+    } catch (error) {
+      console.error('Failed to delete images:', error);
+      alert(`Failed to delete images: ${error.message}`);
+    } finally {
+      clearSelection();
+    }
   };
 
   // Process lower quality on selected images
@@ -813,19 +1020,28 @@ const ImageDatabaseManager = () => {
 
                       if (isFile) {
                         const image = row.image;
+                        // Calculate the file row index for shift+click
+                        const fileRows = paginatedResults.filter(r => r.type === 'file');
+                        const fileRowIndex = fileRows.findIndex(r => r.path === row.path);
+
                         return (
                           <tr
                             key={`file-${row.path}-${idx}`}
-                            className={`border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                            className={`border-t border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer ${
                               selectedImages.has(row.path) ? 'bg-blue-50 dark:bg-blue-900/30' : ''
                             }`}
+                            onClick={(e) => handleRowClick(row.path, fileRowIndex, e)}
+                            onContextMenu={(e) => handleContextMenu(e, row.path, image)}
                           >
                             <td className="p-2 sm:p-3">
                               <div style={{ paddingLeft: `${indentPx}px` }}>
                                 <input
                                   type="checkbox"
                                   checked={selectedImages.has(row.path)}
-                                  onChange={() => toggleSelection(row.path)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleSelection(row.path);
+                                  }}
                                   className="rounded"
                                 />
                               </div>
@@ -1082,6 +1298,93 @@ const ImageDatabaseManager = () => {
                 Move Images
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 min-w-[200px] z-50"
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+              {contextMenu.selectedCount > 1
+                ? `${contextMenu.selectedCount} images selected`
+                : contextMenu.imageData?.filename || 'Image Actions'
+              }
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="py-1">
+            {/* View Image */}
+            <button
+              onClick={handleContextViewImage}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <Eye className="w-4 h-4" />
+              View Image
+            </button>
+
+            {/* Copy Path */}
+            <button
+              onClick={handleContextCopyPath}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+            >
+              <Copy className="w-4 h-4" />
+              Copy Path
+            </button>
+
+            <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+            {/* Select Only This */}
+            {contextMenu.selectedCount > 1 && (
+              <button
+                onClick={handleContextSelectOnly}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              >
+                <CheckSquare className="w-4 h-4" />
+                Select Only This
+              </button>
+            )}
+
+            {/* Deselect */}
+            {selectedImages.has(contextMenu.imagePath) && (
+              <button
+                onClick={handleContextDeselect}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+              >
+                <Square className="w-4 h-4" />
+                Deselect
+              </button>
+            )}
+
+            <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+            {/* Move */}
+            <button
+              onClick={handleContextMove}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left"
+            >
+              <Move className="w-4 h-4" />
+              Move {contextMenu.selectedCount > 1 ? `(${contextMenu.selectedCount})` : ''}
+            </button>
+
+            {/* Delete */}
+            <button
+              onClick={handleContextDelete}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-left"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete {contextMenu.selectedCount > 1 ? `(${contextMenu.selectedCount})` : ''}
+            </button>
           </div>
         </div>
       )}

@@ -99,25 +99,37 @@ if (typeof window !== 'undefined') {
   // Override console.log
   console.log = function (...args) {
     originalConsole.log.apply(console, args);
-    useDevStore.getState().addLog('info', formatConsoleArgs(args), null);
+    // Defer state update to avoid "setState during render" warnings
+    queueMicrotask(() => {
+      useDevStore.getState().addLog('info', formatConsoleArgs(args), null);
+    });
   };
 
   // Override console.error
   console.error = function (...args) {
     originalConsole.error.apply(console, args);
-    useDevStore.getState().addLog('error', formatConsoleArgs(args), null);
+    // Defer state update to avoid "setState during render" warnings
+    queueMicrotask(() => {
+      useDevStore.getState().addLog('error', formatConsoleArgs(args), null);
+    });
   };
 
   // Override console.warn
   console.warn = function (...args) {
     originalConsole.warn.apply(console, args);
-    useDevStore.getState().addLog('warn', formatConsoleArgs(args), null);
+    // Defer state update to avoid "setState during render" warnings
+    queueMicrotask(() => {
+      useDevStore.getState().addLog('warn', formatConsoleArgs(args), null);
+    });
   };
 
   // Override console.info
   console.info = function (...args) {
     originalConsole.info.apply(console, args);
-    useDevStore.getState().addLog('info', formatConsoleArgs(args), null);
+    // Defer state update to avoid "setState during render" warnings
+    queueMicrotask(() => {
+      useDevStore.getState().addLog('info', formatConsoleArgs(args), null);
+    });
   };
 
   // Global error handler

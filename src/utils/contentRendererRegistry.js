@@ -1,12 +1,12 @@
 /**
  * Content Renderer Registry
  * Allows parent projects to register custom content processors and components
- * for game-specific rendering (e.g., spell cards, equipment cards)
+ * for game-specific rendering (e.g., skill cards, equipment cards)
  */
 
 let registeredProcessor = null;
 let registeredComponents = {};
-let registeredSpellPreview = null;
+let registeredSkillPreview = null;
 let registeredEquipmentPreview = null;
 
 /**
@@ -56,24 +56,24 @@ export function getCustomComponents() {
 }
 
 /**
- * Register a spell preview renderer for SpellPicker
- * @param {function} renderer - Function that receives { spell, mode } and returns JSX
+ * Register a skill preview renderer for SkillPicker
+ * @param {function} renderer - Function that receives { skill, mode } and returns JSX
  */
-export function registerSpellPreview(renderer) {
+export function registerSkillPreview(renderer) {
   if (typeof renderer !== 'function') {
-    console.warn('[Content Registry] Spell preview renderer must be a function');
+    console.warn('[Content Registry] Skill preview renderer must be a function');
     return;
   }
-  registeredSpellPreview = renderer;
-  console.log('[Content Registry] Spell preview renderer registered');
+  registeredSkillPreview = renderer;
+  console.log('[Content Registry] Skill preview renderer registered');
 }
 
 /**
- * Get the registered spell preview renderer
- * @returns {function|null} The registered spell preview renderer or null
+ * Get the registered skill preview renderer
+ * @returns {function|null} The registered skill preview renderer or null
  */
-export function getSpellPreview() {
-  return registeredSpellPreview;
+export function getSkillPreview() {
+  return registeredSkillPreview;
 }
 
 /**
@@ -103,7 +103,7 @@ export function getEquipmentPreview() {
 export function clearRegistry() {
   registeredProcessor = null;
   registeredComponents = {};
-  registeredSpellPreview = null;
+  registeredSkillPreview = null;
   registeredEquipmentPreview = null;
   console.log('[Content Registry] Registry cleared');
 }

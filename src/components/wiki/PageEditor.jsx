@@ -4,7 +4,7 @@ import matter from 'gray-matter';
 import MarkdownEditor from './MarkdownEditor';
 import MarkdownFormatToolbar from './MarkdownFormatToolbar';
 import PageViewer from './PageViewer';
-import SpellPicker from './SpellPicker';
+import SkillPicker from './SkillPicker';
 import EquipmentPicker from './EquipmentPicker';
 import ImagePicker from './ImagePicker';
 import LinkDialog from './LinkDialog';
@@ -28,7 +28,7 @@ const PageEditor = ({
   isConfiguringPR = false,
   contentProcessor = null,
   customComponents = {},
-  renderSpellPreview = null,
+  renderSkillPreview = null,
   renderEquipmentPreview = null
 }) => {
   const [content, setContent] = useState(initialContent || '');
@@ -40,7 +40,7 @@ const PageEditor = ({
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shakeValidationError, setShakeValidationError] = useState(false);
-  const [showSpellPicker, setShowSpellPicker] = useState(false);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -702,13 +702,13 @@ const PageEditor = ({
     }
   };
 
-  // Handle spell selection from picker
-  const handleSpellSelect = ({ spell, mode, alignment }) => {
+  // Handle skill selection from picker
+  const handleSkillSelect = ({ skill, mode, alignment }) => {
     if (!editorApiRef.current) return;
 
-    // Insert spell syntax into content
-    // Format: <!-- spell:Fire Slash:detailed --> or <!-- spell:1:compact -->
-    let spellSyntax = `<!-- spell:${spell.name}:${mode} -->`;
+    // Insert skill syntax into content
+    // Format: <!-- skill:Fire Slash:detailed --> or <!-- skill:1:compact -->
+    let skillSyntax = `<!-- skill:${skill.name}:${mode} -->`;
 
     // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
@@ -720,11 +720,11 @@ const PageEditor = ({
       } else if (alignment === 'right') {
         style = 'display: flex; justify-content: flex-end;';
       }
-      spellSyntax = `<div style="${style}">\n\n${spellSyntax}\n\n</div>`;
+      skillSyntax = `<div style="${style}">\n\n${skillSyntax}\n\n</div>`;
     }
 
     // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${spellSyntax}\n\n`);
+    editorApiRef.current.insertAtCursor(`\n\n${skillSyntax}\n\n`);
   };
 
   // Handle equipment selection from picker
@@ -786,8 +786,8 @@ const PageEditor = ({
             // Insert alignment wrapper at cursor
             api.insertAtCursor(`\n\n<div style="${style}">\nYour content here\n</div>\n\n`);
           } else {
-            // Check if selection contains card syntax (<!-- spell: or <!-- equipment:)
-            const isCard = /<!--\s*(spell|equipment):/.test(selection.text);
+            // Check if selection contains card syntax (<!-- skill: or <!-- equipment:)
+            const isCard = /<!--\s*(skill|equipment):/.test(selection.text);
 
             if (isCard) {
               // Use flexbox for cards
@@ -1442,7 +1442,7 @@ const PageEditor = ({
       }`}>
         <div className="relative">
           <MarkdownFormatToolbar
-            onInsertSpell={() => setShowSpellPicker(true)}
+            onInsertSkill={() => setShowSkillPicker(true)}
             onInsertEquipment={() => setShowEquipmentPicker(true)}
             onInsertImage={() => setShowImagePicker(true)}
             onFormat={handleFormat}
@@ -1592,12 +1592,12 @@ const PageEditor = ({
         </ul>
       </div>
 
-      {/* Spell Picker Modal */}
-      <SpellPicker
-        isOpen={showSpellPicker}
-        onClose={() => setShowSpellPicker(false)}
-        onSelect={handleSpellSelect}
-        renderPreview={renderSpellPreview}
+      {/* Skill Picker Modal */}
+      <SkillPicker
+        isOpen={showSkillPicker}
+        onClose={() => setShowSkillPicker(false)}
+        onSelect={handleSkillSelect}
+        renderPreview={renderSkillPreview}
       />
       {/* Equipment Picker Modal */}
       <EquipmentPicker

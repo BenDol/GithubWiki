@@ -27,22 +27,24 @@ class ErrorBoundary extends Component {
       errorInfo,
     });
 
-    // Log error to debug system
-    fetch('/api/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'error',
-        message: `Component Error: ${error.message || 'Unknown error'}`,
-        data: {
-          componentStack: errorInfo.componentStack,
-          path: window.location.hash,
-        },
-        stack: error.stack,
-      }),
-    }).catch(err => {
-      console.error('Failed to log error:', err);
-    });
+    // Log error to debug system (development only)
+    if (import.meta.env.DEV) {
+      fetch('/api/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'error',
+          message: `Component Error: ${error.message || 'Unknown error'}`,
+          data: {
+            componentStack: errorInfo.componentStack,
+            path: window.location.hash,
+          },
+          stack: error.stack,
+        }),
+      }).catch(err => {
+        console.error('Failed to log error:', err);
+      });
+    }
   }
 
   handleReset = () => {

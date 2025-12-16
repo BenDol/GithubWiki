@@ -6,11 +6,11 @@ import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote,
  *
  * Features:
  * - Common markdown formatting buttons (bold, italic, headings, lists, etc.)
- * - Content pickers/inserters (images, spells, equipment, etc.)
+ * - Content pickers/inserters (images, skills, equipment, etc.)
  * - Responsive design with horizontal scroll on mobile
  * - Scalable for many formatting options
  */
-const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage, onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false }) => {
+const MarkdownFormatToolbar = ({ onInsertSkill, onInsertEquipment, onInsertImage, onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false }) => {
   const internalColorButtonRef = useRef(null);
   const alignButtonRef = useRef(null);
   const alignDropdownRef = useRef(null);
@@ -35,7 +35,7 @@ const MarkdownFormatToolbar = ({ onInsertSpell, onInsertEquipment, onInsertImage
 
   const pickerButtons = [
     { icon: ImageIcon, label: 'Insert Image', action: 'image', handler: onInsertImage },
-    { icon: Sparkles, label: 'Insert Spell', action: 'spell', handler: onInsertSpell },
+    { icon: Sparkles, label: 'Insert Skill', action: 'skill', handler: onInsertSkill },
     { icon: Sword, label: 'Insert Equipment', action: 'equipment', handler: onInsertEquipment },
   ];
 

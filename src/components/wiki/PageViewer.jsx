@@ -2,9 +2,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
+import { defaultSchema } from 'rehype-sanitize';
 import 'highlight.js/styles/github-dark.css';
 
 /**
@@ -62,6 +64,45 @@ const encodeImageSpaces = (content) => {
   });
 
   return content;
+};
+
+/**
+ * Custom sanitization schema for rehype-sanitize
+ * Extends the default schema to allow specific HTML elements needed for wiki features
+ * while blocking dangerous elements and attributes
+ */
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    // Allow class attribute on span for text colors (Tailwind CSS classes starting with 'text-')
+    span: [...(defaultSchema.attributes.span || []), ['className', /^text-/]],
+    // Allow src and alt on img, but sanitize the src
+    img: ['src', 'alt', 'title', 'width', 'height'],
+    // Allow align attribute on div for text alignment
+    div: [...(defaultSchema.attributes.div || []), ['align', /^(left|center|right)$/]],
+    // Allow id on headings for anchor links
+    h1: [...(defaultSchema.attributes.h1 || []), 'id'],
+    h2: [...(defaultSchema.attributes.h2 || []), 'id'],
+    h3: [...(defaultSchema.attributes.h3 || []), 'id'],
+    h4: [...(defaultSchema.attributes.h4 || []), 'id'],
+    h5: [...(defaultSchema.attributes.h5 || []), 'id'],
+    h6: [...(defaultSchema.attributes.h6 || []), 'id'],
+    // Allow all default anchor attributes
+    a: [...(defaultSchema.attributes.a || [])],
+  },
+  // Explicitly allow safe protocols only
+  protocols: {
+    ...defaultSchema.protocols,
+    src: ['http', 'https', '/'], // Allow only http, https, and relative URLs for images
+    href: ['http', 'https', 'mailto', '/', '#'], // Safe protocols for links
+  },
+  // Allow specific tag names (default schema + our custom ones)
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'span',
+    'div',
+  ],
 };
 
 const PageViewer = ({
@@ -149,6 +190,7 @@ const PageViewer = ({
           remarkPlugins={[remarkGfm, remarkFrontmatter]}
           rehypePlugins={[
             rehypeRaw, // Must be first to parse HTML in markdown
+            [rehypeSanitize, sanitizeSchema], // Sanitize HTML to prevent XSS attacks
             rehypeHighlight,
             rehypeSlug,
             [

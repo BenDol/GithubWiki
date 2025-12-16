@@ -465,7 +465,38 @@ const Sidebar = () => {
                       const sectionPages = pagesBySection[section.id] || [];
                       const canAddPage = isAuthenticated && section.allowContributions && !userIsBanned;
                       const isLastSection = sectionIndex === categorySections.length - 1;
+                      const hideTitle = section.hideTitleInSidebar;
 
+                      // If section title is hidden, render pages directly
+                      if (hideTitle) {
+                        return (
+                          <div key={section.id}>
+                            {/* Pages directly under category (no section header) */}
+                            {sectionPages.map((page, pageIndex) => {
+                              const isLastPage = pageIndex === sectionPages.length - 1 && isLastSection;
+
+                              return (
+                                <TreeNode
+                                  key={page.id}
+                                  icon="📄"
+                                  title={getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
+                                  path={`/${page.section}/${page.pageId}`}
+                                  isActive={isPageActive(section.path, page.pageId)}
+                                  hasChildren={false}
+                                  level={1}
+                                  isLastChild={isLastPage}
+                                  showTreeLines={showTreeLines}
+                                  treeLineWidth={treeLineWidth}
+                                  treeLineStyle={treeLineStyle}
+                                  onNavigate={handleNavigate}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+
+                      // Normal section rendering with title
                       return (
                         <div key={section.id}>
                           {/* Section node */}

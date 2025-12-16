@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { getEquipmentRarityColor } from '../../utils/rarityColors';
 
 // Dynamically import imageService from parent project
 let imageService = null;
@@ -134,15 +135,6 @@ const EquipmentPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) =>
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   };
 
-  // Rarity colors for visual indicators
-  const rarityColors = {
-    Common: 'bg-gray-500',
-    Great: 'bg-green-500',
-    Rare: 'bg-blue-500',
-    Epic: 'bg-purple-500',
-    Legendary: 'bg-orange-500',
-  };
-
   if (!isOpen) return null;
 
   const modal = (
@@ -230,14 +222,15 @@ const EquipmentPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) =>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
               {currentEquipment.map(item => {
                 const rarity = getRarityTier(item.requirements);
+                const rarityColor = getEquipmentRarityColor(rarity);
                 return (
                   <button
                     key={item.id}
                     onClick={() => handleEquipmentSelect(item)}
-                    className={`group relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${
+                    className={`group relative rounded-lg overflow-hidden border-2 transition-all ${
                       selectedEquipment?.id === item.id
-                        ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                        ? 'border-blue-500 ring-2 ring-blue-500 scale-105'
+                        : `${rarityColor.border} ${rarityColor.glow} ${rarityColor.glowHover}`
                     }`}
                   >
                     <div className="aspect-square p-2 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 flex flex-col items-center justify-center">
@@ -251,9 +244,6 @@ const EquipmentPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) =>
                       <h3 className="text-[10px] font-semibold text-center text-gray-900 dark:text-white line-clamp-2 leading-tight">
                         {item.name}
                       </h3>
-                      <span className={`${rarityColors[rarity]} text-white text-[8px] px-1.5 py-0.5 rounded-full mt-0.5`}>
-                        {rarity}
-                      </span>
                     </div>
                     {/* Selected checkmark */}
                     {selectedEquipment?.id === item.id && (
@@ -373,7 +363,7 @@ const EquipmentPicker = ({ isOpen, onClose, onSelect, renderPreview = null }) =>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-bold text-gray-900 dark:text-white text-lg">{selectedEquipment.name}</h3>
-                          <span className={`${rarityColors[getRarityTier(selectedEquipment.requirements)]} text-white text-xs px-2 py-0.5 rounded-full`}>
+                          <span className={`${getEquipmentRarityColor(getRarityTier(selectedEquipment.requirements)).background} text-white text-xs px-2 py-0.5 rounded-full`}>
                             {getRarityTier(selectedEquipment.requirements)}
                           </span>
                           <span className="bg-gray-600 text-white text-xs px-2 py-0.5 rounded-full">
