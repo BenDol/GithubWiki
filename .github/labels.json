@@ -121,6 +121,21 @@
       "color": "e99695"
     },
     {
+      "name": "user-snapshot",
+      "description": "User profile snapshot data (managed by bot)",
+      "color": "5319e7"
+    },
+    {
+      "name": "skill-builds",
+      "description": "User skill build storage (managed by bot)",
+      "color": "0e8a16"
+    },
+    {
+      "name": "battle-loadouts",
+      "description": "User battle loadout storage (managed by bot)",
+      "color": "1d76db"
+    },
+    {
       "name": "wiki-admin:admins",
       "description": "Wiki administrators list (managed by bot)",
       "color": "b60205"

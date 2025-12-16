@@ -68,7 +68,7 @@ const Header = ({ onOpenDataBrowser }) => {
 
             {/* Navigation links - desktop */}
             <nav className="hidden md:flex items-center space-x-1">
-              {config.sidebar?.pages?.filter(page => page.path !== '/').map((page, index) => (
+              {config.sidebar?.pages?.filter(page => page.path !== '/' && page.showInHeader !== false).map((page, index) => (
                 <Link
                   key={index}
                   to={page.path}
