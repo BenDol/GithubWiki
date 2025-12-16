@@ -28,6 +28,10 @@ const ImageDatabaseManager = () => {
     categories: 0
   });
 
+  // Resolve orphans state
+  const [resolveResults, setResolveResults] = useState(null);
+  const [resolving, setResolving] = useState(false);
+
   // Lower Quality state
   const [quality, setQuality] = useState(80);
   const [processingQuality, setProcessingQuality] = useState(false);
@@ -52,10 +56,51 @@ const ImageDatabaseManager = () => {
   // Context menu state
   const [contextMenu, setContextMenu] = useState(null);
 
+  // Track if initial search has been performed
+  const [initialSearchDone, setInitialSearchDone] = useState(false);
+
   // Load image indexes
   useEffect(() => {
     loadImageIndexes();
   }, []);
+
+  // Auto-search "/" on mount to show all images by default
+  useEffect(() => {
+    if (imageIndex && !initialSearchDone) {
+      setSearchQuery('/');
+      setInitialSearchDone(true);
+      // Trigger search with "/" query
+      const query = '/'.toLowerCase();
+      const images = imageIndex.images || [];
+
+      const results = images.filter(image => {
+        const filename = (image.filename || '').toLowerCase();
+        const category = (image.category || '').toLowerCase();
+        const keywords = (image.keywords || []).map(k => k.toLowerCase());
+        const path = (image.path || '').toLowerCase();
+
+        return (
+          filename.includes(query) ||
+          category.includes(query) ||
+          keywords.some(k => k.includes(query)) ||
+          path.includes(query)
+        );
+      });
+
+      setSearchResults(results);
+
+      // Build directory tree from search results
+      const tree = buildDirectoryTree(results);
+      setDirectoryTree(tree);
+
+      // Flatten tree for display (start with no directories expanded)
+      const flattened = flattenTree(tree, new Set());
+      setFlattenedRows(flattened);
+
+      setCurrentPage(1);
+      setLastClickedIndex(null);
+    }
+  }, [imageIndex, initialSearchDone]);
 
   // Close context menu on click outside, scroll, or escape
   useEffect(() => {
@@ -107,8 +152,11 @@ const ImageDatabaseManager = () => {
         orphaned: 0,
         categories: categories.size
       });
+
+      return mainIndex; // Return for use in chained operations
     } catch (error) {
       console.error('Failed to load image indexes:', error);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -264,6 +312,210 @@ const ImageDatabaseManager = () => {
       console.error('Error scanning for orphans:', error);
     } finally {
       setScanning(false);
+    }
+  };
+
+  // Resolve orphans - find moved images and missing entries
+  const resolveOrphans = async (freshIndex = null) => {
+    const indexToUse = freshIndex || imageIndex;
+    if (!indexToUse) return;
+
+    setResolving(true);
+    setResolveResults(null);
+
+    try {
+      const images = indexToUse.images || [];
+
+      // Step 1: Scan filesystem for all image files
+      const response = await fetch('/api/image-db/scan-filesystem', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const { files: filesystemFiles } = await response.json();
+
+      // Step 2: Find orphaned database entries (database has entry but file doesn't exist)
+      const orphanedEntries = [];
+      for (const image of images) {
+        if (!filesystemFiles.includes(image.path)) {
+          orphanedEntries.push(image);
+        }
+      }
+
+      // Step 3: Find missing database entries (file exists but no database entry)
+      const databasePaths = new Set(images.map(img => img.path));
+      const missingEntries = filesystemFiles.filter(filePath => !databasePaths.has(filePath));
+
+      // Step 4: Try to match orphaned entries to files by filename
+      const resolved = [];
+      const unresolvableOrphans = [];
+
+      for (const orphan of orphanedEntries) {
+        const orphanFilename = orphan.filename || orphan.path.split('/').pop();
+
+        // Try to find a file with the same filename in missing entries
+        const matchingFile = missingEntries.find(filePath => {
+          const filename = filePath.split('/').pop();
+          return filename === orphanFilename;
+        });
+
+        if (matchingFile) {
+          // Found a match!
+          resolved.push({
+            orphan,
+            oldPath: orphan.path,
+            newPath: matchingFile,
+            filename: orphanFilename
+          });
+
+          // Remove from missing entries since we found its match
+          const idx = missingEntries.indexOf(matchingFile);
+          if (idx !== -1) {
+            missingEntries.splice(idx, 1);
+          }
+        } else {
+          // No match found
+          unresolvableOrphans.push(orphan);
+        }
+      }
+
+      setResolveResults({
+        resolved,
+        unresolvableOrphans,
+        missingEntries
+      });
+
+    } catch (error) {
+      console.error('Failed to resolve orphans:', error);
+      alert(`Failed to resolve orphans: ${error.message}`);
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  // Apply resolved orphan mappings
+  const applyResolvedOrphans = async () => {
+    if (!resolveResults || resolveResults.resolved.length === 0) return;
+
+    if (!confirm(`Apply ${resolveResults.resolved.length} resolved orphan mappings?\n\nThis will update the database to point to the new file locations.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/image-db/resolve-orphans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resolved: resolveResults.resolved
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      alert(`Success! Updated ${result.updated} database entries.`);
+
+      // Reload the image indexes and get fresh data
+      const freshIndex = await loadImageIndexes();
+
+      // Re-run resolve with fresh data to update results
+      await resolveOrphans(freshIndex);
+
+    } catch (error) {
+      console.error('Failed to apply resolved orphans:', error);
+      alert(`Failed to apply resolved orphans: ${error.message}`);
+    }
+  };
+
+  // Delete unresolvable orphans from database
+  const deleteUnresolvableOrphans = async () => {
+    if (!resolveResults || resolveResults.unresolvableOrphans.length === 0) return;
+
+    if (!confirm(`⚠️ Delete ${resolveResults.unresolvableOrphans.length} unresolvable orphaned entries from the database?\n\nThis will permanently remove these entries. The files don't exist, so only database entries will be removed.`)) {
+      return;
+    }
+
+    try {
+      const orphanPaths = resolveResults.unresolvableOrphans.map(o => o.path);
+
+      const response = await fetch('/api/image-db/delete-orphan-entries', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paths: orphanPaths
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      alert(`Success! Removed ${result.deleted} orphaned database entries.`);
+
+      // Reload the image indexes
+      await loadImageIndexes();
+
+      // Re-run resolve to update results
+      await resolveOrphans();
+
+    } catch (error) {
+      console.error('Failed to delete orphans:', error);
+      alert(`Failed to delete orphans: ${error.message}`);
+    }
+  };
+
+  // Add missing database entries
+  const addMissingEntries = async () => {
+    if (!resolveResults || resolveResults.missingEntries.length === 0) return;
+
+    if (!confirm(`Add ${resolveResults.missingEntries.length} missing database entries?\n\nThis will create database entries for files that exist but aren't in the index.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/image-db/add-missing-entries', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          paths: resolveResults.missingEntries
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      alert(`Success! Added ${result.added} missing database entries.`);
+
+      // Reload the image indexes
+      await loadImageIndexes();
+
+      // Re-run resolve to update results
+      await resolveOrphans();
+
+    } catch (error) {
+      console.error('Failed to add missing entries:', error);
+      alert(`Failed to add missing entries: ${error.message}`);
     }
   };
 
@@ -870,6 +1122,163 @@ const ImageDatabaseManager = () => {
                   <li className="text-red-600">... and {orphanedImages.length - 10} more</li>
                 )}
               </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Resolve Orphans */}
+        <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+            <div className="flex items-start gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <div>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Resolve Orphans</h2>
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                  Find moved images and missing database entries
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={resolveOrphans}
+              disabled={resolving}
+              className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm sm:text-base w-full sm:w-auto"
+            >
+              {resolving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Resolving...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Resolve Orphans</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Results */}
+          {resolveResults && (
+            <div className="space-y-4">
+              {/* Resolved Matches */}
+              {resolveResults.resolved.length > 0 && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <h3 className="font-semibold text-green-900 dark:text-green-100">
+                        Resolved Matches ({resolveResults.resolved.length})
+                      </h3>
+                    </div>
+                    <button
+                      onClick={applyResolvedOrphans}
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                    >
+                      Apply Mappings
+                    </button>
+                  </div>
+                  <p className="text-xs text-green-800 dark:text-green-200 mb-2">
+                    Found matching files for these orphaned database entries:
+                  </p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {resolveResults.resolved.map((match, idx) => (
+                      <div key={idx} className="bg-white dark:bg-gray-800 border border-green-200 dark:border-green-700 rounded p-2 text-xs">
+                        <div className="font-mono text-gray-600 dark:text-gray-400">
+                          <span className="text-red-600 dark:text-red-400 line-through">{match.oldPath}</span>
+                        </div>
+                        <div className="font-mono text-green-700 dark:text-green-300 mt-1">
+                          → {match.newPath}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Unresolvable Orphans */}
+              {resolveResults.unresolvableOrphans.length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      <h3 className="font-semibold text-orange-900 dark:text-orange-100">
+                        Unresolvable Orphans ({resolveResults.unresolvableOrphans.length})
+                      </h3>
+                    </div>
+                    <button
+                      onClick={deleteUnresolvableOrphans}
+                      className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                    >
+                      Delete Orphans
+                    </button>
+                  </div>
+                  <p className="text-xs text-orange-800 dark:text-orange-200 mb-2">
+                    Database entries with no matching files found:
+                  </p>
+                  <div className="space-y-1 max-h-64 overflow-y-auto">
+                    {resolveResults.unresolvableOrphans.slice(0, 10).map((orphan, idx) => (
+                      <div key={idx} className="font-mono text-xs text-orange-700 dark:text-orange-300 bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded p-2">
+                        {orphan.path}
+                      </div>
+                    ))}
+                    {resolveResults.unresolvableOrphans.length > 10 && (
+                      <div className="text-xs text-orange-600 dark:text-orange-400">
+                        ... and {resolveResults.unresolvableOrphans.length - 10} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Missing Entries */}
+              {resolveResults.missingEntries.length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-5 h-5 text-blue-600" />
+                      <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                        Missing Database Entries ({resolveResults.missingEntries.length})
+                      </h3>
+                    </div>
+                    <button
+                      onClick={addMissingEntries}
+                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    >
+                      Add Entries
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
+                    Files exist but have no database entries:
+                  </p>
+                  <div className="space-y-1 max-h-64 overflow-y-auto">
+                    {resolveResults.missingEntries.slice(0, 10).map((path, idx) => (
+                      <div key={idx} className="font-mono text-xs text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded p-2">
+                        {path}
+                      </div>
+                    ))}
+                    {resolveResults.missingEntries.length > 10 && (
+                      <div className="text-xs text-blue-600 dark:text-blue-400">
+                        ... and {resolveResults.missingEntries.length - 10} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* All Clean */}
+              {resolveResults.resolved.length === 0 &&
+               resolveResults.unresolvableOrphans.length === 0 &&
+               resolveResults.missingEntries.length === 0 && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
+                  <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-green-900 dark:text-green-100">
+                    All Clean!
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    No orphaned entries or missing database entries found.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

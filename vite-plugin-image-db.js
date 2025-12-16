@@ -137,6 +137,106 @@ export function imageDbPlugin() {
           res.end(JSON.stringify({ error: 'Method not allowed' }));
         }
       });
+
+      // POST /api/image-db/scan-filesystem
+      server.middlewares.use('/api/image-db/scan-filesystem', async (req, res) => {
+        if (req.method === 'POST') {
+          let body = '';
+
+          req.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+
+          req.on('end', async () => {
+            try {
+              req.body = body ? JSON.parse(body) : {};
+              await imageDbHandlers.scanFilesystem(req, res);
+            } catch (error) {
+              console.error('[Image DB] Scan filesystem error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        }
+      });
+
+      // POST /api/image-db/resolve-orphans
+      server.middlewares.use('/api/image-db/resolve-orphans', async (req, res) => {
+        if (req.method === 'POST') {
+          let body = '';
+
+          req.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+
+          req.on('end', async () => {
+            try {
+              req.body = JSON.parse(body);
+              await imageDbHandlers.resolveOrphans(req, res);
+            } catch (error) {
+              console.error('[Image DB] Resolve orphans error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        }
+      });
+
+      // POST /api/image-db/delete-orphan-entries
+      server.middlewares.use('/api/image-db/delete-orphan-entries', async (req, res) => {
+        if (req.method === 'POST') {
+          let body = '';
+
+          req.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+
+          req.on('end', async () => {
+            try {
+              req.body = JSON.parse(body);
+              await imageDbHandlers.deleteOrphanEntries(req, res);
+            } catch (error) {
+              console.error('[Image DB] Delete orphan entries error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        }
+      });
+
+      // POST /api/image-db/add-missing-entries
+      server.middlewares.use('/api/image-db/add-missing-entries', async (req, res) => {
+        if (req.method === 'POST') {
+          let body = '';
+
+          req.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+
+          req.on('end', async () => {
+            try {
+              req.body = JSON.parse(body);
+              await imageDbHandlers.addMissingEntries(req, res);
+            } catch (error) {
+              console.error('[Image DB] Add missing entries error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        }
+      });
     },
   };
 }

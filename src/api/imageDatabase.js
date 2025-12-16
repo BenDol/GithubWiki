@@ -472,6 +472,148 @@ export async function lowerQualityImages(imagePaths, quality = 80) {
 }
 
 /**
+ * Scan filesystem for all image files
+ */
+export async function scanFilesystem() {
+  const images = await getImagesInDirectory(IMAGES_DIR);
+
+  // Convert full paths to relative paths (starting with /images/)
+  const relativePaths = images.map(fullPath => {
+    const relativePath = path.relative(PUBLIC_DIR, fullPath);
+    return '/' + relativePath.replace(/\\/g, '/');
+  });
+
+  return {
+    files: relativePaths,
+    total: relativePaths.length
+  };
+}
+
+/**
+ * Apply resolved orphan mappings (update database entries with new paths)
+ */
+export async function applyResolvedOrphans(resolved) {
+  const { mainIndex, searchIndex } = await loadImageIndexes();
+  let updated = 0;
+
+  // Create a map of old path -> new path
+  const pathMap = new Map(resolved.map(r => [r.oldPath, r.newPath]));
+
+  // Update main index
+  for (const image of mainIndex.images) {
+    if (pathMap.has(image.path)) {
+      const newPath = pathMap.get(image.path);
+      image.path = newPath;
+
+      // Update category based on new path
+      const pathParts = newPath.split('/').filter(p => p);
+      if (pathParts.length > 2 && pathParts[0] === 'images') {
+        image.category = pathParts[1]; // e.g., /images/skills/fire.png -> category: skills
+      }
+
+      updated++;
+    }
+  }
+
+  // Update search index
+  for (const [id, img] of Object.entries(searchIndex.images)) {
+    if (pathMap.has(img.path)) {
+      const newPath = pathMap.get(img.path);
+      img.path = newPath;
+
+      // Update category based on new path
+      const pathParts = newPath.split('/').filter(p => p);
+      if (pathParts.length > 2 && pathParts[0] === 'images') {
+        img.category = pathParts[1];
+      }
+    }
+  }
+
+  // Save updated indexes
+  await saveImageIndexes(mainIndex, searchIndex);
+
+  return {
+    updated
+  };
+}
+
+/**
+ * Delete orphaned database entries (entries with no physical files)
+ */
+export async function deleteOrphanEntries(paths) {
+  return await removeOrphanedEntries(paths);
+}
+
+/**
+ * Add missing database entries for files that exist but aren't in the index
+ */
+export async function addMissingEntries(paths) {
+  const { mainIndex, searchIndex } = await loadImageIndexes();
+  let added = 0;
+
+  for (const imagePath of paths) {
+    try {
+      // Check if entry already exists
+      const exists = mainIndex.images.some(img => img.path === imagePath);
+      if (exists) continue;
+
+      // Get file info
+      const fullPath = path.join(PUBLIC_DIR, imagePath.replace(/^\//, ''));
+
+      // Check if file exists
+      if (!await fileExists(fullPath)) continue;
+
+      // Get file stats
+      const stats = await fs.stat(fullPath);
+      const filename = path.basename(imagePath);
+
+      // Extract category from path (e.g., /images/skills/fire.png -> skills)
+      const pathParts = imagePath.split('/').filter(p => p);
+      let category = 'uncategorized';
+      if (pathParts.length > 2 && pathParts[0] === 'images') {
+        category = pathParts[1];
+      }
+
+      // Create new entry
+      const newEntry = {
+        path: imagePath,
+        filename: filename,
+        category: category,
+        filesize: stats.size,
+        keywords: [filename.replace(/\.[^/.]+$/, ''), category], // filename without extension + category
+        lastModified: stats.mtime.toISOString()
+      };
+
+      // Add to main index
+      mainIndex.images.push(newEntry);
+
+      // Add to search index
+      const searchId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      searchIndex.images[searchId] = {
+        ...newEntry,
+        id: searchId
+      };
+
+      added++;
+
+    } catch (error) {
+      console.error(`Failed to add entry for ${imagePath}:`, error);
+    }
+  }
+
+  // Update total counts
+  mainIndex.totalImages = mainIndex.images.length;
+  searchIndex.totalImages = Object.keys(searchIndex.images).length;
+
+  // Save updated indexes
+  await saveImageIndexes(mainIndex, searchIndex);
+
+  return {
+    added
+  };
+}
+
+/**
  * Lower quality of all images in a directory
  */
 export async function lowerQualityInDirectory(directoryPath, quality = 80) {
@@ -728,6 +870,82 @@ export const imageDbHandlers = {
       res.end(JSON.stringify(result));
     } catch (error) {
       console.error('[Image DB] Lower quality error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  },
+
+  // POST /api/image-db/scan-filesystem
+  scanFilesystem: async (req, res) => {
+    try {
+      const result = await scanFilesystem();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      console.error('[Image DB] Scan filesystem error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  },
+
+  // POST /api/image-db/resolve-orphans
+  resolveOrphans: async (req, res) => {
+    try {
+      const { resolved } = req.body;
+
+      if (!Array.isArray(resolved)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'resolved must be an array' }));
+        return;
+      }
+
+      const result = await applyResolvedOrphans(resolved);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      console.error('[Image DB] Resolve orphans error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  },
+
+  // POST /api/image-db/delete-orphan-entries
+  deleteOrphanEntries: async (req, res) => {
+    try {
+      const { paths } = req.body;
+
+      if (!Array.isArray(paths)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'paths must be an array' }));
+        return;
+      }
+
+      const result = await deleteOrphanEntries(paths);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      console.error('[Image DB] Delete orphan entries error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  },
+
+  // POST /api/image-db/add-missing-entries
+  addMissingEntries: async (req, res) => {
+    try {
+      const { paths } = req.body;
+
+      if (!Array.isArray(paths)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'paths must be an array' }));
+        return;
+      }
+
+      const result = await addMissingEntries(paths);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      console.error('[Image DB] Add missing entries error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
     }
