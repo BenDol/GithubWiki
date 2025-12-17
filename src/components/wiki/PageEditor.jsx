@@ -15,7 +15,7 @@ import Button from '../common/Button';
 import TagInput from '../common/TagInput';
 import { isValidPageId } from '../../utils/pageIdUtils';
 import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegistry';
-import { getSpiritPicker, hasSpiritPicker } from '../../utils/pickerRegistry';
+import { getPicker, hasPicker } from '../../utils/contentRendererRegistry';
 
 /**
  * PageEditor component with live preview
@@ -74,8 +74,8 @@ const PageEditor = ({
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
 
-  // Get registered Spirit picker component
-  const SpiritPicker = getSpiritPicker();
+  // Get registered picker components (e.g., 'spirit' picker for game-specific content)
+  const SpiritPicker = getPicker('spirit');
 
   // Refs for sticky detection and scrolling
   const sentinelRef = useRef(null);
@@ -1505,7 +1505,7 @@ const PageEditor = ({
           <MarkdownFormatToolbar
             onInsertSkill={() => setShowSkillPicker(true)}
             onInsertEquipment={() => setShowEquipmentPicker(true)}
-            onInsertSpirit={hasSpiritPicker() ? () => setShowSpiritPicker(true) : undefined}
+            onInsertSpirit={hasPicker('spirit') ? () => setShowSpiritPicker(true) : undefined}
             onInsertImage={() => setShowImagePicker(true)}
             onInsertData={hasDataSelector() ? () => setShowDataSelector(true) : undefined}
             onFormat={handleFormat}

@@ -9,6 +9,7 @@ let registeredComponents = {};
 let registeredSkillPreview = null;
 let registeredEquipmentPreview = null;
 let registeredDataAutocompleteSearch = null;
+let registeredPickers = {}; // Generic picker registry (e.g., { 'spirit': SpiritPickerComponent })
 
 /**
  * Register a custom content processor
@@ -120,6 +121,44 @@ export function getDataAutocompleteSearch() {
 }
 
 /**
+ * Register a custom picker component by name
+ * Allows parent projects to add custom pickers without framework knowing specifics
+ *
+ * @param {string} name - Picker identifier (e.g., 'spirit', 'monster', etc.)
+ * @param {React.Component} component - The picker component
+ */
+export function registerPicker(name, component) {
+  if (!name || typeof name !== 'string') {
+    console.warn('[Content Registry] Picker name must be a non-empty string');
+    return;
+  }
+  if (!component) {
+    console.warn('[Content Registry] Picker component is required');
+    return;
+  }
+  registeredPickers[name] = component;
+  console.log(`[Content Registry] Picker '${name}' registered`);
+}
+
+/**
+ * Get a registered picker component by name
+ * @param {string} name - Picker identifier
+ * @returns {React.Component|null} The picker component or null
+ */
+export function getPicker(name) {
+  return registeredPickers[name] || null;
+}
+
+/**
+ * Check if a picker with the given name is registered
+ * @param {string} name - Picker identifier
+ * @returns {boolean} True if picker is registered
+ */
+export function hasPicker(name) {
+  return name in registeredPickers;
+}
+
+/**
  * Clear all registrations (useful for testing)
  */
 export function clearRegistry() {
@@ -128,5 +167,6 @@ export function clearRegistry() {
   registeredSkillPreview = null;
   registeredEquipmentPreview = null;
   registeredDataAutocompleteSearch = null;
+  registeredPickers = {};
   console.log('[Content Registry] Registry cleared');
 }
