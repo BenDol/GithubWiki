@@ -8,6 +8,7 @@ let registeredProcessor = null;
 let registeredComponents = {};
 let registeredSkillPreview = null;
 let registeredEquipmentPreview = null;
+let registeredDataAutocompleteSearch = null;
 
 /**
  * Register a custom content processor
@@ -98,6 +99,27 @@ export function getEquipmentPreview() {
 }
 
 /**
+ * Register a data autocomplete search function for {{data: syntax
+ * @param {function} searchFunction - Function that receives (query, limit) and returns Promise<Array>
+ */
+export function registerDataAutocompleteSearch(searchFunction) {
+  if (typeof searchFunction !== 'function') {
+    console.warn('[Content Registry] Data autocomplete search must be a function');
+    return;
+  }
+  registeredDataAutocompleteSearch = searchFunction;
+  console.log('[Content Registry] Data autocomplete search registered');
+}
+
+/**
+ * Get the registered data autocomplete search function
+ * @returns {function|null} The registered search function or null
+ */
+export function getDataAutocompleteSearch() {
+  return registeredDataAutocompleteSearch;
+}
+
+/**
  * Clear all registrations (useful for testing)
  */
 export function clearRegistry() {
@@ -105,5 +127,6 @@ export function clearRegistry() {
   registeredComponents = {};
   registeredSkillPreview = null;
   registeredEquipmentPreview = null;
+  registeredDataAutocompleteSearch = null;
   console.log('[Content Registry] Registry cleared');
 }

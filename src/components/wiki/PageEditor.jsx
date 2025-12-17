@@ -31,7 +31,8 @@ const PageEditor = ({
   contentProcessor = null,
   customComponents = {},
   renderSkillPreview = null,
-  renderEquipmentPreview = null
+  renderEquipmentPreview = null,
+  dataAutocompleteSearch = null
 }) => {
   const [content, setContent] = useState(initialContent || '');
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
@@ -1572,6 +1573,7 @@ const PageEditor = ({
               darkMode={darkMode}
               placeholder="Write your content in Markdown..."
               editorApi={editorApiRef}
+              dataAutocompleteSearch={dataAutocompleteSearch}
             />
           </div>
 

@@ -18,7 +18,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
-import { getContentProcessor, getCustomComponents, getSkillPreview, getEquipmentPreview } from '../utils/contentRendererRegistry';
+import { getContentProcessor, getCustomComponents, getSkillPreview, getEquipmentPreview, getDataAutocompleteSearch } from '../utils/contentRendererRegistry';
 import { useInvalidatePrestige } from '../hooks/usePrestige';
 import { useGitHubDataStore } from '../store/githubDataStore';
 
@@ -1821,6 +1821,7 @@ Include any supplementary details, notes, or related information.
           customComponents={getCustomComponents()}
           renderSkillPreview={getSkillPreview()}
           renderEquipmentPreview={getEquipmentPreview()}
+          dataAutocompleteSearch={getDataAutocompleteSearch()}
         />
       )}
     </div>

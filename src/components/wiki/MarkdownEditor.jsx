@@ -5,17 +5,27 @@ import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorState } from '@codemirror/state';
 import ImageDimensionWidget from './ImageDimensionWidget';
+import DataAutocomplete from './DataAutocomplete';
 
 /**
  * MarkdownEditor component using CodeMirror 6
  * Provides a powerful markdown editing experience
+ * @param {Function} dataAutocompleteSearch - Optional search function for data autocomplete
  */
-const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Write your content...', editorApi }) => {
+const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Write your content...', editorApi, dataAutocompleteSearch }) => {
   const editorRef = useRef(null);
   const viewRef = useRef(null);
   const [widgetVisible, setWidgetVisible] = useState(false);
   const [widgetPosition, setWidgetPosition] = useState({ top: 0, left: 0 });
   const [currentImageInfo, setCurrentImageInfo] = useState(null);
+
+  // Data autocomplete state
+  const [autocompleteVisible, setAutocompleteVisible] = useState(false);
+  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
+  const [autocompleteQuery, setAutocompleteQuery] = useState('');
+  const [autocompleteRange, setAutocompleteRange] = useState({ from: 0, to: 0 });
+  const searchTimeoutRef = useRef(null);
 
   // Expose editor API to parent - ensure it persists across renders
   useEffect(() => {
@@ -131,6 +141,12 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           if (update.docChanged) {
             const newValue = update.state.doc.toString();
             onChange?.(newValue);
+            // Check for data autocomplete pattern
+            checkDataAutocomplete();
+          }
+          // Also check on selection change (cursor movement)
+          if (update.selectionSet) {
+            checkDataAutocomplete();
           }
         }),
         EditorView.theme({
@@ -179,6 +195,79 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       });
     }
   }, [value]);
+
+  // Detect if user is typing {{data: pattern for autocomplete
+  const checkDataAutocomplete = async () => {
+    if (!viewRef.current || !dataAutocompleteSearch) return;
+
+    const view = viewRef.current;
+    const pos = view.state.selection.main.head;
+    const line = view.state.doc.lineAt(pos);
+    const lineText = line.text;
+    const posInLine = pos - line.from;
+
+    // Look for {{data: pattern before cursor
+    const textBeforeCursor = lineText.substring(0, posInLine);
+    const dataPatternMatch = textBeforeCursor.match(/\{\{data:([^}]*?)$/);
+
+    if (dataPatternMatch) {
+      const query = dataPatternMatch[1];
+      const matchStart = line.from + dataPatternMatch.index;
+      const matchEnd = pos;
+
+      // Get cursor coordinates for positioning
+      const coords = view.coordsAtPos(pos);
+      if (coords) {
+        setAutocompletePosition({
+          top: coords.top,
+          left: coords.left
+        });
+        setAutocompleteRange({ from: matchStart, to: matchEnd });
+        setAutocompleteQuery(query);
+
+        // Search for suggestions (debounced)
+        if (searchTimeoutRef.current) {
+          clearTimeout(searchTimeoutRef.current);
+        }
+
+        searchTimeoutRef.current = setTimeout(async () => {
+          try {
+            const suggestions = await dataAutocompleteSearch(query, 20);
+            setAutocompleteSuggestions(suggestions);
+            setAutocompleteVisible(true);
+          } catch (err) {
+            console.error('[MarkdownEditor] Autocomplete search failed:', err);
+            setAutocompleteVisible(false);
+          }
+        }, 150); // Debounce by 150ms
+      }
+    } else {
+      // No match, hide autocomplete
+      setAutocompleteVisible(false);
+      setAutocompleteSuggestions([]);
+    }
+  };
+
+  // Handle autocomplete selection
+  const handleAutocompleteSelect = (suggestion) => {
+    if (!viewRef.current) return;
+
+    const view = viewRef.current;
+
+    // Replace {{data:query with the full insert syntax
+    view.dispatch({
+      changes: {
+        from: autocompleteRange.from,
+        to: autocompleteRange.to,
+        insert: suggestion.insertSyntax
+      },
+      selection: { anchor: autocompleteRange.from + suggestion.insertSyntax.length }
+    });
+
+    // Close autocomplete
+    setAutocompleteVisible(false);
+    setAutocompleteSuggestions([]);
+  };
 
   // Detect if cursor is on an image
   const checkCursorOnImage = () => {
@@ -365,6 +454,17 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           currentHeight={currentImageInfo?.height}
           onUpdate={handleUpdateDimensions}
           onClose={() => setWidgetVisible(false)}
+        />,
+        document.body
+      )}
+      {autocompleteVisible && createPortal(
+        <DataAutocomplete
+          visible={autocompleteVisible}
+          position={autocompletePosition}
+          query={autocompleteQuery}
+          suggestions={autocompleteSuggestions}
+          onSelect={handleAutocompleteSelect}
+          onClose={() => setAutocompleteVisible(false)}
         />,
         document.body
       )}
