@@ -9,7 +9,7 @@ let registeredComponents = {};
 let registeredSkillPreview = null;
 let registeredEquipmentPreview = null;
 let registeredDataAutocompleteSearch = null;
-let registeredPickers = {}; // Generic picker registry (e.g., { 'spirit': SpiritPickerComponent })
+let registeredPickers = {}; // Generic picker registry (e.g., { 'spirit': { component: SpiritPickerComponent, icon: GhostIcon, label: 'Insert Spirit' } })
 
 /**
  * Register a custom content processor
@@ -121,13 +121,14 @@ export function getDataAutocompleteSearch() {
 }
 
 /**
- * Register a custom picker component by name
+ * Register a custom picker component by name with optional metadata
  * Allows parent projects to add custom pickers without framework knowing specifics
  *
  * @param {string} name - Picker identifier (e.g., 'spirit', 'monster', etc.)
  * @param {React.Component} component - The picker component
+ * @param {object} metadata - Optional metadata { icon: LucideIcon, label: string }
  */
-export function registerPicker(name, component) {
+export function registerPicker(name, component, metadata = {}) {
   if (!name || typeof name !== 'string') {
     console.warn('[Content Registry] Picker name must be a non-empty string');
     return;
@@ -136,8 +137,13 @@ export function registerPicker(name, component) {
     console.warn('[Content Registry] Picker component is required');
     return;
   }
-  registeredPickers[name] = component;
-  console.log(`[Content Registry] Picker '${name}' registered`);
+  registeredPickers[name] = {
+    component,
+    icon: metadata.icon || null,
+    label: metadata.label || `Insert ${name.charAt(0).toUpperCase() + name.slice(1)}`,
+    action: name
+  };
+  console.log(`[Content Registry] Picker '${name}' registered with label: ${registeredPickers[name].label}`);
 }
 
 /**
@@ -146,7 +152,8 @@ export function registerPicker(name, component) {
  * @returns {React.Component|null} The picker component or null
  */
 export function getPicker(name) {
-  return registeredPickers[name] || null;
+  const picker = registeredPickers[name];
+  return picker ? picker.component : null;
 }
 
 /**
@@ -156,6 +163,19 @@ export function getPicker(name) {
  */
 export function hasPicker(name) {
   return name in registeredPickers;
+}
+
+/**
+ * Get all registered pickers with their metadata
+ * @returns {Array} Array of picker configs { name, icon, label, action, handler }
+ */
+export function getAllPickers() {
+  return Object.entries(registeredPickers).map(([name, picker]) => ({
+    name,
+    icon: picker.icon,
+    label: picker.label,
+    action: picker.action
+  }));
 }
 
 /**

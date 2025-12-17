@@ -1,11 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useBeforeUnload, useNavigate, useLocation } from 'react-router-dom';
 import matter from 'gray-matter';
 import MarkdownEditor from './MarkdownEditor';
 import MarkdownFormatToolbar from './MarkdownFormatToolbar';
 import PageViewer from './PageViewer';
-import SkillPicker from './SkillPicker';
-import EquipmentPicker from './EquipmentPicker';
 import ImagePicker from './ImagePicker';
 import LinkDialog from './LinkDialog';
 import ColorPicker from './ColorPicker';
@@ -15,7 +13,8 @@ import Button from '../common/Button';
 import TagInput from '../common/TagInput';
 import { isValidPageId } from '../../utils/pageIdUtils';
 import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegistry';
-import { getPicker, hasPicker } from '../../utils/contentRendererRegistry';
+import { getPicker, hasPicker, getAllPickers } from '../../utils/contentRendererRegistry';
+import { Image as ImageIcon, Database } from 'lucide-react';
 
 /**
  * PageEditor component with live preview
@@ -74,8 +73,61 @@ const PageEditor = ({
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
 
-  // Get registered picker components (e.g., 'spirit' picker for game-specific content)
+  // Get registered picker components from parent project
   const SpiritPicker = getPicker('spirit');
+  const SkillPicker = getPicker('skill');
+  const EquipmentPicker = getPicker('equipment');
+
+  // Build content pickers array for toolbar (generic + registered)
+  const contentPickers = useMemo(() => {
+    const pickers = [];
+
+    // Add generic image picker
+    pickers.push({
+      icon: ImageIcon,
+      label: 'Insert Image',
+      action: 'image',
+      handler: () => setShowImagePicker(true)
+    });
+
+    // Add generic data selector (if available)
+    if (hasDataSelector()) {
+      pickers.push({
+        icon: Database,
+        label: 'Insert Data',
+        action: 'data',
+        handler: () => setShowDataSelector(true)
+      });
+    }
+
+    // Add registered pickers (skill, equipment, spirit, etc.) from parent project
+    const registeredPickers = getAllPickers();
+    registeredPickers.forEach(picker => {
+      const pickerComponent = getPicker(picker.name);
+      if (pickerComponent) {
+        // Determine which state to toggle based on picker name
+        let handler;
+        if (picker.name === 'spirit') {
+          handler = () => setShowSpiritPicker(true);
+        } else if (picker.name === 'skill') {
+          handler = () => setShowSkillPicker(true);
+        } else if (picker.name === 'equipment') {
+          handler = () => setShowEquipmentPicker(true);
+        }
+
+        if (handler) {
+          pickers.push({
+            icon: picker.icon,
+            label: picker.label,
+            action: picker.action,
+            handler
+          });
+        }
+      }
+    });
+
+    return pickers;
+  }, []);
 
   // Refs for sticky detection and scrolling
   const sentinelRef = useRef(null);
@@ -1503,11 +1555,7 @@ const PageEditor = ({
       }`}>
         <div className="relative">
           <MarkdownFormatToolbar
-            onInsertSkill={() => setShowSkillPicker(true)}
-            onInsertEquipment={() => setShowEquipmentPicker(true)}
-            onInsertSpirit={hasPicker('spirit') ? () => setShowSpiritPicker(true) : undefined}
-            onInsertImage={() => setShowImagePicker(true)}
-            onInsertData={hasDataSelector() ? () => setShowDataSelector(true) : undefined}
+            contentPickers={contentPickers}
             onFormat={handleFormat}
             onColorPicker={handleOpenColorPicker}
             colorButtonRef={colorButtonRef}
@@ -1657,19 +1705,24 @@ const PageEditor = ({
       </div>
 
       {/* Skill Picker Modal */}
-      <SkillPicker
-        isOpen={showSkillPicker}
-        onClose={() => setShowSkillPicker(false)}
-        onSelect={handleSkillSelect}
-        renderPreview={renderSkillPreview}
-      />
+      {SkillPicker && (
+        <SkillPicker
+          isOpen={showSkillPicker}
+          onClose={() => setShowSkillPicker(false)}
+          onSelect={handleSkillSelect}
+          renderPreview={renderSkillPreview}
+        />
+      )}
+
       {/* Equipment Picker Modal */}
-      <EquipmentPicker
-        isOpen={showEquipmentPicker}
-        onClose={() => setShowEquipmentPicker(false)}
-        onSelect={handleEquipmentSelect}
-        renderPreview={renderEquipmentPreview}
-      />
+      {EquipmentPicker && (
+        <EquipmentPicker
+          isOpen={showEquipmentPicker}
+          onClose={() => setShowEquipmentPicker(false)}
+          onSelect={handleEquipmentSelect}
+          renderPreview={renderEquipmentPreview}
+        />
+      )}
 
       {/* Spirit Picker Modal */}
       {SpiritPicker && (

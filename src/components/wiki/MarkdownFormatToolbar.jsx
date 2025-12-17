@@ -1,16 +1,23 @@
 import React, { useRef, useState } from 'react';
-import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote, Image as ImageIcon, Sparkles, Sword, Table, Palette, AlignLeft, AlignCenter, AlignRight, X, Database, Ghost } from 'lucide-react';
+import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote, Table, Palette, AlignLeft, AlignCenter, AlignRight, X } from 'lucide-react';
 
 /**
  * MarkdownFormatToolbar - Toolbar for markdown formatting and content insertion
  *
  * Features:
  * - Common markdown formatting buttons (bold, italic, headings, lists, etc.)
- * - Content pickers/inserters (images, skills, equipment, spirits, etc.)
+ * - Generic content pickers (configurable via contentPickers prop)
  * - Responsive design with horizontal scroll on mobile
  * - Scalable for many formatting options
+ *
+ * Props:
+ * - contentPickers: Array of picker button configs { icon, label, action, handler }
+ * - onFormat: Callback for formatting actions
+ * - onColorPicker: Callback for color picker toggle
+ * - colorButtonRef: Ref for color button positioning
+ * - boldActive/italicActive: Active states for format buttons
  */
-const MarkdownFormatToolbar = ({ onInsertSkill, onInsertEquipment, onInsertSpirit, onInsertImage, onInsertData, onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false }) => {
+const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false }) => {
   const internalColorButtonRef = useRef(null);
   const alignButtonRef = useRef(null);
   const alignDropdownRef = useRef(null);
@@ -33,13 +40,8 @@ const MarkdownFormatToolbar = ({ onInsertSkill, onInsertEquipment, onInsertSpiri
     { icon: AlignLeft, label: 'Alignment', action: 'align', special: true },
   ];
 
-  const pickerButtons = [
-    onInsertData && { icon: Database, label: 'Insert Data', action: 'data', handler: onInsertData },
-    { icon: ImageIcon, label: 'Insert Image', action: 'image', handler: onInsertImage },
-    { icon: Sparkles, label: 'Insert Skill', action: 'skill', handler: onInsertSkill },
-    { icon: Sword, label: 'Insert Equipment', action: 'equipment', handler: onInsertEquipment },
-    onInsertSpirit && { icon: Ghost, label: 'Insert Spirit', action: 'spirit', handler: onInsertSpirit },
-  ].filter(Boolean);
+  // Use provided content pickers (configured by parent project)
+  const pickerButtons = contentPickers;
 
   const handleFormatClick = (action, special) => {
     if (special && action === 'color') {
