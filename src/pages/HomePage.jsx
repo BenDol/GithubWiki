@@ -4,6 +4,7 @@ import matter from 'gray-matter';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 import PageViewer from '../components/wiki/PageViewer';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import { getContentProcessor, getCustomComponents } from '../utils/contentRendererRegistry';
 
 /**
  * Home page component
@@ -92,7 +93,12 @@ const HomePage = () => {
 
     return (
       <div className="max-w-4xl mx-auto">
-        <PageViewer content={content} metadata={metadata} />
+        <PageViewer
+          content={content}
+          metadata={metadata}
+          contentProcessor={getContentProcessor()}
+          customComponents={getCustomComponents()}
+        />
       </div>
     );
   }

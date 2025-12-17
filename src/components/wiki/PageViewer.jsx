@@ -318,24 +318,30 @@ const PageViewer = ({
             },
             // Custom table rendering
             table: ({ node, ...props }) => (
-              <div className="overflow-x-auto my-6">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg" {...props} />
+              <div className="overflow-x-auto my-8">
+                <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden" {...props} />
               </div>
             ),
             thead: ({ node, ...props }) => (
-              <thead className="bg-gray-50 dark:bg-gray-800" {...props} />
+              <thead {...props} />
             ),
             tbody: ({ node, ...props }) => (
-              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700" {...props} />
+              <tbody {...props} />
             ),
             tr: ({ node, ...props }) => (
-              <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" {...props} />
+              <tr {...props} />
             ),
             th: ({ node, ...props }) => (
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />
+              <th
+                className="px-6 py-4 text-left text-sm font-bold text-white dark:text-white bg-blue-600 dark:bg-blue-700 border-b-2 border-blue-700 dark:border-blue-800"
+                {...props}
+              />
             ),
             td: ({ node, ...props }) => (
-              <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100" {...props} />
+              <td
+                className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                {...props}
+              />
             ),
             // Merge in custom components from parent
             ...customComponents,

@@ -14,6 +14,8 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 import Button from '../common/Button';
 import TagInput from '../common/TagInput';
 import { isValidPageId } from '../../utils/pageIdUtils';
+import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegistry';
+import { getSpiritPicker, hasSpiritPicker } from '../../utils/pickerRegistry';
 
 /**
  * PageEditor component with live preview
@@ -42,7 +44,9 @@ const PageEditor = ({
   const [shakeValidationError, setShakeValidationError] = useState(false);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
+  const [showSpiritPicker, setShowSpiritPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showDataSelector, setShowDataSelector] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkDialogText, setLinkDialogText] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -68,6 +72,9 @@ const PageEditor = ({
 
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
+
+  // Get registered Spirit picker component
+  const SpiritPicker = getSpiritPicker();
 
   // Refs for sticky detection and scrolling
   const sentinelRef = useRef(null);
@@ -752,6 +759,31 @@ const PageEditor = ({
     editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}\n\n`);
   };
 
+  // Handle spirit selection from picker
+  const handleSpiritSelect = ({ spirit, mode, alignment, level }) => {
+    if (!editorApiRef.current) return;
+
+    // Insert spirit syntax into content
+    // Format: <!-- spirit:Loar:detailed:4 --> or <!-- spirit:Loar:compact:4 -->
+    let spiritSyntax = `<!-- spirit:${spirit.name}:${mode}:${level} -->`;
+
+    // Apply alignment wrapper if needed
+    if (alignment && alignment !== 'none') {
+      let style;
+      if (alignment === 'center') {
+        style = 'display: flex; justify-content: center;';
+      } else if (alignment === 'left') {
+        style = 'display: flex; justify-content: flex-start;';
+      } else if (alignment === 'right') {
+        style = 'display: flex; justify-content: flex-end;';
+      }
+      spiritSyntax = `<div style="${style}">\n\n${spiritSyntax}\n\n</div>`;
+    }
+
+    // Insert at cursor position
+    editorApiRef.current.insertAtCursor(`\n\n${spiritSyntax}\n\n`);
+  };
+
   // Handle image selection from picker
   const handleImageSelect = (markdownSyntax, image) => {
     if (!editorApiRef.current) return;
@@ -760,6 +792,28 @@ const PageEditor = ({
     // Format: ![alt text](path)
     // Insert at cursor position
     editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}\n\n`);
+  };
+
+  // Handle data selection from data selector
+  const handleDataSelect = (source, id, field, template) => {
+    if (!editorApiRef.current) return;
+
+    // Insert data syntax into content
+    // Format: <!-- data:SOURCE:ID:FIELD:TEMPLATE --> or <!-- data:SOURCE:ID:TEMPLATE -->
+    let dataSyntax;
+    if (field && template === 'field') {
+      // Specific field reference
+      dataSyntax = `<!-- data:${source}:${id}:${field} -->`;
+    } else {
+      // Full object with template
+      dataSyntax = `<!-- data:${source}:${id}:${template} -->`;
+    }
+
+    // Insert at cursor position
+    editorApiRef.current.insertAtCursor(`\n\n${dataSyntax}\n\n`);
+
+    // Close the data selector
+    setShowDataSelector(false);
   };
 
   // Handle markdown formatting actions
@@ -1444,7 +1498,9 @@ const PageEditor = ({
           <MarkdownFormatToolbar
             onInsertSkill={() => setShowSkillPicker(true)}
             onInsertEquipment={() => setShowEquipmentPicker(true)}
+            onInsertSpirit={hasSpiritPicker() ? () => setShowSpiritPicker(true) : undefined}
             onInsertImage={() => setShowImagePicker(true)}
+            onInsertData={hasDataSelector() ? () => setShowDataSelector(true) : undefined}
             onFormat={handleFormat}
             onColorPicker={handleOpenColorPicker}
             colorButtonRef={colorButtonRef}
@@ -1607,12 +1663,32 @@ const PageEditor = ({
         renderPreview={renderEquipmentPreview}
       />
 
+      {/* Spirit Picker Modal */}
+      {SpiritPicker && (
+        <SpiritPicker
+          isOpen={showSpiritPicker}
+          onClose={() => setShowSpiritPicker(false)}
+          onSelect={handleSpiritSelect}
+        />
+      )}
+
       {/* Image Picker Modal */}
       <ImagePicker
         isOpen={showImagePicker}
         onClose={() => setShowImagePicker(false)}
         onSelect={handleImageSelect}
       />
+
+      {/* Data Selector Modal */}
+      {hasDataSelector() && showDataSelector && (() => {
+        const DataSelectorComponent = getDataSelector();
+        return (
+          <DataSelectorComponent
+            onSelect={handleDataSelect}
+            onClose={() => setShowDataSelector(false)}
+          />
+        );
+      })()}
 
       {/* Link Dialog */}
       <LinkDialog

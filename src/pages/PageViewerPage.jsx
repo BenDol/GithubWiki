@@ -15,6 +15,7 @@ import { getDisplayTitle } from '../utils/textUtils';
 import { useAuthStore } from '../store/authStore';
 import { getFileContent } from '../services/github/content';
 import { isBanned } from '../services/github/admin';
+import { getContentProcessor, getCustomComponents } from '../utils/contentRendererRegistry';
 
 /**
  * Page viewer page component
@@ -417,7 +418,12 @@ const PageViewerPage = ({ sectionId }) => {
               </div>
             )}
 
-            <PageViewer content={content} metadata={metadata} />
+            <PageViewer
+              content={content}
+              metadata={metadata}
+              contentProcessor={getContentProcessor()}
+              customComponents={getCustomComponents()}
+            />
           </div>
 
           {/* Comments section */}
