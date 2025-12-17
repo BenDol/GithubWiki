@@ -196,7 +196,100 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     }
   }, [value]);
 
-  // Detect if user is typing {{data: pattern for autocomplete
+  // Handle Ctrl+Space to manually trigger autocomplete when inside {{ }}
+  useEffect(() => {
+    if (!dataAutocompleteSearch) return;
+
+    const handleKeyDown = (e) => {
+      // Check for Ctrl+Space (or Cmd+Space on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!viewRef.current) return;
+
+        const view = viewRef.current;
+        const pos = view.state.selection.main.head;
+        const line = view.state.doc.lineAt(pos);
+        const lineText = line.text;
+        const posInLine = pos - line.from;
+
+        // Look for {{ }} pattern around cursor
+        // Find opening {{ before cursor
+        let openIndex = -1;
+        for (let i = posInLine - 1; i >= 0; i--) {
+          if (lineText[i] === '{' && lineText[i - 1] === '{') {
+            openIndex = i - 1;
+            break;
+          }
+          // Stop if we hit a closing brace (we're not inside a wrapper)
+          if (lineText[i] === '}') {
+            break;
+          }
+        }
+
+        // Find closing }} after cursor
+        let closeIndex = -1;
+        if (openIndex !== -1) {
+          for (let i = posInLine; i < lineText.length - 1; i++) {
+            if (lineText[i] === '}' && lineText[i + 1] === '}') {
+              closeIndex = i;
+              break;
+            }
+            // Stop if we hit an opening brace (we're not inside a wrapper)
+            if (lineText[i] === '{') {
+              break;
+            }
+          }
+        }
+
+        // If we found both {{ and }}, trigger autocomplete
+        if (openIndex !== -1 && closeIndex !== -1) {
+          const contentStart = openIndex + 2; // After {{
+          const contentEnd = closeIndex; // Before }}
+          const content = lineText.substring(contentStart, contentEnd);
+          const query = content.trimStart();
+
+          console.log('[MarkdownEditor] Ctrl+Space triggered autocomplete:', {
+            openIndex,
+            closeIndex,
+            content,
+            query
+          });
+
+          // Set autocomplete state
+          const matchStart = line.from + openIndex;
+          const matchEnd = line.from + closeIndex + 2; // Include closing }}
+
+          const coords = view.coordsAtPos(pos);
+          if (coords) {
+            setAutocompletePosition({
+              top: coords.top,
+              left: coords.left
+            });
+            setAutocompleteRange({ from: matchStart, to: matchEnd });
+            setAutocompleteQuery(query);
+
+            // Trigger search immediately (no debounce for manual trigger)
+            dataAutocompleteSearch(query, 20)
+              .then(suggestions => {
+                setAutocompleteSuggestions(suggestions);
+                setAutocompleteVisible(true);
+              })
+              .catch(err => {
+                console.error('[MarkdownEditor] Manual autocomplete search failed:', err);
+                setAutocompleteVisible(false);
+              });
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dataAutocompleteSearch]);
+
+  // Detect if user is typing {{ pattern for autocomplete
   const checkDataAutocomplete = async () => {
     if (!viewRef.current || !dataAutocompleteSearch) return;
 
@@ -206,12 +299,14 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     const lineText = line.text;
     const posInLine = pos - line.from;
 
-    // Look for {{data: pattern before cursor
+    // Look for {{ pattern before cursor (trigger autocomplete immediately after {{)
     const textBeforeCursor = lineText.substring(0, posInLine);
-    const dataPatternMatch = textBeforeCursor.match(/\{\{data:([^}]*?)$/);
+    const dataPatternMatch = textBeforeCursor.match(/\{\{([^}]*?)$/);
 
     if (dataPatternMatch) {
-      const query = dataPatternMatch[1];
+      const rawQuery = dataPatternMatch[1];
+      // Trim leading spaces from query for search, but keep original range for replacement
+      const query = rawQuery.trimStart();
       const matchStart = line.from + dataPatternMatch.index;
       const matchEnd = pos;
 
@@ -254,14 +349,39 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
 
     const view = viewRef.current;
 
-    // Replace {{data:query with the full insert syntax
+    // Check if we're replacing a complete wrapper (e.g., {{todd}} triggered via Ctrl+Space)
+    // vs. replacing an incomplete pattern (e.g., {{todd triggered by typing)
+    const replacingText = view.state.doc.sliceString(autocompleteRange.from, autocompleteRange.to);
+    const isReplacingCompleteWrapper = replacingText.includes('}}');
+
+    // Check if we need to add newlines (if not already at start/end of line)
+    const line = view.state.doc.lineAt(autocompleteRange.from);
+    const isAtLineStart = autocompleteRange.from === line.from;
+
+    // Build insert text with proper spacing
+    let insertText = suggestion.insertSyntax;
+
+    // Only add spacing/newlines if we're completing a new pattern (not replacing existing complete wrapper)
+    if (!isReplacingCompleteWrapper) {
+      // Add newlines before if not at line start
+      if (!isAtLineStart) {
+        insertText = `\n\n${insertText}`;
+      }
+
+      // Add trailing spaces and paragraph breaks
+      // Two spaces at end of line create hard break, blank line separates blocks
+      insertText = `${insertText}  \n\n`;
+    }
+    // If replacing complete wrapper, insert inline without extra spacing
+
+    // Replace {{query or {{complete}} with the full insert syntax
     view.dispatch({
       changes: {
         from: autocompleteRange.from,
         to: autocompleteRange.to,
-        insert: suggestion.insertSyntax
+        insert: insertText
       },
-      selection: { anchor: autocompleteRange.from + suggestion.insertSyntax.length }
+      selection: { anchor: autocompleteRange.from + insertText.length }
     });
 
     // Close autocomplete

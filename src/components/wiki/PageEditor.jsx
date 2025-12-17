@@ -715,8 +715,8 @@ const PageEditor = ({
     if (!editorApiRef.current) return;
 
     // Insert skill syntax into content
-    // Format: <!-- skill:Fire Slash:detailed --> or <!-- skill:1:compact -->
-    let skillSyntax = `<!-- skill:${skill.name}:${mode} -->`;
+    // Format: {{skill:Fire Slash:detailed}} or {{skill:1:compact}}
+    let skillSyntax = `{{skill:${skill.name}:${mode}}}`;
 
     // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
@@ -731,8 +731,9 @@ const PageEditor = ({
       skillSyntax = `<div style="${style}">\n\n${skillSyntax}\n\n</div>`;
     }
 
-    // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${skillSyntax}\n\n`);
+    // Insert at cursor position with trailing spaces and paragraph breaks
+    // Two spaces at end of line create hard break, blank line separates blocks
+    editorApiRef.current.insertAtCursor(`\n\n${skillSyntax}  \n\n`);
   };
 
   // Handle equipment selection from picker
@@ -740,8 +741,8 @@ const PageEditor = ({
     if (!editorApiRef.current) return;
 
     // Insert equipment syntax into content
-    // Format: <!-- equipment:Innocence:detailed --> or <!-- equipment:1:compact -->
-    let equipmentSyntax = `<!-- equipment:${equipment.name}:${mode} -->`;
+    // Format: {{equipment:Innocence:detailed}} or {{equipment:1:compact}}
+    let equipmentSyntax = `{{equipment:${equipment.name}:${mode}}}`;
 
     // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
@@ -756,8 +757,9 @@ const PageEditor = ({
       equipmentSyntax = `<div style="${style}">\n\n${equipmentSyntax}\n\n</div>`;
     }
 
-    // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}\n\n`);
+    // Insert at cursor position with trailing spaces and paragraph breaks
+    // Two spaces at end of line create hard break, blank line separates blocks
+    editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}  \n\n`);
   };
 
   // Handle spirit selection from picker
@@ -765,8 +767,8 @@ const PageEditor = ({
     if (!editorApiRef.current) return;
 
     // Insert spirit syntax into content
-    // Format: <!-- spirit:Loar:detailed:4 --> or <!-- spirit:Loar:compact:4 -->
-    let spiritSyntax = `<!-- spirit:${spirit.name}:${mode}:${level} -->`;
+    // Format: {{spirit:Loar:detailed:4}} or {{spirit:Loar:compact:4}}
+    let spiritSyntax = `{{spirit:${spirit.name}:${mode}:${level}}}`;
 
     // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
@@ -781,8 +783,9 @@ const PageEditor = ({
       spiritSyntax = `<div style="${style}">\n\n${spiritSyntax}\n\n</div>`;
     }
 
-    // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${spiritSyntax}\n\n`);
+    // Insert at cursor position with trailing spaces and paragraph breaks
+    // Two spaces at end of line create hard break, blank line separates blocks
+    editorApiRef.current.insertAtCursor(`\n\n${spiritSyntax}  \n\n`);
   };
 
   // Handle image selection from picker
@@ -791,8 +794,9 @@ const PageEditor = ({
 
     // Insert image markdown into content
     // Format: ![alt text](path)
-    // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}\n\n`);
+    // Insert at cursor position with trailing spaces and paragraph breaks
+    // Two spaces at end of line create hard break, blank line separates blocks
+    editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}  \n\n`);
   };
 
   // Handle data selection from data selector
@@ -800,18 +804,19 @@ const PageEditor = ({
     if (!editorApiRef.current) return;
 
     // Insert data syntax into content
-    // Format: <!-- data:SOURCE:ID:FIELD:TEMPLATE --> or <!-- data:SOURCE:ID:TEMPLATE -->
+    // Format: {{data:SOURCE:ID:FIELD:TEMPLATE}} or {{data:SOURCE:ID:TEMPLATE}}
     let dataSyntax;
     if (field && template === 'field') {
       // Specific field reference
-      dataSyntax = `<!-- data:${source}:${id}:${field} -->`;
+      dataSyntax = `{{data:${source}:${id}:${field}}}`;
     } else {
       // Full object with template
-      dataSyntax = `<!-- data:${source}:${id}:${template} -->`;
+      dataSyntax = `{{data:${source}:${id}:${template}}}`;
     }
 
-    // Insert at cursor position
-    editorApiRef.current.insertAtCursor(`\n\n${dataSyntax}\n\n`);
+    // Insert at cursor position with trailing spaces and paragraph breaks
+    // Two spaces at end of line create hard break, blank line separates blocks
+    editorApiRef.current.insertAtCursor(`\n\n${dataSyntax}  \n\n`);
 
     // Close the data selector
     setShowDataSelector(false);
