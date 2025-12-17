@@ -95,6 +95,45 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     }
   };
 
+  // Reaction caching helpers (prevents stale reactions after page reload)
+  const getReactionsCacheKey = (commentId) => {
+    return `wiki-reactions:${commentId}`;
+  };
+
+  const getCachedReactions = (commentId) => {
+    try {
+      const key = getReactionsCacheKey(commentId);
+      const cached = localStorage.getItem(key);
+      if (cached) {
+        const { reactions, timestamp } = JSON.parse(cached);
+        // Cache valid for 5 minutes
+        const age = Date.now() - timestamp;
+        if (age < 5 * 60 * 1000) {
+          console.log(`[Comments] Using cached reactions for comment ${commentId} (age: ${Math.round(age / 1000)}s)`);
+          return reactions;
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[Comments] Failed to get cached reactions:', err);
+      return null;
+    }
+  };
+
+  const cacheReactions = (commentId, reactions) => {
+    try {
+      const key = getReactionsCacheKey(commentId);
+      const data = {
+        reactions,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+      console.log(`[Comments] Cached ${reactions.length} reactions for comment ${commentId}`);
+    } catch (err) {
+      console.warn('[Comments] Failed to cache reactions:', err);
+    }
+  };
+
   // Load issue and comments
   useEffect(() => {
     const loadComments = async () => {
@@ -198,8 +237,16 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
             // Skip loading reactions for fake test comments (dev only)
             const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
             if (!isFakeComment) {
-              const commentReactionList = await getCommentReactions(owner, repo, comment.id);
-              reactions[comment.id] = commentReactionList;
+              // Try to load from cache first
+              const cachedReactions = getCachedReactions(comment.id);
+              if (cachedReactions) {
+                reactions[comment.id] = cachedReactions;
+              } else {
+                // If not cached, fetch from GitHub and cache the result
+                const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+                reactions[comment.id] = commentReactionList;
+                cacheReactions(comment.id, commentReactionList);
+              }
             } else {
               reactions[comment.id] = [];
             }
@@ -237,8 +284,16 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           // Skip loading reactions for fake test comments (dev only)
           const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
           if (!isFakeComment) {
-            const commentReactionList = await getCommentReactions(owner, repo, comment.id);
-            newReactions[comment.id] = commentReactionList;
+            // Try to load from cache first
+            const cachedReactions = getCachedReactions(comment.id);
+            if (cachedReactions) {
+              newReactions[comment.id] = cachedReactions;
+            } else {
+              // If not cached, fetch from GitHub and cache the result
+              const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+              newReactions[comment.id] = commentReactionList;
+              cacheReactions(comment.id, commentReactionList);
+            }
           } else {
             newReactions[comment.id] = [];
           }
@@ -516,6 +571,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
     const loadingKey = `${commentId}-${reactionType}`;
 
+    // Track the final reaction state for caching (can't rely on React state which updates async)
+    let finalReactions = reactions;
+
     try {
       // Set loading state for this specific button
       setReactionLoading(prev => ({ ...prev, [loadingKey]: true }));
@@ -531,9 +589,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       // Optimistically update UI first (for immediate feedback)
       if (existingReaction) {
         // Remove reaction (toggle off) - optimistic update
+        finalReactions = reactions.filter(r => r.id !== existingReaction.id);
+
         setCommentReactions(prev => ({
           ...prev,
-          [commentId]: reactions.filter(r => r.id !== existingReaction.id),
+          [commentId]: finalReactions,
         }));
 
         // Delete from GitHub - if this succeeds without error, we trust it worked
@@ -556,27 +616,46 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           console.log('[Comments] Waited 300ms before adding new reaction');
         }
 
-        // Add new reaction - optimistic update
+        // Add new reaction - optimistic update first for immediate UI feedback
         const optimisticReaction = {
-          id: Date.now(), // Temporary ID
+          id: Date.now(), // Temporary ID (will be replaced with real ID)
           content: reactionType,
           user: { login: user.login },
         };
 
-        // Update UI with new reaction
+        // Calculate optimistic reactions state
+        finalReactions = [...updatedReactions, optimisticReaction];
+
+        // Update UI with optimistic reaction
         setCommentReactions(prev => ({
           ...prev,
-          [commentId]: [...updatedReactions, optimisticReaction],
+          [commentId]: finalReactions,
         }));
 
-        // Add new reaction to GitHub - if this succeeds without error, we trust it worked
-        await addCommentReaction(owner, repo, commentId, reactionType);
-        console.log('[Comments] ✓ Reaction added successfully');
+        // Add new reaction to GitHub and get the real reaction data with real ID
+        const realReaction = await addCommentReaction(owner, repo, commentId, reactionType);
+        console.log('[Comments] ✓ Reaction added successfully, real ID:', realReaction.id);
+
+        // Update with real reaction data (replace optimistic with real)
+        finalReactions = [...updatedReactions, {
+          id: realReaction.id,
+          content: realReaction.content,
+          user: realReaction.user,
+        }];
+
+        // Update UI again with real reaction data
+        setCommentReactions(prev => ({
+          ...prev,
+          [commentId]: finalReactions,
+        }));
       }
 
       // If we got here without errors, the API calls succeeded
       // We keep the optimistic update - no need to validate with slow GitHub cache
       console.log('[Comments] ✓ Reaction update complete - keeping optimistic UI state');
+
+      // Update localStorage cache with the new reaction state (use finalReactions, not state)
+      cacheReactions(commentId, finalReactions);
     } catch (err) {
       console.error('Failed to handle reaction:', err);
 
@@ -587,6 +666,8 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           ...prev,
           [commentId]: actualReactions,
         }));
+        // Update cache with the correct state from server
+        cacheReactions(commentId, actualReactions);
       } catch (reloadErr) {
         console.error('Failed to reload reactions after error:', reloadErr);
       }
