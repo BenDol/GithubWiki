@@ -763,12 +763,13 @@ const PageEditor = ({
   };
 
   // Handle spirit selection from picker
-  const handleSpiritSelect = ({ spirit, mode, alignment, level }) => {
+  const handleSpiritSelect = ({ spirit, mode, alignment, level, inline = true }) => {
     if (!editorApiRef.current) return;
 
     // Insert spirit syntax into content
-    // Format: {{spirit:Loar:detailed:4}} or {{spirit:Loar:compact:4}}
-    let spiritSyntax = `{{spirit:${spirit.name}:${mode}:${level}}}`;
+    // Format: {{spirit:Loar:detailed:4:inline}} or {{spirit:Loar:compact:4:block}}
+    const displayType = inline ? 'inline' : 'block';
+    let spiritSyntax = `{{spirit:${spirit.name}:${mode}:${level}:${displayType}}}`;
 
     // Apply alignment wrapper if needed
     if (alignment && alignment !== 'none') {
