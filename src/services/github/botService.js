@@ -93,12 +93,13 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Creating comment issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/create-comment-issue', {
+    const response = await fetch('/.netlify/functions/github-bot', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'create-comment-issue',
         owner,
         repo,
         title,
@@ -237,12 +238,13 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Creating admin issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/create-admin-issue', {
+    const response = await fetch('/.netlify/functions/github-bot', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'create-admin-issue',
         owner,
         repo,
         title,
@@ -303,12 +305,13 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Updating admin issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/update-admin-issue', {
+    const response = await fetch('/.netlify/functions/github-bot', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        action: 'update-admin-issue',
         owner,
         repo,
         issueNumber,
@@ -329,6 +332,129 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
     return data.issue;
   } catch (error) {
     console.error('[Bot Service] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Create a comment on an existing issue using the bot
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {number} issueNumber - Issue number to comment on
+ * @param {string} body - Comment body
+ * @returns {Promise<Object>} Created comment data
+ */
+export const createCommentOnIssueWithBot = async (owner, repo, issueNumber, body) => {
+  try {
+    // Development mode: Try direct API call first
+    if (import.meta.env.DEV) {
+      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+
+      if (hasLocalToken) {
+        console.log('[Bot Service] Development mode: Using direct API call for comment');
+
+        const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+        const octokit = new Octokit({
+          auth: botToken,
+          userAgent: 'GitHub-Wiki-Bot/1.0',
+        });
+
+        const { data: comment } = await octokit.rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: issueNumber,
+          body,
+        });
+
+        return {
+          id: comment.id,
+          body: comment.body,
+          created_at: comment.created_at,
+          html_url: comment.html_url,
+        };
+      }
+    }
+
+    // Production mode: Use Netlify Function
+    console.log('[Bot Service] Creating comment via Netlify Function...');
+
+    const response = await fetch('/.netlify/functions/github-bot', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'create-comment',
+        owner,
+        repo,
+        issueNumber,
+        body,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[Bot Service] Failed to create comment:', data);
+      throw new Error(data.message || data.error || 'Failed to create comment');
+    }
+
+    console.log('[Bot Service] ✓ Comment created:', data.comment);
+    return data.comment;
+  } catch (error) {
+    console.error('[Bot Service] Error creating comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update an issue body using the bot
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {number} issueNumber - Issue number to update
+ * @param {string} body - New issue body
+ * @returns {Promise<Object>} Updated issue data
+ */
+export const updateIssueWithBot = async (owner, repo, issueNumber, body) => {
+  try {
+    // Development mode: Try direct API call first
+    if (import.meta.env.DEV) {
+      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+
+      if (hasLocalToken) {
+        console.log('[Bot Service] Development mode: Using direct API call for issue update');
+        return await updateIssueDirectly(owner, repo, issueNumber, body);
+      }
+    }
+
+    // Production mode: Use Netlify Function
+    console.log('[Bot Service] Updating issue via Netlify Function...');
+
+    const response = await fetch('/.netlify/functions/github-bot', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'update-issue',
+        owner,
+        repo,
+        issueNumber,
+        body,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[Bot Service] Failed to update issue:', data);
+      throw new Error(data.message || data.error || 'Failed to update issue');
+    }
+
+    console.log('[Bot Service] ✓ Issue updated:', data.issue);
+    return data.issue;
+  } catch (error) {
+    console.error('[Bot Service] Error updating issue:', error);
     throw error;
   }
 };

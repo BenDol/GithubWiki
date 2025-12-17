@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { getCachedUserProfile } from './githubCache';
 
 /**
  * User Profile Snapshot System
@@ -228,10 +229,8 @@ export async function buildUserSnapshot(owner, repo, username) {
 
     console.log(`[UserSnapshot] Building snapshot for ${username}...`);
 
-    // Fetch user data
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
+    // Fetch user data (with caching to prevent rate limiting)
+    const userData = await getCachedUserProfile(username);
 
     // Fetch all PRs by this user
     const allPRs = [];

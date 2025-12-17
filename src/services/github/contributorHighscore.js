@@ -1,5 +1,6 @@
 import { getOctokit } from './api';
 import { getBannedUsers } from './admin';
+import { getCachedCollaborators } from './githubCache';
 
 /**
  * Contributor Highscore Service
@@ -102,17 +103,12 @@ function parseCacheData(issueBody) {
 
 /**
  * Fetch repository collaborators (users with contributor role)
+ * Uses caching to prevent rate limiting (24 hour TTL)
  */
 async function fetchRepositoryCollaborators(owner, repo) {
-  const octokit = getOctokit();
-
   try {
-    console.log('[Highscore] Fetching repository collaborators...');
-    const { data: collaborators } = await octokit.rest.repos.listCollaborators({
-      owner,
-      repo,
-      per_page: 100,
-    });
+    console.log('[Highscore] Fetching repository collaborators (with caching)...');
+    const collaborators = await getCachedCollaborators(owner, repo);
 
     const collaboratorLogins = collaborators.map(c => c.login);
     console.log('[Highscore] Found collaborators:', collaboratorLogins);
