@@ -1,5 +1,6 @@
 import { getOctokit } from './api';
 import { getBuildTypeRoute, getRegisteredBuildTypes } from '../../utils/buildTypeRegistry.js';
+import { retryPlugin } from './octokitRetryPlugin.js';
 
 /**
  * Build Share Service
@@ -125,10 +126,12 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
       // Fetch issue directly by number (bypasses list cache)
       if (import.meta.env.DEV && import.meta.env.VITE_WIKI_BOT_TOKEN) {
         const { Octokit } = await import('octokit');
+        const OctokitWithRetry = Octokit.plugin(retryPlugin);
         const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
-        const octokit = new Octokit({
+        const octokit = new OctokitWithRetry({
           auth: botToken,
           userAgent: 'GitHub-Wiki-Bot/1.0',
+          throttle: { enabled: false }, // Disable built-in throttling
         });
 
         const { data: issue } = await octokit.rest.issues.get({
@@ -150,10 +153,12 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
     if (import.meta.env.DEV && import.meta.env.VITE_WIKI_BOT_TOKEN) {
       // Development: Use bot token directly
       const { Octokit } = await import('octokit');
+      const OctokitWithRetry = Octokit.plugin(retryPlugin);
       const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
-      const octokit = new Octokit({
+      const octokit = new OctokitWithRetry({
         auth: botToken,
         userAgent: 'GitHub-Wiki-Bot/1.0',
+        throttle: { enabled: false }, // Disable built-in throttling
       });
 
       const { data } = await octokit.rest.issues.listForRepo({
@@ -359,10 +364,12 @@ export async function loadBuild(owner, repo, checksum) {
       // Development: Use bot token directly
       console.log('[Build Share] Using direct bot token in dev mode');
       const { Octokit } = await import('octokit');
+      const OctokitWithRetry = Octokit.plugin(retryPlugin);
       const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
-      const octokit = new Octokit({
+      const octokit = new OctokitWithRetry({
         auth: botToken,
         userAgent: 'GitHub-Wiki-Bot/1.0',
+        throttle: { enabled: false }, // Disable built-in throttling
       });
 
       const { data } = await octokit.rest.issues.getComment({

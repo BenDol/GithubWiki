@@ -1,12 +1,22 @@
 import { Octokit } from 'octokit';
+import { retryPlugin } from './octokitRetryPlugin.js';
 
 /**
  * GitHub API client wrapper using Octokit
  * Provides methods for interacting with GitHub repositories
+ *
+ * All Octokit instances automatically include retry logic for rate limits.
+ * To opt-out per request, use: { request: { skipRetry: true } }
  */
 
 let octokitInstance = null;
 let botOctokitInstance = null;
+
+// Custom Octokit class with retry plugin
+console.log('[GitHub API] Loading module - creating OctokitWithRetry class');
+console.log('[GitHub API] retryPlugin type:', typeof retryPlugin);
+const OctokitWithRetry = Octokit.plugin(retryPlugin);
+console.log('[GitHub API] OctokitWithRetry class created:', !!OctokitWithRetry);
 
 // Request de-duplication tracking
 // Prevents multiple concurrent requests for the same data
@@ -14,12 +24,24 @@ const pendingRequests = new Map();
 
 /**
  * Initialize Octokit with authentication token
+ * Automatically includes retry plugin for rate limit handling
  */
 export const initializeOctokit = (token) => {
-  octokitInstance = new Octokit({
+  console.log('[GitHub API] initializeOctokit() called with token:', token ? 'YES (length: ' + token.length + ')' : 'NO');
+  console.log('[GitHub API] Creating OctokitWithRetry instance...');
+
+  octokitInstance = new OctokitWithRetry({
     auth: token,
     userAgent: 'GitHub-Wiki-Framework/1.0',
+    throttle: {
+      // Disable built-in throttling - we use our own retry plugin
+      enabled: false,
+    },
   });
+
+  console.log('[GitHub API] ✓ Octokit initialized with automatic retry on rate limits');
+  console.log('[GitHub API] Instance has auth:', !!octokitInstance.auth);
+  console.log('[GitHub API] Instance request type:', typeof octokitInstance.request);
 
   return octokitInstance;
 };
@@ -27,14 +49,25 @@ export const initializeOctokit = (token) => {
 /**
  * Get Octokit instance
  * Creates an unauthenticated instance for public repo access if not logged in
+ * Automatically includes retry plugin for rate limit handling
  */
 export const getOctokit = () => {
   if (!octokitInstance) {
     // Create unauthenticated instance for public repo read-only access
-    octokitInstance = new Octokit({
+    octokitInstance = new OctokitWithRetry({
       userAgent: 'GitHub-Wiki-Framework/1.0',
+      throttle: {
+        // Disable built-in throttling - we use our own retry plugin
+        enabled: false,
+      },
     });
+    console.log('[GitHub API] ✓ Unauthenticated Octokit created with automatic retry');
   }
+
+  // Log authentication status for debugging
+  const hasAuth = octokitInstance.auth !== undefined;
+  console.log('[GitHub API] getOctokit() returning instance with auth:', hasAuth);
+
   return octokitInstance;
 };
 
@@ -67,12 +100,16 @@ export const initializeBotOctokit = (botToken = null) => {
     return null;
   }
 
-  botOctokitInstance = new Octokit({
+  botOctokitInstance = new OctokitWithRetry({
     auth: botToken,
     userAgent: 'GitHub-Wiki-Bot/1.0',
+    throttle: {
+      // Disable built-in throttling - we use our own retry plugin
+      enabled: false,
+    },
   });
 
-  console.log('[Bot] ✓ Bot Octokit initialized successfully');
+  console.log('[Bot] ✓ Bot Octokit initialized with automatic retry');
   return botOctokitInstance;
 };
 

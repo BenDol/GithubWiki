@@ -4,6 +4,7 @@ import { useWikiConfig } from './hooks/useWikiConfig';
 import { useAuthStore } from './store/authStore';
 import { createWikiRouter } from './router';
 import { BranchProvider } from './hooks/useBranchNamespace';
+import RateLimitNotification from './components/common/RateLimitNotification';
 
 function App() {
   const { config, loading, error } = useWikiConfig();
@@ -141,6 +142,7 @@ function App() {
   return (
     <BranchProvider>
       <RouterProvider router={router} />
+      <RateLimitNotification />
     </BranchProvider>
   );
 }
