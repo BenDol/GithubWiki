@@ -59,7 +59,7 @@ const useProgressStore = create(
       },
     }),
     {
-      name: 'slayer-legend-progress',
+      name: 'wiki-progress', // Generic key for all wiki projects
     }
   )
 );

@@ -1,6 +1,7 @@
 import { getOctokit, getAuthenticatedUser } from './api';
 import { createAdminIssueWithBot, updateAdminIssueWithBot } from './botService';
 import { detectCurrentBranch } from './branchNamespace';
+import { getCacheValue, setCacheValue, clearCacheValue } from '../../utils/timeCache.js';
 
 /**
  * GitHub Admin Service
@@ -245,6 +246,16 @@ export const isAdmin = async (username, owner, repo, config) => {
  * @returns {Promise<boolean>} True if user is banned
  */
 export const isBanned = async (username, owner, repo, config) => {
+  // Check cache first (10-minute TTL to reduce GitHub API calls)
+  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
+  const cached = getCacheValue(cacheKey);
+  if (cached !== null) {
+    console.log(`[Admin] Ban check cache hit for ${username}`);
+    return cached;
+  }
+
+  console.log(`[Admin] Ban check cache miss for ${username}, fetching from GitHub...`);
+
   // Fetch user ID for comparison
   const octokit = getOctokit();
   let userId;
@@ -260,7 +271,7 @@ export const isBanned = async (username, owner, repo, config) => {
 
   // Check ban list (prefer userId, fallback to username for backwards compatibility)
   const bannedUsers = await getBannedUsers(owner, repo, config);
-  return bannedUsers.some(user => {
+  const isBannedResult = bannedUsers.some(user => {
     // Primary check: userId (immutable, survives username changes)
     if (userId && user.userId && user.userId === userId) {
       return true;
@@ -268,6 +279,12 @@ export const isBanned = async (username, owner, repo, config) => {
     // Fallback: username (for old entries without userId)
     return user.username.toLowerCase() === username.toLowerCase();
   });
+
+  // Cache the result for 10 minutes (600000ms)
+  setCacheValue(cacheKey, isBannedResult, 600000);
+  console.log(`[Admin] Cached ban check result for ${username}: ${isBannedResult}`);
+
+  return isBannedResult;
 };
 
 /**
@@ -499,6 +516,11 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
   const newBody = updateUserListInIssue(issue.body, bannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
+  // Clear cache for this user so next check gets fresh data
+  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
+  clearCacheValue(cacheKey);
+  console.log(`[Admin] Cleared ban check cache for ${username}`);
+
   console.log(`[Admin] Banned user: ${username} (ID: ${userId})`);
   return bannedUsers;
 };
@@ -556,6 +578,11 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, updatedBannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
+
+  // Clear cache for this user so next check gets fresh data
+  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
+  clearCacheValue(cacheKey);
+  console.log(`[Admin] Cleared ban check cache for ${username}`);
 
   console.log(`[Admin] Unbanned user: ${username} (ID: ${userId})`);
   return updatedBannedUsers;

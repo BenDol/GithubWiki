@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { getBuildTypeRoute, getRegisteredBuildTypes } from '../../utils/buildTypeRegistry.js';
 
 /**
  * Build Share Service
@@ -443,22 +444,19 @@ export async function loadBuild(owner, repo, checksum) {
 /**
  * Generate a shareable URL for a build
  * @param {string} baseUrl - Base URL of the site
- * @param {string} buildType - Build type ("battle-loadout", "skill-build", "spirit-build", "soul-weapon-engraving")
+ * @param {string} buildType - Build type (must be registered via registerBuildTypes)
  * @param {string} checksum - Build checksum
  * @returns {string} Shareable URL
  */
 export function generateShareUrl(baseUrl, buildType, checksum) {
-  // Map build types to routes
-  const routes = {
-    'battle-loadout': '/battle-loadouts',
-    'skill-build': '/skill-builder',
-    'spirit-build': '/spirit-builder',
-    'soul-weapon-engraving': '/soul-weapon-engraving-builder',
-  };
+  // Get route from registry (parent project registers build types in main.jsx)
+  const route = getBuildTypeRoute(buildType);
 
-  const route = routes[buildType];
   if (!route) {
-    throw new Error(`Unknown build type: ${buildType}`);
+    const registeredTypes = Object.keys(getRegisteredBuildTypes());
+    console.error('[Build Share] Unknown build type:', buildType);
+    console.error('[Build Share] Registered types:', registeredTypes);
+    throw new Error(`Unknown build type: ${buildType}. Registered types: ${registeredTypes.join(', ')}. Make sure to register build types in main.jsx using registerBuildTypes().`);
   }
 
   return `${baseUrl}#${route}?share=${checksum}`;
