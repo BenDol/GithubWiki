@@ -5,6 +5,7 @@ import { getPrestigeTier } from '../utils/prestige';
 import { getUserPullRequests } from '../services/github/pullRequests';
 import { getUserPrestigeData, getCachedPrestigeDataSync } from '../services/github/prestige';
 import { getUserSnapshot } from '../services/github/userSnapshots';
+import { getCacheValue, setCacheValue, clearCacheValue } from '../utils/timeCache.js';
 
 /**
  * Prestige data hook
@@ -12,10 +13,6 @@ import { getUserSnapshot } from '../services/github/userSnapshots';
  * Fetches prestige data from user snapshots (primary source).
  * Falls back to prestige cache, then PR-based calculation for authenticated user.
  */
-
-// In-memory cache for user prestige data (short-term, 5 minutes)
-// Main cache is localStorage + GitHub issue (updated daily)
-const prestigeCache = new Map();
 
 /**
  * Hook to get prestige data for a specific user
@@ -49,10 +46,12 @@ export const useUserPrestige = (username) => {
         return;
       }
 
-      // Check in-memory cache first (5 minute TTL)
-      const cached = prestigeCache.get(username);
-      if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
-        setPrestigeData(cached.data);
+      // Check localStorage cache first (5 minute TTL)
+      const cacheKey = `prestige:${username}`;
+      const cached = getCacheValue(cacheKey);
+      if (cached) {
+        console.log(`[Prestige] Cache hit for ${username}`);
+        setPrestigeData(cached);
         setLoading(false);
         return;
       }
@@ -72,8 +71,9 @@ export const useUserPrestige = (username) => {
           },
         };
 
-        // Cache in memory too
-        prestigeCache.set(username, { data, timestamp: Date.now() });
+        // Cache the result for 5 minutes
+        const cacheKey = `prestige:${username}`;
+        setCacheValue(cacheKey, data, 5 * 60 * 1000);
         setPrestigeData(data);
         setLoading(false);
         return;
@@ -107,8 +107,9 @@ export const useUserPrestige = (username) => {
               stats: snapshot.stats,
             };
 
-            // Cache the result
-            prestigeCache.set(username, { data, timestamp: Date.now() });
+            // Cache the result for 5 minutes
+            const cacheKey = `prestige:${username}`;
+            setCacheValue(cacheKey, data, 5 * 60 * 1000);
             setPrestigeData(data);
             return;
           }
@@ -134,8 +135,9 @@ export const useUserPrestige = (username) => {
             },
           };
 
-          // Cache the result
-          prestigeCache.set(username, { data, timestamp: Date.now() });
+          // Cache the result for 5 minutes
+          const cacheKey = `prestige:${username}`;
+          setCacheValue(cacheKey, data, 5 * 60 * 1000);
           setPrestigeData(data);
           return;
         }
@@ -161,8 +163,9 @@ export const useUserPrestige = (username) => {
 
           const data = { tier, stats };
 
-          // Cache the result
-          prestigeCache.set(username, { data, timestamp: Date.now() });
+          // Cache the result for 5 minutes
+          const cacheKey = `prestige:${username}`;
+          setCacheValue(cacheKey, data, 5 * 60 * 1000);
           setPrestigeData(data);
         } else {
           // No data available for non-authenticated users
@@ -190,7 +193,9 @@ export const useUserPrestige = (username) => {
  */
 export const useInvalidatePrestige = () => {
   return useCallback((username) => {
-    prestigeCache.delete(username);
+    const cacheKey = `prestige:${username}`;
+    clearCacheValue(cacheKey);
+    console.log(`[Prestige] Cleared cache for ${username}`);
   }, []);
 };
 
@@ -202,14 +207,7 @@ export const useInvalidatePrestige = () => {
  * @returns {Object|null} Cached prestige data or null
  */
 export const getCachedPrestige = (username) => {
-  const cached = prestigeCache.get(username);
-  if (!cached) return null;
-
-  // Check if cache is still valid (5 minute TTL)
-  if (Date.now() - cached.timestamp > 5 * 60 * 1000) {
-    prestigeCache.delete(username);
-    return null;
-  }
-
-  return cached.data;
+  const cacheKey = `prestige:${username}`;
+  const cached = getCacheValue(cacheKey);
+  return cached; // getCacheValue already handles expiration
 };
