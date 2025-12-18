@@ -3,26 +3,20 @@
  * Uses Device Flow for secure authentication without client secret
  */
 
+import { getDeviceCodeEndpoint, getAccessTokenEndpoint, getPlatform } from '../../utils/apiEndpoints.js';
+
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
 
-// Use proxy endpoints in development (Vite) and production (Netlify Functions)
-// Development: Vite dev server proxies /api/github/* to GitHub
-// Production: Netlify Functions at /.netlify/functions/* proxy to GitHub
-const DEVICE_CODE_URL = import.meta.env.DEV
-  ? '/api/github/device-code'
-  : '/.netlify/functions/device-code';
-
-const TOKEN_URL = import.meta.env.DEV
-  ? '/api/github/access-token'
-  : '/.netlify/functions/access-token';
-
+// Use platform-aware endpoints (supports Netlify, Cloudflare Pages, and Dev)
+const DEVICE_CODE_URL = getDeviceCodeEndpoint();
+const TOKEN_URL = getAccessTokenEndpoint();
 const USER_URL = 'https://api.github.com/user';
 
 // Debug: Log environment variables
 console.log('GitHub Auth Configuration:', {
   VITE_GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID,
+  PLATFORM: getPlatform(),
   DEV_MODE: import.meta.env.DEV,
-  USING_PROXY: import.meta.env.DEV ? 'YES (Vite Dev Server)' : 'YES (Netlify Functions)',
   DEVICE_CODE_URL,
   TOKEN_URL,
 });

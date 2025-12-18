@@ -1,6 +1,7 @@
 import { getOctokit } from './api';
 import { getBuildTypeRoute, getRegisteredBuildTypes } from '../../utils/buildTypeRegistry.js';
 import { retryPlugin } from './octokitRetryPlugin.js';
+import { getGithubBotEndpoint } from '../../utils/apiEndpoints.js';
 
 /**
  * Build Share Service
@@ -172,7 +173,7 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
       issues = data;
     } else {
       // Production: Use Netlify Function
-      const response = await fetch('/.netlify/functions/github-bot', {
+      const response = await fetch(getGithubBotEndpoint(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -380,11 +381,11 @@ export async function loadBuild(owner, repo, checksum) {
 
       comment = data;
     } else {
-      // Production: Use Netlify Function
-      console.log('[Build Share] Using Netlify Function for comment fetch');
-      console.log('[Build Share] Fetching from:', '/.netlify/functions/github-bot');
+      // Production: Use serverless function
+      console.log('[Build Share] Using serverless function for comment fetch');
+      console.log('[Build Share] Fetching from:', getGithubBotEndpoint());
 
-      const response = await fetch('/.netlify/functions/github-bot', {
+      const response = await fetch(getGithubBotEndpoint(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

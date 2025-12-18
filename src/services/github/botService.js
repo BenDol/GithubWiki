@@ -1,13 +1,15 @@
 /**
  * Bot Service - Secure server-side bot operations
- * Calls Netlify Functions to perform bot actions without exposing token
+ * Calls serverless functions to perform bot actions without exposing token
  *
- * SECURITY: In production, ONLY uses Netlify Functions (no tokens in client code)
+ * SECURITY: In production, ONLY uses serverless functions (no tokens in client code)
  * In development, can optionally use direct API calls for local testing
+ * Supports both Netlify and Cloudflare Pages platforms
  */
 
 import { useAuthStore } from '../../store/authStore';
 import { retryPlugin } from './octokitRetryPlugin.js';
+import { getGithubBotEndpoint, getCreateCommentIssueEndpoint } from '../../utils/apiEndpoints.js';
 
 // Development-only imports - tree-shaken in production builds
 let Octokit;
@@ -96,7 +98,7 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Creating comment issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/github-bot', {
+    const response = await fetch(getGithubBotEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -245,7 +247,7 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Creating admin issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/github-bot', {
+    const response = await fetch(getGithubBotEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -312,7 +314,7 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
     // Production mode OR development without local token: Use Netlify Function
     console.log('[Bot Service] Updating admin issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/github-bot', {
+    const response = await fetch(getGithubBotEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -387,7 +389,7 @@ export const createCommentOnIssueWithBot = async (owner, repo, issueNumber, body
     // Production mode: Use Netlify Function
     console.log('[Bot Service] Creating comment via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/github-bot', {
+    const response = await fetch(getGithubBotEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -439,7 +441,7 @@ export const updateIssueWithBot = async (owner, repo, issueNumber, body) => {
     // Production mode: Use Netlify Function
     console.log('[Bot Service] Updating issue via Netlify Function...');
 
-    const response = await fetch('/.netlify/functions/github-bot', {
+    const response = await fetch(getGithubBotEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -476,7 +478,7 @@ export const isBotAvailable = async () => {
   try {
     // Try a test call to see if bot is configured
     // We don't actually create anything, just check for 400 (missing fields) or 503 (no token)
-    const response = await fetch('/.netlify/functions/create-comment-issue', {
+    const response = await fetch(getCreateCommentIssueEndpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
