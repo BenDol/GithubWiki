@@ -41,7 +41,7 @@ const Layout = () => {
         <Sidebar />
 
         <main className="flex-1 w-full flex flex-col min-w-0">
-          <div className="flex-1 container mx-auto px-2 sm:px-4 py-8 max-w-7xl w-full">
+          <div className="flex-1 container mx-auto px-4 sm:px-4 py-8 max-w-7xl w-full">
             <Outlet />
           </div>
 
