@@ -439,6 +439,147 @@ export const checkWriteAccess = async (owner, repo) => {
 };
 
 /**
+ * Create a GitHub issue
+ * Requires login
+ */
+export const createGitHubIssue = async (owner, repo, title, body, labels = []) => {
+  const octokit = getOctokit();
+
+  // Check if we have authentication
+  if (!octokitInstance || !octokitInstance.auth) {
+    throw new Error('Authentication required. Please login to create issues.');
+  }
+
+  try {
+    const { data } = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title,
+      body,
+      labels,
+    });
+
+    return {
+      number: data.number,
+      url: data.html_url,
+      title: data.title,
+      body: data.body,
+      labels: data.labels,
+      state: data.state,
+      createdAt: data.created_at,
+      user: {
+        username: data.user.login,
+        avatar: data.user.avatar_url,
+      },
+    };
+  } catch (error) {
+    console.error('Error creating GitHub issue:', error);
+    if (error.status === 401) {
+      throw new Error('Authentication failed. Please logout and login again.');
+    }
+    throw error;
+  }
+};
+
+/**
+ * Search GitHub issues
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} query - Search query (e.g., "is:open label:bug")
+ * @param {number} perPage - Results per page (default: 30)
+ * @param {number} page - Page number (default: 1)
+ * @returns {Promise<Array>} Array of issues
+ */
+export const searchGitHubIssues = async (owner, repo, query, perPage = 30, page = 1) => {
+  const octokit = getOctokit();
+
+  // Build full search query including repo
+  const fullQuery = `repo:${owner}/${repo} ${query}`;
+
+  try {
+    const { data } = await octokit.rest.search.issuesAndPullRequests({
+      q: fullQuery,
+      per_page: perPage,
+      page,
+    });
+
+    return data.items.map(issue => ({
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      state: issue.state,
+      labels: issue.labels,
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+      user: {
+        login: issue.user.login,
+        avatar_url: issue.user.avatar_url,
+      },
+      html_url: issue.html_url,
+    }));
+  } catch (error) {
+    console.error('Error searching GitHub issues:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update a GitHub issue
+ * Requires login
+ */
+export const updateGitHubIssue = async (owner, repo, issueNumber, updates) => {
+  if (!isAuthenticated()) {
+    throw new Error('Authentication required. Please login to update issues.');
+  }
+  const octokit = getOctokit();
+
+  const { data } = await octokit.rest.issues.update({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    ...updates,
+  });
+
+  return {
+    number: data.number,
+    url: data.html_url,
+    title: data.title,
+    body: data.body,
+    labels: data.labels,
+    state: data.state,
+    updatedAt: data.updated_at,
+  };
+};
+
+/**
+ * Get a GitHub issue
+ */
+export const getGitHubIssue = async (owner, repo, issueNumber) => {
+  const octokit = getOctokit();
+
+  const { data } = await octokit.rest.issues.get({
+    owner,
+    repo,
+    issue_number: issueNumber,
+  });
+
+  return {
+    number: data.number,
+    title: data.title,
+    body: data.body,
+    state: data.state,
+    labels: data.labels,
+    created_at: data.created_at,
+    updated_at: data.updated_at,
+    user: {
+      login: data.user.login,
+      avatar_url: data.user.avatar_url,
+    },
+    html_url: data.html_url,
+  };
+};
+
+/**
  * Error handler with user-friendly messages
  */
 export const handleGitHubError = (error) => {

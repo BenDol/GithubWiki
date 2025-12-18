@@ -443,7 +443,7 @@ export async function loadBuild(owner, repo, checksum) {
 /**
  * Generate a shareable URL for a build
  * @param {string} baseUrl - Base URL of the site
- * @param {string} buildType - Build type ("battle-loadout", "skill-build", "spirit-build")
+ * @param {string} buildType - Build type ("battle-loadout", "skill-build", "spirit-build", "soul-weapon-engraving")
  * @param {string} checksum - Build checksum
  * @returns {string} Shareable URL
  */
@@ -453,6 +453,7 @@ export function generateShareUrl(baseUrl, buildType, checksum) {
     'battle-loadout': '/battle-loadouts',
     'skill-build': '/skill-builder',
     'spirit-build': '/spirit-builder',
+    'soul-weapon-engraving': '/soul-weapon-engraving-builder',
   };
 
   const route = routes[buildType];

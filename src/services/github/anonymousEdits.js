@@ -23,7 +23,12 @@ export const submitAnonymousEditViaIssues = async (owner, repo, editData, branch
 
   // Ensure labels exist first (will be fast after first run - labels are cached)
   try {
-    await ensureAllWikiLabels(owner, repo);
+    // Load wiki config to get sections for label generation
+    const configResponse = await fetch('/wiki-config.json');
+    const config = await configResponse.json();
+    const sections = config?.sections || [];
+
+    await ensureAllWikiLabels(owner, repo, sections);
   } catch (error) {
     console.warn('[Anonymous Edit - Serverless] Could not ensure labels:', error.message);
     // Continue anyway - workflow can still work

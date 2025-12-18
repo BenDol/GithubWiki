@@ -27,7 +27,7 @@ const BuildViewerPage = () => {
   if (error) {
     return (
       <Layout>
-        <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-8">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
             <h2 className="text-2xl font-bold text-red-800 dark:text-red-200 mb-2">
               Error Loading Build
@@ -48,7 +48,7 @@ const BuildViewerPage = () => {
   if (!build) {
     return (
       <Layout>
-        <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-8">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
             <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
@@ -61,7 +61,7 @@ const BuildViewerPage = () => {
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-2 sm:px-4 py-8">
         <div className="mb-6">
           <Link
             to="/tools/build-creator"

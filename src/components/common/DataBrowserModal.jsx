@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { X, Database } from 'lucide-react';
 import DataBrowser from './DataBrowser';
+import { getRegisteredDataFiles, hasRegisteredDataFiles } from '../../utils/dataBrowserRegistry';
 
 /**
  * DataBrowserModal - Modal wrapper for DataBrowser
  *
  * Opens with Ctrl+Shift+B keyboard shortcut
- * Auto-discovers data files from /public/data/
+ * Auto-discovers data files from:
+ * 1. Registered data files (via registerDataFiles() in main.jsx)
+ * 2. /data/data-files-index.json (if it exists)
+ * 3. Empty list if neither exist
  */
 const DataBrowserModal = ({ isOpen, onClose }) => {
   const [dataFiles, setDataFiles] = useState([]);
@@ -22,60 +26,48 @@ const DataBrowserModal = ({ isOpen, onClose }) => {
   const discoverDataFiles = async () => {
     setLoading(true);
     try {
-      // Try to load data-files-index.json (if it exists)
+      // Priority 1: Use registered data files from parent project
+      if (hasRegisteredDataFiles()) {
+        const registered = getRegisteredDataFiles();
+        console.log('[DataBrowserModal] Using registered data files:', registered.length);
+
+        // Verify files actually exist
+        const existingFiles = [];
+        for (const file of registered) {
+          try {
+            const response = await fetch(file.path, { method: 'HEAD' });
+            if (response.ok) {
+              existingFiles.push(file);
+            }
+          } catch (err) {
+            // File doesn't exist, skip
+          }
+        }
+
+        setDataFiles(existingFiles);
+        setLoading(false);
+        return;
+      }
+
+      // Priority 2: Try to load data-files-index.json (if it exists)
       try {
         const response = await fetch('/data/data-files-index.json');
         if (response.ok) {
           const index = await response.json();
+          console.log('[DataBrowserModal] Using data-files-index.json');
           setDataFiles(index.files || []);
           setLoading(false);
           return;
         }
       } catch (err) {
-        // Index doesn't exist, use fallback
+        // Index doesn't exist, continue
       }
 
-      // Fallback: known data files
-      const knownFiles = [
-        'companions.json',
-        'equipment.json',
-        'skills.json',
-        'promotions.json',
-        'relics.json',
-        'quests.json',
-        'classes.json',
-        'drop-tables.json',
-        'formulas.json',
-        'adventures.json',
-        'appearance-clothing.json',
-        'campaigns.json',
-        'companion-characters.json',
-        'equipment-drops.json',
-        'stages.json',
-        'image-index.json',
-        'image-search-index.json',
-      ];
-
-      // Check which files actually exist
-      const existingFiles = [];
-      for (const filename of knownFiles) {
-        const path = `/data/${filename}`;
-        try {
-          const response = await fetch(path, { method: 'HEAD' });
-          if (response.ok) {
-            existingFiles.push({
-              name: filename,
-              path: path,
-            });
-          }
-        } catch (err) {
-          // File doesn't exist, skip
-        }
-      }
-
-      setDataFiles(existingFiles);
+      // Priority 3: No files registered or indexed
+      console.warn('[DataBrowserModal] No data files registered. Use registerDataFiles() in main.jsx to register your data files.');
+      setDataFiles([]);
     } catch (error) {
-      console.error('Failed to discover data files:', error);
+      console.error('[DataBrowserModal] Failed to discover data files:', error);
       setDataFiles([]);
     } finally {
       setLoading(false);

@@ -7,6 +7,7 @@ import { getOctokit } from './api';
 
 /**
  * Label definitions for wiki operations
+ * Section labels are generated dynamically from wiki-config.json
  */
 export const WIKI_LABELS = {
   // Type labels (what kind of issue)
@@ -35,70 +36,6 @@ export const WIKI_LABELS = {
       name: 'wiki-edit',
       description: 'Pull request for wiki content edits',
       color: '7057ff', // Purple
-    },
-  ],
-
-  // Section labels (which section of wiki)
-  sections: [
-    {
-      name: 'section:getting-started',
-      description: 'Getting Started section',
-      color: 'c2e0c6', // Light green
-    },
-    {
-      name: 'section:characters',
-      description: 'Characters section',
-      color: 'f9d0c4', // Light red
-    },
-    {
-      name: 'section:equipment',
-      description: 'Equipment section',
-      color: 'd4c5f9', // Light purple
-    },
-    {
-      name: 'section:companions',
-      description: 'Companions section',
-      color: 'fef2c0', // Light yellow
-    },
-    {
-      name: 'section:skills',
-      description: 'Skills section',
-      color: 'bfdadc', // Light cyan
-    },
-    {
-      name: 'section:content',
-      description: 'Content section',
-      color: 'c5def5', // Light blue
-    },
-    {
-      name: 'section:progression',
-      description: 'Progression section',
-      color: 'f9c5d1', // Light pink
-    },
-    {
-      name: 'section:resources',
-      description: 'Resources section',
-      color: 'd1f5c5', // Lime green
-    },
-    {
-      name: 'section:guides',
-      description: 'Guides section',
-      color: 'e6c5f5', // Lavender
-    },
-    {
-      name: 'section:database',
-      description: 'Database section',
-      color: 'c5e5f5', // Sky blue
-    },
-    {
-      name: 'section:tools',
-      description: 'Tools section',
-      color: 'f5d9c5', // Peach
-    },
-    {
-      name: 'section:meta',
-      description: 'Meta section (wiki information and guidelines)',
-      color: 'e0e0e0', // Light gray
     },
   ],
 
@@ -142,12 +79,52 @@ export const WIKI_LABELS = {
 };
 
 /**
- * Get all wiki labels in flat array
+ * Color palette for section labels (rotates through colors)
  */
-export const getAllWikiLabels = () => {
+const SECTION_COLORS = [
+  'c2e0c6', // Light green
+  'f9d0c4', // Light red
+  'd4c5f9', // Light purple
+  'fef2c0', // Light yellow
+  'bfdadc', // Light cyan
+  'c5def5', // Light blue
+  'f9c5d1', // Light pink
+  'd1f5c5', // Lime green
+  'e6c5f5', // Lavender
+  'c5e5f5', // Sky blue
+  'f5d9c5', // Peach
+  'e0e0e0', // Light gray
+];
+
+/**
+ * Generate section labels from wiki config sections
+ * @param {Array} sections - Sections array from wiki-config.json
+ * @returns {Array} Array of section label objects
+ */
+export const generateSectionLabels = (sections) => {
+  if (!sections || !Array.isArray(sections)) {
+    console.warn('[Labels] No sections provided, using empty array');
+    return [];
+  }
+
+  return sections.map((section, index) => ({
+    name: `section:${section.id}`,
+    description: `${section.title} section`,
+    color: SECTION_COLORS[index % SECTION_COLORS.length],
+  }));
+};
+
+/**
+ * Get all wiki labels in flat array
+ * @param {Array} sections - Optional sections array from wiki-config.json
+ * @returns {Array} Flat array of all label objects
+ */
+export const getAllWikiLabels = (sections = []) => {
+  const sectionLabels = generateSectionLabels(sections);
+
   return [
     ...WIKI_LABELS.types,
-    ...WIKI_LABELS.sections,
+    ...sectionLabels,
     ...WIKI_LABELS.status,
     ...WIKI_LABELS.additional,
   ];
@@ -207,14 +184,15 @@ export const createLabel = async (owner, repo, label) => {
  * Creates missing labels, skips existing ones
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
+ * @param {Array} sections - Sections array from wiki-config.json
  * @param {string[]} allowedBranches - Optional list of allowed branches for namespace labels
  */
-export const ensureAllWikiLabels = async (owner, repo, allowedBranches = []) => {
+export const ensureAllWikiLabels = async (owner, repo, sections = [], allowedBranches = []) => {
   console.log(`\n${'='.repeat(60)}`);
   console.log('[Labels] Ensuring all wiki labels exist...');
   console.log(`${'='.repeat(60)}\n`);
 
-  const allLabels = getAllWikiLabels();
+  const allLabels = getAllWikiLabels(sections);
   let created = 0;
   let existing = 0;
   let failed = 0;

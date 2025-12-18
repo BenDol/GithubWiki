@@ -217,7 +217,7 @@ const AdminPanel = () => {
   // ✅ CORRECT - Check loading states FIRST before authentication
   if (authLoading || loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-2 sm:px-4 py-8">
         <LoadingSpinner />
       </div>
     );
@@ -225,7 +225,7 @@ const AdminPanel = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-2 sm:px-4 py-8">
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 text-center">
           <p className="text-yellow-900 dark:text-yellow-200">
             Please sign in to access the admin panel.
@@ -236,7 +236,7 @@ const AdminPanel = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="max-w-6xl mx-auto px-2 sm:px-4 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
