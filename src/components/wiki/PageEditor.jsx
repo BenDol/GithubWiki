@@ -168,11 +168,11 @@ const PageEditor = ({
 
   // Parse initial content to extract metadata and body
   useEffect(() => {
-    console.log('[PageEditor] Initializing with:', {
-      hasInitialContent: !!initialContent,
-      hasInitialMetadata: !!initialMetadata,
-      initialMetadataKeys: initialMetadata ? Object.keys(initialMetadata) : []
-    });
+    // console.log('[PageEditor] Initializing with:', {
+    //   hasInitialContent: !!initialContent,
+    //   hasInitialMetadata: !!initialMetadata,
+    //   initialMetadataKeys: initialMetadata ? Object.keys(initialMetadata) : []
+    // });
 
     // Prefer initialMetadata if provided, otherwise parse from content
     if (initialMetadata && Object.keys(initialMetadata).length > 0) {
@@ -187,7 +187,7 @@ const PageEditor = ({
         order: initialMetadata.order ?? 0,
       };
 
-      console.log('[PageEditor] Setting metadata from initialMetadata:', newMetadata);
+      // console.log('[PageEditor] Setting metadata from initialMetadata:', newMetadata);
       setMetadata(newMetadata);
       metadataRef.current = newMetadata; // Keep ref in sync
 
@@ -196,7 +196,7 @@ const PageEditor = ({
         try {
           const parsed = matter(initialContent);
           const contentWithMetadata = matter.stringify(parsed.content, newMetadata);
-          console.log('[PageEditor] Reconstructed content with metadata');
+          // console.log('[PageEditor] Reconstructed content with metadata');
           setContent(contentWithMetadata);
         } catch (err) {
           console.error('[PageEditor] Failed to reconstruct content with metadata:', err);
@@ -217,13 +217,13 @@ const PageEditor = ({
           order: parsed.data.order ?? 0,
         };
 
-        console.log('[PageEditor] Setting metadata from content:', newMetadata);
+        // console.log('[PageEditor] Setting metadata from content:', newMetadata);
         setMetadata(newMetadata);
         metadataRef.current = newMetadata; // Keep ref in sync
 
         // Also ensure content is set (in case it wasn't set yet)
         if (!content || content !== initialContent) {
-          console.log('[PageEditor] Setting content from initialContent');
+          // console.log('[PageEditor] Setting content from initialContent');
           setContent(initialContent);
         }
       } catch (err) {
@@ -316,11 +316,11 @@ const PageEditor = ({
 
   // Update content when metadata changes
   const updateContentWithMetadata = (newMetadata) => {
-    console.log('[PageEditor] updateContentWithMetadata called', { newMetadata });
+    // console.log('[PageEditor] updateContentWithMetadata called', { newMetadata });
 
     try {
       const parsed = matter(content);
-      console.log('[PageEditor] Current parsed data from content:', parsed.data);
+      // console.log('[PageEditor] Current parsed data from content:', parsed.data);
 
       // CRITICAL: Ensure we never save empty metadata
       // Merge with existing parsed metadata to preserve any fields not in newMetadata
@@ -328,7 +328,7 @@ const PageEditor = ({
         ...parsed.data, // Keep any existing fields from content
         ...newMetadata, // Override with new values
       };
-      console.log('[PageEditor] Safe merged metadata:', safeMetadata);
+      // console.log('[PageEditor] Safe merged metadata:', safeMetadata);
 
       // Extra safety: ensure required fields are never empty
       if (!safeMetadata.title?.trim() || !safeMetadata.category?.trim() ||
@@ -342,11 +342,11 @@ const PageEditor = ({
       }
 
       const updatedContent = matter.stringify(parsed.content, safeMetadata);
-      console.log('[PageEditor] Content updated with metadata, new length:', updatedContent.length);
+      // console.log('[PageEditor] Content updated with metadata, new length:', updatedContent.length);
 
       // Verify the updated content
       const verifyParsed = matter(updatedContent);
-      console.log('[PageEditor] Verified updated content has metadata:', verifyParsed.data);
+      // console.log('[PageEditor] Verified updated content has metadata:', verifyParsed.data);
 
       setContent(updatedContent);
     } catch (err) {
@@ -545,9 +545,9 @@ const PageEditor = ({
   }, [metadata, content]);
 
   const handleMetadataChange = (field, value) => {
-    console.log('[PageEditor] handleMetadataChange called', { field, value, currentMetadata: metadata });
+    // console.log('[PageEditor] handleMetadataChange called', { field, value, currentMetadata: metadata });
     const newMetadata = { ...metadata, [field]: value };
-    console.log('[PageEditor] New metadata:', newMetadata);
+    // console.log('[PageEditor] New metadata:', newMetadata);
     setMetadata(newMetadata);
     metadataRef.current = newMetadata; // Keep ref in sync
     updateContentWithMetadata(newMetadata);
@@ -575,13 +575,13 @@ const PageEditor = ({
 
   // When content is manually edited in the markdown editor, sync back to metadata state
   const handleContentChange = (newContent) => {
-    console.log('[PageEditor] handleContentChange called', {
-      showFrontmatter,
-      hasNewContent: !!newContent,
-      newContentLength: newContent?.length,
-      currentMetadata: metadata,
-      metadataRef: metadataRef.current
-    });
+    // console.log('[PageEditor] handleContentChange called', {
+    //   showFrontmatter,
+    //   hasNewContent: !!newContent,
+    //   newContentLength: newContent?.length,
+    //   currentMetadata: metadata,
+    //   metadataRef: metadataRef.current
+    // });
 
     // If frontmatter is hidden, reconstruct full content with existing metadata
     if (!showFrontmatter) {
@@ -591,9 +591,9 @@ const PageEditor = ({
         const currentParsed = matter(content);
         const existingMetadata = currentParsed.data || {};
 
-        console.log('[PageEditor] Frontmatter hidden - existing metadata from content:', existingMetadata);
-        console.log('[PageEditor] Current metadata state:', metadata);
-        console.log('[PageEditor] Metadata from ref (latest):', metadataRef.current);
+        // console.log('[PageEditor] Frontmatter hidden - existing metadata from content:', existingMetadata);
+        // console.log('[PageEditor] Current metadata state:', metadata);
+        // console.log('[PageEditor] Metadata from ref (latest):', metadataRef.current);
 
         // CRITICAL: Use metadataRef as source of truth since it has the latest values
         // The metadata state might be stale during rapid edits, but metadataRef is always current
@@ -613,14 +613,14 @@ const PageEditor = ({
           }
         }
 
-        console.log('[PageEditor] Merged metadata (existing + latest from ref):', mergedMetadata);
+        // console.log('[PageEditor] Merged metadata (existing + latest from ref):', mergedMetadata);
 
         const fullContent = matter.stringify(newContent, mergedMetadata);
-        console.log('[PageEditor] Reconstructed content length:', fullContent.length);
+        // console.log('[PageEditor] Reconstructed content length:', fullContent.length);
 
         // Verify reconstructed content has frontmatter
         const verifyParsed = matter(fullContent);
-        console.log('[PageEditor] Verified reconstructed frontmatter:', verifyParsed.data);
+        // console.log('[PageEditor] Verified reconstructed frontmatter:', verifyParsed.data);
 
         setContent(fullContent);
       } catch (err) {
@@ -628,13 +628,13 @@ const PageEditor = ({
         setContent(newContent);
       }
     } else {
-      console.log('[PageEditor] Frontmatter visible - setting content directly');
+      // console.log('[PageEditor] Frontmatter visible - setting content directly');
       setContent(newContent);
 
       // Try to parse frontmatter and update metadata state
       try {
         const parsed = matter(newContent);
-        console.log('[PageEditor] Parsed frontmatter from content:', parsed.data);
+        // console.log('[PageEditor] Parsed frontmatter from content:', parsed.data);
 
         if (parsed.data && Object.keys(parsed.data).length > 0) {
           // CRITICAL: Only update fields that exist in parsed data
@@ -649,7 +649,7 @@ const PageEditor = ({
               date: parsed.data.date || prevMetadata.date || '',
               order: parsed.data.order !== undefined && parsed.data.order !== null ? parsed.data.order : (prevMetadata.order ?? 0),
             };
-            console.log('[PageEditor] Updated metadata state:', newMetadata);
+            // console.log('[PageEditor] Updated metadata state:', newMetadata);
             return newMetadata;
           });
         }

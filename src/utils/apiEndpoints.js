@@ -68,8 +68,8 @@ function getFunctionsBaseUrl() {
 
   switch (platform) {
     case 'dev':
-      // In development, use direct URLs (same as production)
-      return '';
+      // In development with Netlify dev server, functions are at /.netlify/functions
+      return '/.netlify/functions';
 
     case 'cloudflare':
       return '/api';

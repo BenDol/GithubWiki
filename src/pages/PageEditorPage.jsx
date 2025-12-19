@@ -15,6 +15,7 @@ import { isBanned } from '../services/github/admin';
 import PageEditor from '../components/wiki/PageEditor';
 import PendingEditRequests from '../components/wiki/PendingEditRequests';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import AnonymousEditForm from '../components/anonymous/AnonymousEditForm';
 import { handleGitHubError } from '../services/github/api';
 import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
@@ -55,6 +56,8 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
   const [prCheckAttempts, setPrCheckAttempts] = useState(0); // Track how many times we've checked for PR
   const [userIsBanned, setUserIsBanned] = useState(false); // Track if user is banned
   const [checkingBanStatus, setCheckingBanStatus] = useState(true); // Track if we're checking ban status
+  const [showAnonymousForm, setShowAnonymousForm] = useState(false); // Track if showing anonymous edit form
+  const [pendingAnonymousEdit, setPendingAnonymousEdit] = useState(null); // Store content awaiting anonymous submission
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -85,19 +88,19 @@ const PageEditorPage = ({ sectionId, isNewPage = false }) => {
         return;
       }
 
-      // After auth and ban check, if not authenticated, stop loading
-      if (!isAuthenticated) {
+      // After auth and ban check, if not authenticated AND anonymous editing not enabled, stop loading
+      if (!isAuthenticated && !(anonymousEnabled && !requireAuth)) {
         setLoading(false);
         return;
       }
 
-      // Wait for user object to be fully loaded
+      // Wait for user object to be fully loaded (only if authenticated)
       if (isAuthenticated && !user) {
         console.log('[PageEditor] Waiting for user object to load...');
         return; // Keep loading until user is available
       }
 
-      console.log(`[PageEditor] Starting page load - User: ${user?.login || 'none'}`);
+      console.log(`[PageEditor] Starting page load - User: ${user?.login || 'anonymous'}`);
 
       // For new pages, initialize with blank template
       if (isNewPage) {
@@ -496,7 +499,7 @@ Include any supplementary details, notes, or related information.
 
   /**
    * Handle anonymous edit submission
-   * Supports both server and serverless modes
+   * Shows AnonymousEditForm for email verification and data collection
    */
   const handleAnonymousSave = async (newContent, editSummary) => {
     if (!config || branchLoading || !currentBranch) return;
@@ -508,12 +511,10 @@ Include any supplementary details, notes, or related information.
     }
 
     try {
-      setIsSaving(true);
       setError(null);
 
-      const { owner, repo, contentPath } = config.wiki.repository;
+      const { owner, repo } = config.wiki.repository;
       const currentPageId = isNewPage ? newPageId : pageId;
-      const filePath = `${contentPath}/${sectionId}/${currentPageId}.md`;
 
       // Parse content to extract metadata
       const { data: parsedMetadata } = matter(newContent);
@@ -529,78 +530,41 @@ Include any supplementary details, notes, or related information.
         }
       }
 
-      // Prepare payload
-      const payload = {
+      // Store pending edit and show anonymous form
+      setPendingAnonymousEdit({
+        owner,
+        repo,
         section: sectionId,
         pageId: pageIdFromMetadata,
+        pageTitle: parsedMetadata?.title || currentPageId,
         content: newContent,
-        editSummary: editSummary || `Update ${parsedMetadata?.title || currentPageId}`,
-        filePath,
-        metadata: {
-          id: pageIdFromMetadata,
-          title: parsedMetadata?.title || currentPageId,
-          ...parsedMetadata,
-        },
-      };
-
-      // Check if using server or serverless mode
-      const anonymousConfig = config.features?.editRequestCreator?.anonymous;
-      const mode = anonymousConfig?.mode || 'server'; // 'server' or 'serverless'
-
-      let result;
-
-      if (mode === 'serverless') {
-        // Serverless mode: GitHub Issues + Actions
-        console.log('[Anonymous Edit] Using serverless mode (GitHub Issues + Actions)');
-        console.log(`[Anonymous Edit] Branch: ${currentBranch}`);
-
-        result = await submitAnonymousEdit(
-          owner,
-          repo,
-          payload,
-          currentBranch,
-          (status) => setSavingStatus(status)
-        );
-
-        console.log(`[Anonymous Edit - Serverless] Success! PR #${result.prNumber}`);
-      } else {
-        // Server mode: External backend
-        const serverEndpoint = anonymousConfig?.serverEndpoint;
-        if (!serverEndpoint) {
-          throw new Error('Anonymous edit endpoint not configured');
-        }
-
-        console.log(`[Anonymous Edit - Server] Submitting to: ${serverEndpoint}`);
-        setSavingStatus('Submitting anonymous edit...');
-
-        const response = await fetch(serverEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-
-        result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || result.message || 'Failed to submit anonymous edit');
-        }
-
-        console.log(`[Anonymous Edit - Server] Success! PR #${result.prNumber}`);
-      }
-
-      setSavingStatus('');
-      setPrUrl(result.prUrl);
-      setIsUpdatingExistingPR(false); // Anonymous edits always create new PRs
-      setIsFirstContribution(false); // Anonymous edits don't count for prestige
+      });
+      setShowAnonymousForm(true);
 
     } catch (err) {
-      console.error('[Anonymous Edit] Failed:', err);
-      setError(err.message || 'Failed to submit anonymous edit. Please try again.');
-      setIsSaving(false);
-      setSavingStatus('');
+      console.error('[Anonymous Edit] Failed to prepare:', err);
+      setError(err.message || 'Failed to prepare anonymous edit. Please try again.');
     }
+  };
+
+  /**
+   * Handle successful anonymous form submission
+   */
+  const handleAnonymousSuccess = (pr) => {
+    console.log('[Anonymous Edit] Success! PR:', pr);
+    setPrUrl(pr.html_url || pr.url);
+    setIsUpdatingExistingPR(false);
+    setIsFirstContribution(false);
+    setShowAnonymousForm(false);
+    setPendingAnonymousEdit(null);
+  };
+
+  /**
+   * Handle anonymous form cancellation
+   */
+  const handleAnonymousCancel = () => {
+    setShowAnonymousForm(false);
+    setPendingAnonymousEdit(null);
   };
 
   const handleSave = async (newContent, editSummary) => {
@@ -1808,7 +1772,7 @@ Include any supplementary details, notes, or related information.
       )}
 
       {/* Editor - only render when metadata is loaded to prevent empty fields */}
-      {metadata && (
+      {metadata && !showAnonymousForm && (
         <PageEditor
           key={`${pageId}-${editingPR?.number || 'main'}`}
           initialContent={content}
@@ -1822,6 +1786,21 @@ Include any supplementary details, notes, or related information.
           renderSkillPreview={getSkillPreview()}
           renderEquipmentPreview={getEquipmentPreview()}
           dataAutocompleteSearch={getDataAutocompleteSearch()}
+        />
+      )}
+
+      {/* Anonymous Edit Form */}
+      {showAnonymousForm && pendingAnonymousEdit && (
+        <AnonymousEditForm
+          owner={pendingAnonymousEdit.owner}
+          repo={pendingAnonymousEdit.repo}
+          section={pendingAnonymousEdit.section}
+          pageId={pendingAnonymousEdit.pageId}
+          pageTitle={pendingAnonymousEdit.pageTitle}
+          content={pendingAnonymousEdit.content}
+          onSuccess={handleAnonymousSuccess}
+          onCancel={handleAnonymousCancel}
+          config={config}
         />
       )}
     </div>
