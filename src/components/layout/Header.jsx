@@ -61,7 +61,7 @@ const Header = ({ onOpenDataBrowser }) => {
                   W
                 </div>
               )}
-              <span className="font-bold text-xl text-gray-900 dark:text-white hidden sm:block">
+              <span className="font-bold text-base sm:text-lg xl:text-xl text-gray-900 dark:text-white hidden sm:block whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px] md:max-w-[150px] lg:max-w-[200px] xl:max-w-none">
                 {config.wiki.title}
               </span>
             </Link>
