@@ -27,7 +27,14 @@ async function getPrestigeCacheIssue(owner, repo) {
     });
 
     if (issues.length > 0) {
-      return issues[0];
+      const cacheIssue = issues[0];
+      // Security: Verify issue was created by github-actions or wiki bot
+      const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
+      if (!validCreators.includes(cacheIssue.user.login)) {
+        console.warn(`[Prestige] Security: Cache issue created by ${cacheIssue.user.login}, expected github-actions or bot`);
+        return null;
+      }
+      return cacheIssue;
     }
 
     console.log('[Prestige] Cache issue not found - will be created by GitHub Action');

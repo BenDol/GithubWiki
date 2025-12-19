@@ -184,3 +184,10 @@ html {
   }
 }
 
+/* Hide reCAPTCHA badge (must include disclosure text when hidden) */
+.grecaptcha-badge {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+

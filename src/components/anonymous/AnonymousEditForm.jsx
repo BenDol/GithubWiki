@@ -27,13 +27,14 @@ export default function AnonymousEditForm({
   pageId,
   pageTitle,
   content,
+  editSummary,
   onSuccess,
   onCancel,
   config,
 }) {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(editSummary || ''); // Initialize with editSummary if provided
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [emailError, setEmailError] = useState('');
@@ -427,6 +428,31 @@ export default function AnonymousEditForm({
           <p className="text-xs text-gray-600 dark:text-gray-400">
             Anonymous users are limited to <strong>5 edits per hour</strong>.
             Sign in with GitHub for unlimited edits and instant publishing.
+          </p>
+        </div>
+
+        {/* reCAPTCHA disclosure (required when hiding badge) */}
+        <div className="mt-2 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-500">
+            This site is protected by reCAPTCHA and the Google{' '}
+            <a
+              href="https://policies.google.com/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Privacy Policy
+            </a>{' '}
+            and{' '}
+            <a
+              href="https://policies.google.com/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Terms of Service
+            </a>{' '}
+            apply.
           </p>
         </div>
       </div>

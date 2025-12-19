@@ -49,6 +49,12 @@ async function getHighscoreCacheIssue(owner, repo) {
     const existingIssue = issues.find(issue => issue.title === HIGHSCORE_ISSUE_TITLE);
 
     if (existingIssue) {
+      // Security: Verify issue was created by github-actions or wiki bot
+      const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
+      if (!validCreators.includes(existingIssue.user.login)) {
+        console.warn(`[Highscore] Security: Cache issue created by ${existingIssue.user.login}, expected github-actions or bot`);
+        return null;
+      }
       return existingIssue;
     }
 

@@ -78,6 +78,13 @@ export async function getUserSnapshot(owner, repo, username, userId = null) {
       return null;
     }
 
+    // Security: Verify issue was created by github-actions or wiki bot
+    const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
+    if (!validCreators.includes(snapshotIssue.user.login)) {
+      console.warn(`[UserSnapshot] Security: Snapshot issue created by ${snapshotIssue.user.login}, expected github-actions or bot`);
+      return null;
+    }
+
     // Parse JSON from issue body
     try {
       const snapshotData = JSON.parse(snapshotIssue.body);

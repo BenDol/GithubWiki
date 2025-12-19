@@ -52,6 +52,12 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
     );
 
     if (existingIssue) {
+      // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
+      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+      if (existingIssue.user.login !== botUsername) {
+        console.warn(`[Admin] Security: Admin list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+        throw new Error('Invalid admin list issue - not created by bot');
+      }
       console.log(`[Admin] Found existing admin list issue #${existingIssue.number}`);
       return existingIssue;
     }
@@ -104,6 +110,12 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
     );
 
     if (existingIssue) {
+      // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
+      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+      if (existingIssue.user.login !== botUsername) {
+        console.warn(`[Admin] Security: Ban list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+        throw new Error('Invalid ban list issue - not created by bot');
+      }
       console.log(`[Admin] Found existing ban list issue #${existingIssue.number}`);
       return existingIssue;
     }

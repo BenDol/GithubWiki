@@ -538,6 +538,7 @@ Include any supplementary details, notes, or related information.
         pageId: pageIdFromMetadata,
         pageTitle: parsedMetadata?.title || currentPageId,
         content: newContent,
+        editSummary: editSummary || '', // Pass edit summary to pre-fill reason field
       });
       setShowAnonymousForm(true);
 
@@ -561,28 +562,11 @@ Include any supplementary details, notes, or related information.
 
   /**
    * Handle anonymous form cancellation
+   * PageEditor remains mounted with its state preserved, so we just hide the form
    */
   const handleAnonymousCancel = () => {
-    // Restore the edited content back to the editor
-    if (pendingAnonymousEdit?.content) {
-      setContent(pendingAnonymousEdit.content);
-
-      // Also update metadata if it was modified
-      try {
-        const { data: parsedMetadata } = matter(pendingAnonymousEdit.content);
-        if (parsedMetadata && Object.keys(parsedMetadata).length > 0) {
-          setMetadata({
-            ...metadata,
-            ...parsedMetadata,
-          });
-        }
-      } catch (err) {
-        console.warn('[PageEditor] Failed to parse metadata when returning from anonymous form:', err);
-      }
-    }
-
+    // Just hide the form, don't clear pendingAnonymousEdit to preserve form state
     setShowAnonymousForm(false);
-    setPendingAnonymousEdit(null);
   };
 
   const handleSave = async (newContent, editSummary) => {
@@ -1789,37 +1773,42 @@ Include any supplementary details, notes, or related information.
         </div>
       )}
 
-      {/* Editor - only render when metadata is loaded to prevent empty fields */}
-      {metadata && !showAnonymousForm && (
-        <PageEditor
-          key={`${pageId}-${editingPR?.number || 'main'}`}
-          initialContent={content}
-          initialMetadata={metadata}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isSaving={isSaving || isRecentlyCreatedPR}
-          isConfiguringPR={isRecentlyCreatedPR}
-          contentProcessor={getContentProcessor()}
-          customComponents={getCustomComponents()}
-          renderSkillPreview={getSkillPreview()}
-          renderEquipmentPreview={getEquipmentPreview()}
-          dataAutocompleteSearch={getDataAutocompleteSearch()}
-        />
+      {/* Editor - keep mounted to preserve state, hide when showing anonymous form */}
+      {metadata && (
+        <div className={showAnonymousForm ? 'hidden' : ''}>
+          <PageEditor
+            key={`${pageId}-${editingPR?.number || 'main'}`}
+            initialContent={content}
+            initialMetadata={metadata}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            isSaving={isSaving || isRecentlyCreatedPR}
+            isConfiguringPR={isRecentlyCreatedPR}
+            contentProcessor={getContentProcessor()}
+            customComponents={getCustomComponents()}
+            renderSkillPreview={getSkillPreview()}
+            renderEquipmentPreview={getEquipmentPreview()}
+            dataAutocompleteSearch={getDataAutocompleteSearch()}
+          />
+        </div>
       )}
 
-      {/* Anonymous Edit Form */}
-      {showAnonymousForm && pendingAnonymousEdit && (
-        <AnonymousEditForm
-          owner={pendingAnonymousEdit.owner}
-          repo={pendingAnonymousEdit.repo}
-          section={pendingAnonymousEdit.section}
-          pageId={pendingAnonymousEdit.pageId}
-          pageTitle={pendingAnonymousEdit.pageTitle}
-          content={pendingAnonymousEdit.content}
-          onSuccess={handleAnonymousSuccess}
-          onCancel={handleAnonymousCancel}
-          config={config}
-        />
+      {/* Anonymous Edit Form - keep mounted to preserve form field state */}
+      {pendingAnonymousEdit && (
+        <div className={!showAnonymousForm ? 'hidden' : ''}>
+          <AnonymousEditForm
+            owner={pendingAnonymousEdit.owner}
+            repo={pendingAnonymousEdit.repo}
+            section={pendingAnonymousEdit.section}
+            pageId={pendingAnonymousEdit.pageId}
+            pageTitle={pendingAnonymousEdit.pageTitle}
+            content={pendingAnonymousEdit.content}
+            editSummary={pendingAnonymousEdit.editSummary}
+            onSuccess={handleAnonymousSuccess}
+            onCancel={handleAnonymousCancel}
+            config={config}
+          />
+        </div>
       )}
     </div>
   );

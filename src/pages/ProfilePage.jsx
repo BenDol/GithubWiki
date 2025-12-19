@@ -398,12 +398,12 @@ const ProfilePage = () => {
       : null;
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white text-center sm:text-left">
               {isOwnProfile ? 'My Profile' : `${profileUser?.login}'s Profile`}
             </h1>
             {userIsBanned && (
@@ -415,7 +415,7 @@ const ProfilePage = () => {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center gap-2">
             {profileUser && (
               <a
                 href={`https://github.com/${profileUser.login}`}
@@ -447,7 +447,7 @@ const ProfilePage = () => {
             </button>
           </div>
         </div>
-        <p className="text-lg text-gray-600 dark:text-gray-400">
+        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 text-center sm:text-left">
           {isOwnProfile
             ? 'View and manage your wiki contributions'
             : `View ${profileUser?.login}'s wiki contributions`}
@@ -455,25 +455,27 @@ const ProfilePage = () => {
 
         {/* Prestige Badge Display */}
         {profileUser && config?.prestige?.enabled && pullRequests.length > 0 && (
-          <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-center gap-6">
+          <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-4 sm:p-6 border border-gray-200 dark:border-gray-600">
+            <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-6">
               {/* Avatar with Prestige Badge */}
-              <PrestigeAvatar
-                src={profileUser.avatar_url}
-                alt={profileUser.name || profileUser.login}
-                username={profileUser.login}
-                stats={stats}
-                size="2xl"
-                showBadge={true}
-                onClick={!isOwnProfile ? handleAvatarClick : undefined}
-              />
+              <div className="flex-shrink-0">
+                <PrestigeAvatar
+                  src={profileUser.avatar_url}
+                  alt={profileUser.name || profileUser.login}
+                  username={profileUser.login}
+                  stats={stats}
+                  size="2xl"
+                  showBadge={true}
+                  onClick={!isOwnProfile ? handleAvatarClick : undefined}
+                />
+              </div>
 
               {/* Prestige Info */}
-              <div className="flex-1">
+              <div className="flex-1 w-full text-center sm:text-left">
                 {prestigeTier ? (
                   <>
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-center gap-2 mb-2">
+                      <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                         {prestigeTier.title}
                       </h3>
                     </div>
@@ -537,8 +539,8 @@ const ProfilePage = () => {
 
         {/* Basic Profile Info - Show when no contributions yet */}
         {profileUser && !isOwnProfile && pullRequests.length === 0 && (
-          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
-            <div className="flex items-start gap-6">
+          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 sm:p-6 border border-blue-200 dark:border-blue-800">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
               {/* Avatar without prestige badge */}
               <img
                 src={profileUser.avatar_url}
@@ -547,9 +549,9 @@ const ProfilePage = () => {
               />
 
               {/* User Info */}
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <div className="flex-1 w-full text-center sm:text-left">
+                <div className="flex flex-col sm:flex-row items-center sm:items-center gap-2 mb-1">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                     {profileUser.name || profileUser.login}
                   </h3>
                   {userIsBanned && (
@@ -573,7 +575,7 @@ const ProfilePage = () => {
                 )}
 
                 {/* Additional Info */}
-                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-sm text-gray-600 dark:text-gray-400 mb-4">
                   {profileUser.location && (
                     <div className="flex items-center gap-1">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -602,7 +604,7 @@ const ProfilePage = () => {
                 </div>
 
                 {/* GitHub Stats */}
-                <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center justify-center sm:justify-start gap-4 sm:gap-6 text-sm">
                   {profileUser.public_repos !== undefined && (
                     <div>
                       <span className="font-semibold text-gray-900 dark:text-white">{profileUser.public_repos}</span>
