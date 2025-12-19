@@ -69,8 +69,8 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         const patterns = [
           `wiki-edit/${sectionId}/${pageId}-`,
           `:wiki-edit/${sectionId}/${pageId}-`, // Fork branches
-          `anonymous-edit/${sectionId}/${pageId}/`, // Anonymous edits
-          `:anonymous-edit/${sectionId}/${pageId}/`, // Fork anonymous edits
+          `anon-edit/${sectionId}/${pageId}/`, // Anonymous edits
+          `:anon-edit/${sectionId}/${pageId}/`, // Fork anonymous edits
         ];
 
         const matchingPRs = allPRs.filter(pr => {
