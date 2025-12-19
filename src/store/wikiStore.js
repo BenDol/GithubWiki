@@ -49,4 +49,16 @@ export const useWikiStore = create((set, get) => ({
 
     return null;
   },
+
+  // Clear cache for a specific page (useful after edits)
+  clearPageCache: (pageId) => {
+    const { pages } = get();
+    const { [pageId]: removed, ...rest } = pages;
+    set({ pages: rest });
+  },
+
+  // Clear all cached pages
+  clearAllCaches: () => {
+    set({ pages: {} });
+  },
 }));

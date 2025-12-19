@@ -386,16 +386,50 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
   );
 }
 
+const REFRESH_COOLDOWN_KEY = 'highscore_refresh_cooldown';
+const COOLDOWN_MINUTES = 30;
+
 /**
- * Force refresh the highscore cache from GitHub issue
- * Clears browser cache and re-fetches from GitHub issue cache only
- * Does NOT calculate fresh data - that's done by GitHub Actions
+ * Check if refresh is on cooldown
+ * Returns time remaining in milliseconds, or 0 if no cooldown
+ */
+export function getRefreshCooldown() {
+  const cooldownUntil = localStorage.getItem(REFRESH_COOLDOWN_KEY);
+  if (!cooldownUntil) return 0;
+
+  const timeRemaining = parseInt(cooldownUntil) - Date.now();
+  return Math.max(0, timeRemaining);
+}
+
+/**
+ * Set refresh cooldown for 30 minutes
+ */
+function setRefreshCooldown() {
+  const cooldownUntil = Date.now() + (COOLDOWN_MINUTES * 60 * 1000);
+  localStorage.setItem(REFRESH_COOLDOWN_KEY, cooldownUntil.toString());
+}
+
+/**
+ * Purge localStorage cache and fetch fresh data from GitHub issue
+ * Has a 30-minute cooldown that persists across page reloads
  */
 export async function refreshHighscoreCache(owner, repo, config = {}, category = 'allTime') {
-  console.log('[Highscore] Refreshing cache from GitHub issue...');
+  console.log('[Highscore] Purging localStorage cache and fetching fresh data...');
 
-  // Clear browser cache to force re-fetch from GitHub
+  // Check cooldown
+  const cooldown = getRefreshCooldown();
+  if (cooldown > 0) {
+    const minutesLeft = Math.ceil(cooldown / 1000 / 60);
+    throw new Error(`Please wait ${minutesLeft} minute(s) before refreshing again`);
+  }
+
+  // Clear browser cache
   localStorage.removeItem(HIGHSCORE_CACHE_KEY);
+  console.log('[Highscore] ✓ Cleared browser cache');
+
+  // Set cooldown for next refresh
+  setRefreshCooldown();
+  console.log('[Highscore] ✓ Set 30-minute cooldown');
 
   // Re-fetch from GitHub issue cache (will also update localStorage)
   return getContributorHighscore(owner, repo, config, category);

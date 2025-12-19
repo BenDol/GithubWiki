@@ -95,14 +95,20 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
 
                 {/* Contributor Info */}
                 <div className="col-span-6 md:col-span-7 flex items-center space-x-2 sm:space-x-3">
-                  <PrestigeAvatar
-                    src={contributor.avatarUrl}
-                    alt={contributor.login}
-                    username={contributor.login}
-                    size={window.innerWidth < 640 ? 'sm' : 'md'}
-                    showBadge={true}
-                    onClick={handleAvatarClick}
-                  />
+                  {contributor.isAnonymous || !contributor.avatarUrl ? (
+                    <div className={`${window.innerWidth < 640 ? 'w-8 h-8 text-sm' : 'w-10 h-10 text-base'} rounded-full flex-shrink-0 bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white font-semibold`}>
+                      A
+                    </div>
+                  ) : (
+                    <PrestigeAvatar
+                      src={contributor.avatarUrl}
+                      alt={contributor.login}
+                      username={contributor.login}
+                      size={window.innerWidth < 640 ? 'sm' : 'md'}
+                      showBadge={true}
+                      onClick={handleAvatarClick}
+                    />
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-1 sm:space-x-2">
                       <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">
@@ -111,6 +117,11 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                       {isTopTen && (
                         <span className="hidden sm:inline-flex text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-medium">
                           Top 10
+                        </span>
+                      )}
+                      {contributor.isAnonymous && (
+                        <span className="inline-flex text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
+                          Anonymous
                         </span>
                       )}
                     </div>

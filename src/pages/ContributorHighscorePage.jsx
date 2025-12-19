@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 import { useAuthStore } from '../store/authStore';
-import { getContributorHighscore, refreshHighscoreCache, getTimeUntilRefresh } from '../services/github/contributorHighscore';
+import { getContributorHighscore, refreshHighscoreCache, getTimeUntilRefresh, getRefreshCooldown } from '../services/github/contributorHighscore';
 import HighscorePodium from '../components/wiki/HighscorePodium';
 import HighscoreList from '../components/wiki/HighscoreList';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -19,6 +19,7 @@ const ContributorHighscorePage = () => {
   const [error, setError] = useState(null);
   const [highscoreData, setHighscoreData] = useState(null);
   const [timeUntilRefresh, setTimeUntilRefresh] = useState(0);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [showLimitedOnly, setShowLimitedOnly] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('allTime');
 
@@ -83,11 +84,31 @@ const ContributorHighscorePage = () => {
     return () => clearInterval(interval);
   }, [highscoreData, cacheMinutes]);
 
+  // Update refresh cooldown timer
+  useEffect(() => {
+    const updateCooldown = () => {
+      const cooldown = getRefreshCooldown();
+      setRefreshCooldown(cooldown);
+    };
+
+    updateCooldown();
+    const interval = setInterval(updateCooldown, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Handle manual refresh
   const handleRefresh = async () => {
     // Check permissions
     if (!canForceRefresh) {
-      console.log('[ContributorHighscore] Refresh denied - not owner and cache not expired');
+      console.log('[ContributorHighscore] Refresh denied - not owner');
+      return;
+    }
+
+    // Check cooldown
+    if (refreshCooldown > 0) {
+      const minutesLeft = Math.ceil(refreshCooldown / 1000 / 60);
+      alert(`Please wait ${minutesLeft} minute(s) before refreshing again`);
       return;
     }
 
@@ -103,6 +124,9 @@ const ContributorHighscorePage = () => {
       );
 
       setHighscoreData(data);
+
+      // Update cooldown state immediately
+      setRefreshCooldown(getRefreshCooldown());
     } catch (err) {
       console.error('[ContributorHighscore] Failed to refresh:', err);
       setError(err.message || 'Failed to refresh highscore');
@@ -212,13 +236,15 @@ const ContributorHighscorePage = () => {
             <div className="flex flex-col items-start sm:items-end space-y-2 flex-shrink-0">
               <button
                 onClick={handleRefresh}
-                disabled={refreshing || !canForceRefresh}
+                disabled={refreshing || !canForceRefresh || refreshCooldown > 0}
                 title={
                   refreshing
                     ? 'Refreshing...'
                     : !canForceRefresh
                       ? 'Only repository owner can manually refresh (automated updates run daily via GitHub Action)'
-                      : 'Force refresh highscore data'
+                      : refreshCooldown > 0
+                        ? `Cooldown: ${Math.ceil(refreshCooldown / 1000 / 60)} minute(s) remaining`
+                        : 'Purge cache and fetch fresh data from GitHub'
                 }
                 className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
@@ -235,7 +261,7 @@ const ContributorHighscorePage = () => {
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    Refresh Now
+                    Refresh
                   </>
                 )}
               </button>
@@ -246,9 +272,15 @@ const ContributorHighscorePage = () => {
                     Updated: {new Date(highscoreData.lastUpdated).toLocaleString()}
                   </div>
                   {isRepoOwner ? (
-                    <div>
-                      Next manual refresh: {formatTimeRemaining(timeUntilRefresh)}
-                    </div>
+                    refreshCooldown > 0 ? (
+                      <div className="text-amber-600 dark:text-amber-400 font-medium">
+                        ⏳ Cooldown: {formatTimeRemaining(refreshCooldown)}
+                      </div>
+                    ) : (
+                      <div className="text-green-600 dark:text-green-400 font-medium">
+                        ✓ Ready to refresh
+                      </div>
+                    )
                   ) : (
                     <div className="text-amber-600 dark:text-amber-400 font-medium">
                       🤖 Auto-updated daily

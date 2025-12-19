@@ -30,7 +30,7 @@ const PageViewerPage = ({ sectionId }) => {
   const [metadata, setMetadata] = useState(null);
   const [existsOnGitHub, setExistsOnGitHub] = useState(false);
 
-  const { cachePage, getCachedPage } = useWikiStore();
+  const { cachePage, getCachedPage, clearPageCache } = useWikiStore();
   const { config } = useWikiConfig();
   const section = useSection(sectionId);
   const showToc = useFeature('tableOfContents');
@@ -39,6 +39,7 @@ const PageViewerPage = ({ sectionId }) => {
   const { branch } = useBranchNamespace();
   const [userIsBanned, setUserIsBanned] = useState(false);
   const [checkingBanStatus, setCheckingBanStatus] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Check if this is a framework/hardcoded page (no editing allowed)
   const isFrameworkPage = section?.allowContributions === false;
@@ -50,6 +51,52 @@ const PageViewerPage = ({ sectionId }) => {
   // Determine if edit button should be shown
   // Show if: page allows contributions AND (user is authenticated OR anonymous mode is available) AND user is not banned AND not checking ban status
   const canShowEditButton = !isFrameworkPage && (isAuthenticated || (anonymousEnabled && !requireAuth)) && !userIsBanned && !checkingBanStatus;
+
+  /**
+   * Force refresh page content by clearing cache and fetching with cache-busting
+   */
+  const handleRefreshContent = async () => {
+    try {
+      setRefreshing(true);
+
+      // Clear in-memory cache for this page
+      const cacheKey = `${sectionId}/${pageId}`;
+      clearPageCache(cacheKey);
+
+      // Fetch with cache-busting query parameter to bypass browser cache
+      const timestamp = Date.now();
+      const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md?t=${timestamp}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to refresh content');
+      }
+
+      const markdownText = await response.text();
+
+      // Parse frontmatter and content
+      const { data, content: markdownContent } = matter(markdownText);
+
+      // Apply auto-formatting to title if enabled
+      const formattedMetadata = {
+        ...data,
+        title: getDisplayTitle(pageId, data.title, autoFormatTitles)
+      };
+
+      setMetadata(formattedMetadata);
+      setContent(markdownContent);
+
+      // Cache the refreshed page
+      cachePage(cacheKey, markdownContent, formattedMetadata);
+
+      console.log('[PageViewer] Content refreshed successfully');
+    } catch (error) {
+      console.error('[PageViewer] Failed to refresh content:', error);
+      // Show error notification or toast (could be enhanced)
+      alert('Failed to refresh content. The page may not be deployed yet. Please try again in a moment.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     const loadPage = async () => {
@@ -382,6 +429,31 @@ const PageViewerPage = ({ sectionId }) => {
             ← Back to {section?.title || sectionId}
           </Link>
         )}
+
+        {/* Refresh button - force reload content from server */}
+        <button
+          onClick={handleRefreshContent}
+          disabled={refreshing}
+          className="inline-flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Refresh page content from server"
+        >
+          {refreshing ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Refreshing...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </>
+          )}
+        </button>
 
         {/* Edit button - only show if user is authenticated or anonymous editing is enabled */}
         {canShowEditButton && (

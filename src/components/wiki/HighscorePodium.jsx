@@ -74,22 +74,35 @@ const HighscorePodium = ({ topThree }) => {
             {/* Avatar with Prestige Badge */}
             <div className="relative mb-2 sm:mb-3 md:mb-4">
               <div className="absolute inset-0 rounded-full bg-gradient-to-br from-gray-300 to-gray-500 blur-lg opacity-60 animate-pulse"></div>
-              <PrestigeAvatar
-                src={second.avatarUrl}
-                alt={second.login}
-                username={second.login}
-                size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
-                showBadge={true}
-                onClick={handleAvatarClick}
-              />
+              {second.isAnonymous || !second.avatarUrl ? (
+                <div className={`${window.innerWidth < 640 ? 'w-10 h-10 text-base' : window.innerWidth < 768 ? 'w-12 h-12 text-lg' : 'w-16 h-16 text-2xl'} rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white font-semibold shadow-xl relative z-10`}>
+                  A
+                </div>
+              ) : (
+                <PrestigeAvatar
+                  src={second.avatarUrl}
+                  alt={second.login}
+                  username={second.login}
+                  size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
+                  showBadge={true}
+                  onClick={handleAvatarClick}
+                />
+              )}
             </div>
 
             {/* Username */}
             <div className="text-center mb-1 sm:mb-2">
-              <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
-                {second.login}
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex flex-col items-center space-y-1">
+                <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
+                  {second.login}
+                </h3>
+                {second.isAnonymous && (
+                  <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
+                    Anonymous
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                 {second.score?.toLocaleString() || second.contributions?.toLocaleString() || 0}
               </p>
             </div>
@@ -122,24 +135,37 @@ const HighscorePodium = ({ topThree }) => {
               </div>
               {/* Avatar */}
               <div className="relative">
-                <PrestigeAvatar
-                  src={first.avatarUrl}
-                  alt={first.login}
-                  username={first.login}
-                  size={window.innerWidth < 640 ? 'xl' : window.innerWidth < 768 ? '2xl' : '2xl'}
-                  showBadge={true}
-                  badgeScale={0.85}
-                  onClick={handleAvatarClick}
-                />
+                {first.isAnonymous || !first.avatarUrl ? (
+                  <div className={`${window.innerWidth < 640 ? 'w-16 h-16 text-2xl' : window.innerWidth < 768 ? 'w-20 h-20 text-3xl' : 'w-20 h-20 text-3xl'} rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white font-semibold shadow-xl relative z-10`}>
+                    A
+                  </div>
+                ) : (
+                  <PrestigeAvatar
+                    src={first.avatarUrl}
+                    alt={first.login}
+                    username={first.login}
+                    size={window.innerWidth < 640 ? 'xl' : window.innerWidth < 768 ? '2xl' : '2xl'}
+                    showBadge={true}
+                    badgeScale={0.85}
+                    onClick={handleAvatarClick}
+                  />
+                )}
               </div>
             </div>
 
             {/* Username */}
             <div className="text-center mb-1 sm:mb-2">
-              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-500 dark:text-yellow-400 truncate max-w-[100px] sm:max-w-none">
-                {first.login}
-              </h3>
-              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 font-semibold">
+              <div className="flex flex-col items-center space-y-1">
+                <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-500 dark:text-yellow-400 truncate max-w-[100px] sm:max-w-none">
+                  {first.login}
+                </h3>
+                {first.isAnonymous && (
+                  <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
+                    Anonymous
+                  </span>
+                )}
+              </div>
+              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 font-semibold mt-1">
                 {first.score?.toLocaleString() || first.contributions?.toLocaleString() || 0}
               </p>
             </div>
@@ -167,22 +193,35 @@ const HighscorePodium = ({ topThree }) => {
             {/* Avatar with Prestige Badge */}
             <div className="relative mb-2 sm:mb-3 md:mb-4">
               <div className="absolute inset-0 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 blur-lg opacity-60 animate-pulse"></div>
-              <PrestigeAvatar
-                src={third.avatarUrl}
-                alt={third.login}
-                username={third.login}
-                size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
-                showBadge={true}
-                onClick={handleAvatarClick}
-              />
+              {third.isAnonymous || !third.avatarUrl ? (
+                <div className={`${window.innerWidth < 640 ? 'w-10 h-10 text-base' : window.innerWidth < 768 ? 'w-12 h-12 text-lg' : 'w-16 h-16 text-2xl'} rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white font-semibold shadow-xl relative z-10`}>
+                  A
+                </div>
+              ) : (
+                <PrestigeAvatar
+                  src={third.avatarUrl}
+                  alt={third.login}
+                  username={third.login}
+                  size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
+                  showBadge={true}
+                  onClick={handleAvatarClick}
+                />
+              )}
             </div>
 
             {/* Username */}
             <div className="text-center mb-1 sm:mb-2">
-              <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
-                {third.login}
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex flex-col items-center space-y-1">
+                <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
+                  {third.login}
+                </h3>
+                {third.isAnonymous && (
+                  <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
+                    Anonymous
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                 {third.score?.toLocaleString() || third.contributions?.toLocaleString() || 0}
               </p>
             </div>
