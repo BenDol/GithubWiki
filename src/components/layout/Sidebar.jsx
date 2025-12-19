@@ -416,10 +416,11 @@ const Sidebar = () => {
                 onNavigate={handleNavigate}
               />
 
-              {/* Sidebar pages (e.g., Highscore, Contributing, etc.) */}
-              {/* These pages show in sidebar on mobile only, and in header on desktop */}
-              {config.sidebar?.pages?.filter(page => page.path !== '/').map((page, index) => (
-                <div key={index} className="lg:hidden">
+              {/* Sidebar pages (e.g., Highscore) - top position only */}
+              {/* Pages with showInHeader:false show in sidebar on all screens */}
+              {/* Pages without showInHeader:false show in sidebar on mobile only, and in header on desktop */}
+              {config.sidebar?.pages?.filter(page => page.path !== '/' && page.position !== 'bottom').map((page, index) => (
+                <div key={index} className={page.showInHeader === false ? '' : 'lg:hidden'}>
                   <TreeNode
                     icon={page.icon}
                     title={page.title}
@@ -542,6 +543,24 @@ const Sidebar = () => {
                   </div>
                 );
               })}
+
+              {/* Bottom sidebar pages (e.g., Guidelines, Contributing) */}
+              {config.sidebar?.pages?.filter(page => page.position === 'bottom').map((page, index) => (
+                <div key={index} className={page.showInHeader === false ? '' : 'lg:hidden'}>
+                  <TreeNode
+                    icon={page.icon}
+                    title={page.title}
+                    path={page.path}
+                    isActive={location.pathname === page.path}
+                    hasChildren={false}
+                    level={0}
+                    showTreeLines={showTreeLines}
+                    treeLineWidth={treeLineWidth}
+                    treeLineStyle={treeLineStyle}
+                    onNavigate={handleNavigate}
+                  />
+                </div>
+              ))}
             </>
           )}
         </nav>

@@ -2,14 +2,17 @@ import { useEffect, useMemo } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { useWikiConfig } from './hooks/useWikiConfig';
 import { useAuthStore } from './store/authStore';
+import { useUIStore } from './store/uiStore';
 import { createWikiRouter } from './router';
 import { BranchProvider } from './hooks/useBranchNamespace';
 import RateLimitNotification from './components/common/RateLimitNotification';
 import DevelopmentBanner from './components/common/DevelopmentBanner';
+import { initializeVersionSystem } from './utils/versionManager';
 
 function App() {
   const { config, loading, error } = useWikiConfig();
   const { restoreSession } = useAuthStore();
+  const { addToast } = useUIStore();
 
   // Create router with loaded config (memoized to prevent recreation on every render)
   // MUST be before early returns to comply with hooks rules
@@ -23,6 +26,35 @@ function App() {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  // Initialize version system (migration, cache purging)
+  useEffect(() => {
+    if (config) {
+      initializeVersionSystem(config).then(result => {
+        if (result.migrationRan) {
+          console.log('[App] Storage migration completed');
+        }
+        if (result.cachesPurged) {
+          console.log('[App] Temporary caches purged due to version update');
+
+          // Show notification in dev mode
+          if (import.meta.env.DEV) {
+            addToast(
+              `Caches cleared - Updated to version ${result.currentVersion}`,
+              'info',
+              5000
+            );
+          }
+        }
+        if (result.versionChanged) {
+          console.log('[App] Version updated:', {
+            from: result.previousVersion,
+            to: result.currentVersion,
+          });
+        }
+      });
+    }
+  }, [config, addToast]);
 
   // Set document title from config
   useEffect(() => {
