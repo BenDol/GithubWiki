@@ -563,6 +563,24 @@ Include any supplementary details, notes, or related information.
    * Handle anonymous form cancellation
    */
   const handleAnonymousCancel = () => {
+    // Restore the edited content back to the editor
+    if (pendingAnonymousEdit?.content) {
+      setContent(pendingAnonymousEdit.content);
+
+      // Also update metadata if it was modified
+      try {
+        const { data: parsedMetadata } = matter(pendingAnonymousEdit.content);
+        if (parsedMetadata && Object.keys(parsedMetadata).length > 0) {
+          setMetadata({
+            ...metadata,
+            ...parsedMetadata,
+          });
+        }
+      } catch (err) {
+        console.warn('[PageEditor] Failed to parse metadata when returning from anonymous form:', err);
+      }
+    }
+
     setShowAnonymousForm(false);
     setPendingAnonymousEdit(null);
   };

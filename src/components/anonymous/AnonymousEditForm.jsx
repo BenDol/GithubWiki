@@ -412,9 +412,13 @@ export default function AnonymousEditForm({
                      bg-gray-100 dark:bg-gray-700
                      hover:bg-gray-200 dark:hover:bg-gray-600
                      disabled:opacity-50 disabled:cursor-not-allowed
-                     transition-colors"
+                     transition-colors
+                     inline-flex items-center space-x-2"
           >
-            Cancel
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>Back to Editor</span>
           </button>
         </div>
 
