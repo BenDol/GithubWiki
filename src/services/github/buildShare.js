@@ -57,8 +57,27 @@ const buildCache = new Map();
  * @returns {Promise<string>} Hex checksum string
  */
 export async function generateChecksum(buildData, length = 12) {
-  // Normalize JSON (sort keys, no whitespace)
-  const normalized = JSON.stringify(buildData, Object.keys(buildData).sort());
+  // Helper function to recursively sort object keys
+  const sortObjectKeys = (obj) => {
+    if (Array.isArray(obj)) {
+      return obj.map(sortObjectKeys);
+    }
+    if (obj !== null && typeof obj === 'object') {
+      return Object.keys(obj)
+        .sort()
+        .reduce((sorted, key) => {
+          sorted[key] = sortObjectKeys(obj[key]);
+          return sorted;
+        }, {});
+    }
+    return obj;
+  };
+
+  // Sort all keys recursively for consistent hashing
+  const sortedData = sortObjectKeys(buildData);
+
+  // Normalize JSON (no whitespace)
+  const normalized = JSON.stringify(sortedData);
 
   // Generate SHA-256 hash
   const encoder = new TextEncoder();
@@ -247,7 +266,7 @@ export async function saveBuild(owner, repo, buildType, buildData) {
     // Generate short checksum (12 chars) and full checksum for verification
     const shortChecksum = await generateChecksum(buildData, 12);
     const fullChecksum = await generateChecksum(buildData, 64);
-    console.log('[Build Share] Generated checksum:', shortChecksum, '(short)', fullChecksum.substring(0, 20) + '...', '(full)');
+    console.log('[Build Share] Generated checksum:', shortChecksum);
 
     // Get or create index issue
     const indexIssue = await getOrCreateIndexIssue(owner, repo);
@@ -302,6 +321,12 @@ export async function saveBuild(owner, repo, buildType, buildData) {
       newBody
     );
 
+    // Bust the index cache to ensure next load gets fresh data
+    if (window.__BUILD_SHARE_INDEX_NUMBER) {
+      console.log('[Build Share] Busting index cache after update');
+      delete window.__BUILD_SHARE_INDEX_NUMBER;
+    }
+
     console.log('[Build Share] ✓ Build saved successfully!');
 
     return shortChecksum;
@@ -329,41 +354,39 @@ export async function loadBuild(owner, repo, checksum) {
     }
 
     console.log('[Build Share] Cache miss, fetching from GitHub...');
-    console.log('[Build Share] Environment check:', {
-      isDev: import.meta.env.DEV,
-      hasToken: !!import.meta.env.VITE_WIKI_BOT_TOKEN,
-      mode: import.meta.env.MODE
-    });
 
     // Get index issue
     const indexIssue = await getOrCreateIndexIssue(owner, repo);
-    console.log('[Build Share] Index issue:', indexIssue.number);
 
     // Parse index map
     const indexMap = parseIndexMap(indexIssue.body);
 
-    console.log('[Build Share] Index map parsed:', {
-      totalBuilds: indexMap.size,
-      checksums: Array.from(indexMap.keys()),
-      lookingFor: checksum,
-    });
-
     // Find comment ID for checksum
-    const commentId = indexMap.get(checksum);
+    let commentId = indexMap.get(checksum);
 
+    // If not found, try refreshing the index (might be cached)
     if (!commentId) {
-      console.error('[Build Share] Build not found. Index body:', indexIssue.body);
-      throw new Error(`Build not found for checksum: ${checksum}`);
-    }
+      console.warn('[Build Share] Checksum not found in cached index, refreshing...');
 
-    console.log('[Build Share] Found comment ID:', commentId);
+      // Bust cache and fetch fresh index
+      const freshIndexIssue = await getOrCreateIndexIssue(owner, repo, true);
+      const freshIndexMap = parseIndexMap(freshIndexIssue.body);
+
+      commentId = freshIndexMap.get(checksum);
+
+      if (!commentId) {
+        console.error('[Build Share] Build not found for checksum:', checksum);
+        throw new Error(`Build not found for checksum: ${checksum}`);
+      }
+
+      console.log('[Build Share] ✓ Found after cache refresh');
+    }
 
     // Fetch comment data using bot token to avoid rate limits
     let comment;
 
     if (import.meta.env.DEV && import.meta.env.VITE_WIKI_BOT_TOKEN) {
       // Development: Use bot token directly
-      console.log('[Build Share] Using direct bot token in dev mode');
       const { Octokit } = await import('octokit');
       const OctokitWithRetry = Octokit.plugin(retryPlugin);
       const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
@@ -382,9 +405,6 @@ export async function loadBuild(owner, repo, checksum) {
       comment = data;
     } else {
       // Production: Use serverless function
-      console.log('[Build Share] Using serverless function for comment fetch');
-      console.log('[Build Share] Fetching from:', getGithubBotEndpoint());
-
       const response = await fetch(getGithubBotEndpoint(), {
         method: 'POST',
         headers: {
@@ -398,8 +418,6 @@ export async function loadBuild(owner, repo, checksum) {
         }),
       });
 
-      console.log('[Build Share] Response status:', response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[Build Share] Error response:', errorText);
@@ -409,8 +427,6 @@ export async function loadBuild(owner, repo, checksum) {
       const data = await response.json();
       comment = data.comment;
     }
-
-    console.log('[Build Share] Comment fetched, parsing build data...');
 
     // Parse build data from comment body
     const buildInfo = JSON.parse(comment.body);
@@ -423,7 +439,7 @@ export async function loadBuild(owner, repo, checksum) {
       });
     }
 
-    console.log('[Build Share] ✓ Build loaded successfully!', { type: buildInfo.type });
+    console.log('[Build Share] ✓ Build loaded successfully!');
 
     const result = {
       type: buildInfo.type,
@@ -433,13 +449,6 @@ export async function loadBuild(owner, repo, checksum) {
 
     // Cache the build (immutable, so cache forever)
     buildCache.set(checksum, result);
-    console.log('[Build Share] Cached build for future use. Cache size:', buildCache.size);
-
-    console.log('[Build Share] Returning build data:', {
-      hasType: !!result.type,
-      hasData: !!result.data,
-      type: result.type
-    });
 
     return result;
   } catch (error) {
