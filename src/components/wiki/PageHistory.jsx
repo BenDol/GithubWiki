@@ -139,6 +139,21 @@ const PageHistory = ({ sectionId, pageId }) => {
         {paginatedCommits.map((commit, index) => {
           // Calculate actual index in full commits array for "Latest" badge
           const actualIndex = startIndex + index;
+
+          // Check if this is an anonymous contribution
+          const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+          const isBotCommit = commit.author.username === botUsername;
+          const isAnonymousContribution = isBotCommit && commit.message.includes('Anonymous contribution by:');
+
+          // Extract display name from anonymous commit message
+          let displayName = commit.author.name;
+          if (isAnonymousContribution) {
+            const nameMatch = commit.message.match(/Anonymous contribution by:\s*(.+)/);
+            if (nameMatch) {
+              displayName = nameMatch[1].trim();
+            }
+          }
+
           return (
           <div
             key={commit.sha}
@@ -147,7 +162,21 @@ const PageHistory = ({ sectionId, pageId }) => {
             <div className="flex items-start space-x-4">
               {/* Author avatar with prestige badge */}
               <div className="flex-shrink-0">
-                {commit.author.avatar ? (
+                {isAnonymousContribution ? (
+                  // Anonymous contribution - show "A" with bot avatar in corner
+                  <div className="relative h-10 w-10">
+                    <div className="h-10 w-10 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-base font-semibold">
+                      A
+                    </div>
+                    {commit.author.avatar && (
+                      <img
+                        src={commit.author.avatar}
+                        alt="Bot"
+                        className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full border-2 border-white dark:border-gray-800"
+                      />
+                    )}
+                  </div>
+                ) : commit.author.avatar ? (
                   <PrestigeAvatar
                     src={commit.author.avatar}
                     alt={commit.author.name}
@@ -172,18 +201,34 @@ const PageHistory = ({ sectionId, pageId }) => {
                     <p className="text-base font-medium text-gray-900 dark:text-white mb-1">
                       {commit.message.split('\n')[0]}
                     </p>
-                    {commit.message.split('\n').length > 1 && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        {commit.message.split('\n').slice(1).join('\n')}
-                      </p>
-                    )}
+                    {commit.message.split('\n').length > 1 && (() => {
+                      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+                      const isBotCommit = commit.author.username === botUsername;
+                      const messageLines = commit.message.split('\n').slice(1);
+
+                      // For bot commits, show only first 3 lines
+                      const displayLines = isBotCommit ? messageLines.slice(0, 3) : messageLines;
+
+                      return (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap" style={{ marginTop: '-0.875rem' }}>
+                          {displayLines.join('\n')}
+                        </p>
+                      );
+                    })()}
                   </div>
 
-                  {actualIndex === 0 && (
-                    <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full">
-                      Latest
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 ml-2">
+                    {actualIndex === 0 && (
+                      <span className="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full">
+                        Latest
+                      </span>
+                    )}
+                    {isAnonymousContribution && (
+                      <span className="px-2 py-1 text-xs font-medium bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded-full">
+                        Anonymous
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
@@ -192,17 +237,19 @@ const PageHistory = ({ sectionId, pageId }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
                     <span>
-                      {commit.author.username ? (
+                      {isAnonymousContribution ? (
+                        displayName
+                      ) : commit.author.username ? (
                         <a
                           href={`https://github.com/${commit.author.username}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="hover:text-blue-600 dark:hover:text-blue-400"
                         >
-                          {commit.author.name}
+                          {displayName}
                         </a>
                       ) : (
-                        commit.author.name
+                        displayName
                       )}
                     </span>
                   </div>

@@ -94,22 +94,85 @@ const StarContributor = ({ sectionId, pageId }) => {
     return null;
   }
 
+  // Helper to parse anonymous contribution from commit message
+  const parseAnonymousContribution = (commitMessage) => {
+    if (!commitMessage) return null;
+    const nameMatch = commitMessage.match(/Anonymous contribution by:\s*(.+)/);
+    const emailMatch = commitMessage.match(/Email:\s*(.+?)\s*\(verified\s*✓\)/);
+    if (nameMatch && emailMatch) {
+      return {
+        displayName: nameMatch[1].trim(),
+        email: emailMatch[1].trim(),
+      };
+    }
+    return null;
+  };
+
   // Calculate top contributor (user with most commits)
+  // Support both regular users and anonymous contributors
   const contributorCounts = {};
+  const anonymousContributors = {}; // Track anonymous by email
+  const botUsername = config?.wiki?.botUsername || import.meta.env.VITE_WIKI_BOT_USERNAME;
+
+  console.log('[StarContributor] Debug:', {
+    botUsername,
+    totalCommits: commits.length,
+    firstCommit: commits[0],
+  });
+
   commits.forEach((commit) => {
     const username = commit.author?.username;
-    if (username) {
+
+    console.log('[StarContributor] Processing commit:', {
+      username,
+      isBotCommit: username === botUsername,
+      messagePreview: commit.message?.substring(0, 100),
+    });
+
+    // Check if this is an anonymous contribution
+    if (username === botUsername) {
+      const anonData = parseAnonymousContribution(commit.message);
+      console.log('[StarContributor] Anonymous data:', anonData);
+      if (anonData) {
+        const key = `anon:${anonData.email}`;
+        contributorCounts[key] = (contributorCounts[key] || 0) + 1;
+        // Store display name for this anonymous contributor (use first one encountered)
+        if (!anonymousContributors[key]) {
+          anonymousContributors[key] = {
+            displayName: anonData.displayName,
+            email: anonData.email,
+            isAnonymous: true,
+          };
+        }
+      }
+    } else if (username) {
+      // Regular contributor
       contributorCounts[username] = (contributorCounts[username] || 0) + 1;
     }
   });
 
-  // Find user with most commits
+  console.log('[StarContributor] Contributor counts:', contributorCounts);
+  console.log('[StarContributor] Anonymous contributors:', anonymousContributors);
+
+  // Find user/contributor with most commits
   let topContributor = null;
   let maxCommits = 0;
-  Object.entries(contributorCounts).forEach(([username, count]) => {
+  Object.entries(contributorCounts).forEach(([key, count]) => {
     if (count > maxCommits) {
       maxCommits = count;
-      topContributor = commits.find((c) => c.author?.username === username)?.author;
+
+      if (key.startsWith('anon:')) {
+        // Anonymous contributor
+        topContributor = {
+          ...anonymousContributors[key],
+          name: anonymousContributors[key].displayName,
+          username: null,
+          avatar: null,
+        };
+      } else {
+        // Regular contributor
+        topContributor = commits.find((c) => c.author?.username === key)?.author;
+      }
     }
   });
 
@@ -181,14 +244,20 @@ const StarContributor = ({ sectionId, pageId }) => {
         }
       `}</style>
       <div className="relative flex-shrink-0 mt-[0px]">
-        <PrestigeAvatar
-          src={topContributor.avatar}
-          alt={topContributor.name}
-          username={topContributor.username}
-          size="sm"
-          showBadge={false}
-          onClick={handleAvatarClick}
-        />
+        {topContributor.isAnonymous ? (
+          <div className="w-8 h-8 rounded-full bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-sm font-semibold">
+            A
+          </div>
+        ) : (
+          <PrestigeAvatar
+            src={topContributor.avatar}
+            alt={topContributor.name}
+            username={topContributor.username}
+            size="sm"
+            showBadge={false}
+            onClick={handleAvatarClick}
+          />
+        )}
         {/* Star overlay */}
         <div
           className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-400 rounded-full flex items-center justify-center shadow-md text-[9px]"
@@ -206,8 +275,8 @@ const StarContributor = ({ sectionId, pageId }) => {
         </span>
       </div>
 
-      {/* User Action Menu */}
-      {showUserActionMenu && selectedUser && (
+      {/* User Action Menu - only for registered users */}
+      {showUserActionMenu && selectedUser && !topContributor.isAnonymous && (
         <UserActionMenu
           username={selectedUser}
           onClose={handleUserMenuClose}

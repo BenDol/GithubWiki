@@ -69,6 +69,8 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         const patterns = [
           `wiki-edit/${sectionId}/${pageId}-`,
           `:wiki-edit/${sectionId}/${pageId}-`, // Fork branches
+          `anonymous-edit/${sectionId}/${pageId}/`, // Anonymous edits
+          `:anonymous-edit/${sectionId}/${pageId}/`, // Fork anonymous edits
         ];
 
         const matchingPRs = allPRs.filter(pr => {
@@ -78,16 +80,45 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
 
         console.log(`[PendingEditRequests] Found ${matchingPRs.length} matching PRs for this page`);
 
+        // Helper function to check if PR has anonymous-edit label
+        const hasAnonymousLabel = (labels) => {
+          return labels.some(label =>
+            (typeof label === 'string' && label === 'anonymous-edit') ||
+            (typeof label === 'object' && label.name === 'anonymous-edit')
+          );
+        };
+
+        // Helper function to extract display name from name: label
+        const getDisplayNameFromLabels = (labels) => {
+          const nameLabel = labels.find(label => {
+            const labelName = typeof label === 'string' ? label : label.name;
+            return labelName?.startsWith('name:');
+          });
+
+          if (nameLabel) {
+            const labelName = typeof nameLabel === 'string' ? nameLabel : nameLabel.name;
+            return labelName.substring(5); // Remove "name:" prefix
+          }
+          return null;
+        };
+
         // Format PR data
-        const formattedPRs = matchingPRs.map(pr => ({
-          number: pr.number,
-          title: pr.title,
-          url: pr.html_url,
-          author: pr.user.login,
-          authorAvatar: pr.user.avatar_url,
-          createdAt: pr.created_at,
-          updatedAt: pr.updated_at,
-        }));
+        const formattedPRs = matchingPRs.map(pr => {
+          const isAnonymousPR = hasAnonymousLabel(pr.labels);
+          const displayName = isAnonymousPR ? getDisplayNameFromLabels(pr.labels) : null;
+
+          return {
+            number: pr.number,
+            title: pr.title,
+            url: pr.html_url,
+            author: pr.user.login,
+            authorAvatar: pr.user.avatar_url,
+            createdAt: pr.created_at,
+            updatedAt: pr.updated_at,
+            isAnonymous: isAnonymousPR,
+            displayName: displayName,
+          };
+        });
 
         setPrs(formattedPRs);
       } catch (err) {
@@ -205,24 +236,31 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           {prs.map(pr => {
             const isOwnPR = isAuthenticated && user?.login === pr.author;
             const isClosing = closingPR === pr.number;
+            const displayAuthor = pr.isAnonymous && pr.displayName ? pr.displayName : pr.author;
 
             return (
               <div
                 key={pr.number}
                 className="group relative flex items-start space-x-2 px-3 py-2 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors border-b border-blue-100 dark:border-blue-800 last:border-b-0"
               >
-                <img
-                  src={pr.authorAvatar}
-                  alt={pr.author}
-                  className="w-5 h-5 rounded-full flex-shrink-0 mt-0.5"
-                />
+                {pr.isAnonymous ? (
+                  <div className="w-5 h-5 rounded-full flex-shrink-0 mt-0.5 bg-gray-400 dark:bg-gray-600 flex items-center justify-center text-white text-xs font-semibold">
+                    A
+                  </div>
+                ) : (
+                  <img
+                    src={pr.authorAvatar}
+                    alt={pr.author}
+                    className="w-5 h-5 rounded-full flex-shrink-0 mt-0.5"
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline space-x-2">
                     <span className="text-xs font-medium text-blue-900 dark:text-blue-200">
                       #{pr.number}
                     </span>
                     <span className="text-xs text-blue-700 dark:text-blue-300 truncate">
-                      by {pr.author}
+                      by {displayAuthor}
                     </span>
                     {isOwnPR && (
                       <span className="text-xs bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded">
