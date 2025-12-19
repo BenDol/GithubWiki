@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import * as LeoProfanity from 'leo-profanity';
 import EmailVerificationModal from './EmailVerificationModal';
 import RateLimitOverlay from './RateLimitOverlay';
 import { validateEmailFormat, getEmailValidationError } from '../../utils/emailValidation';
@@ -76,13 +77,13 @@ export default function AnonymousEditForm({
 
   // Check rate limit on mount
   useEffect(() => {
-    checkRateLimit().then((result) => {
+    checkRateLimit(owner, repo).then((result) => {
       if (!result.allowed) {
         setIsRateLimited(true);
         setRateLimitRemaining(result.remainingMs || 0);
       }
     });
-  }, []);
+  }, [owner, repo]);
 
   const validateForm = () => {
     let isValid = true;
@@ -105,6 +106,9 @@ export default function AnonymousEditForm({
       isValid = false;
     } else if (displayName.length > 50) {
       setDisplayNameError('Display name must be less than 50 characters');
+      isValid = false;
+    } else if (LeoProfanity.check(displayName)) {
+      setDisplayNameError('Display name contains inappropriate language. Please choose a respectful name.');
       isValid = false;
     } else {
       setDisplayNameError('');
