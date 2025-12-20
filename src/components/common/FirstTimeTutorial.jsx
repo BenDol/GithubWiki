@@ -13,13 +13,14 @@ const TUTORIAL_STORAGE_KEY = configName('first_time_tutorial_dismissed');
  * - Points at Tools dropdown (desktop) or hamburger menu (mobile)
  * - Smooth floating animation
  * - Glow effect
- * - Auto-dismiss on tool navigation
+ * - Auto-dismiss on tool navigation or dropdown open
  * - Persistent dismissal via localStorage
  *
  * @param {Object} targetRef - Ref to the target element (Tools button or hamburger)
  * @param {boolean} isMobile - Whether in mobile viewport
+ * @param {boolean} isToolsDropdownOpen - Whether Tools dropdown is open (desktop only)
  */
-const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
+const FirstTimeTutorial = ({ targetRef, isMobile = false, isToolsDropdownOpen = false }) => {
   const { config } = useWikiConfig();
   const { sidebarOpen, setSidebarOpen } = useUIStore();
   const location = useLocation();
@@ -73,6 +74,20 @@ const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
       // Sidebar will auto-close via Sidebar's handleNavigate on mobile
     }
   }, [location.pathname, config, isVisible]);
+
+  // Auto-close when Tools dropdown opens
+  useEffect(() => {
+    if (isToolsDropdownOpen && isVisible) {
+      // Trigger close animation
+      setIsAnimating(false);
+      // Wait for animation to complete before hiding
+      setTimeout(() => {
+        setIsVisible(false);
+        setHasPosition(false);
+        setItem(TUTORIAL_STORAGE_KEY, true);
+      }, 300); // Match animation duration
+    }
+  }, [isToolsDropdownOpen, isVisible]);
 
   // Update position when target element changes or window resizes
   useEffect(() => {

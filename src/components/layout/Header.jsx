@@ -199,6 +199,7 @@ const Header = ({ onOpenDataBrowser }) => {
         <FirstTimeTutorial
           targetRef={isMobile ? hamburgerButtonRef : toolsButtonRef}
           isMobile={isMobile}
+          isToolsDropdownOpen={isToolsDropdownOpen}
         />
       )}
     </header>
