@@ -32,6 +32,7 @@ const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
   // Check if tutorial should be shown
   useEffect(() => {
     const dismissed = getItem(TUTORIAL_STORAGE_KEY);
+
     if (dismissed) {
       setIsVisible(false);
       return;
@@ -51,7 +52,7 @@ const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [isMobile, setSidebarOpen]);
+  }, [isMobile, setSidebarOpen, targetRef]);
 
   // Auto-close when navigating to a tool
   useEffect(() => {
@@ -145,8 +146,12 @@ const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
     // (it will auto-close when they navigate to a tool)
   };
 
-  if (!isVisible || !hasPosition) return null;
-  if (!isMobile && !targetRef?.current) return null;
+  if (!isVisible) {
+    return null;
+  }
+  if (!isMobile && !targetRef?.current) {
+    return null;
+  }
 
   return (
     <>
@@ -206,6 +211,8 @@ const FirstTimeTutorial = ({ targetRef, isMobile = false }) => {
         style={{
           top: `${position.top}px`,
           left: `${position.left}px`,
+          opacity: hasPosition ? 1 : 0,
+          pointerEvents: hasPosition ? 'auto' : 'none',
         }}
       >
         {/* Wrapper for float animation */}

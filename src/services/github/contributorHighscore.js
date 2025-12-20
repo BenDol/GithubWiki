@@ -84,33 +84,10 @@ async function getHighscoreCacheIssue(owner, repo) {
         return existingIssue;
       }
 
-      // Create cache issue if it doesn't exist (requires write permissions)
-      console.log('[Highscore] Creating highscore cache issue...');
-      const { data: newIssue } = await octokit.rest.issues.create({
-        owner,
-        repo,
-        title: HIGHSCORE_ISSUE_TITLE,
-        body: JSON.stringify({
-          lastUpdated: null,
-          contributors: [],
-        }, null, 2),
-        labels: ['highscore-cache', 'automated'],
-      });
-
-      // Lock the issue to prevent unwanted comments
-      try {
-        await octokit.rest.issues.lock({
-          owner,
-          repo,
-          issue_number: newIssue.number,
-          lock_reason: 'off-topic',
-        });
-        console.log('[Highscore] Locked cache issue to collaborators only');
-      } catch (lockError) {
-        console.warn('[Highscore] Failed to lock issue (may not have permissions):', lockError.message);
-      }
-
-      return newIssue;
+      // No cache issue found - only GitHub Actions should create it
+      // Client should never create highscore cache issues
+      console.log('[Highscore] No cache issue found. GitHub Actions workflow needs to run first.');
+      return null;
     } catch (error) {
       if (error.status === 403 || error.status === 401) {
         console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
@@ -167,6 +144,10 @@ async function fetchRepositoryCollaborators(owner, repo) {
  * - Base score from contributions (heavily weighted at 100x)
  * - Quality bonus from average lines per contribution (2x weight)
  * - This rewards both volume AND quality, preventing spam contributions
+ *
+ * NOTE: This should ONLY be used as a fallback for legacy cached data
+ * that's missing scores. The GitHub Actions workflow is responsible for
+ * calculating and caching scores. The client should trust cached scores.
  *
  * @param {Object} contributor - Contributor data
  * @returns {number} Calculated score
@@ -260,11 +241,18 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
     console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} total users`);
   }
 
-  // Calculate scores for all contributors
-  filteredContributors = filteredContributors.map(contributor => ({
-    ...contributor,
-    score: calculateContributorScore(contributor),
-  }));
+  // Ensure all contributors have scores (should already be present from cache)
+  // If missing, calculate score (fallback for legacy data)
+  filteredContributors = filteredContributors.map(contributor => {
+    if (contributor.score === undefined || contributor.score === null) {
+      console.warn('[Highscore] Contributor missing score, calculating:', contributor.login);
+      return {
+        ...contributor,
+        score: calculateContributorScore(contributor),
+      };
+    }
+    return contributor;
+  });
 
   // Sort by score (descending), fallback to contributions if scores are equal
   filteredContributors.sort((a, b) => {
@@ -274,7 +262,7 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
     return b.contributions - a.contributions;
   });
 
-  console.log(`[Highscore] Calculated scores for ${filteredContributors.length} contributors`);
+  console.log(`[Highscore] Sorted ${filteredContributors.length} filtered contributors by cached scores`);
 
   return filteredContributors;
 }
@@ -383,6 +371,10 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
   const cacheIssue = await getHighscoreCacheIssue(owner, repo);
 
   if (cacheIssue) {
+    console.log('[Highscore] Found cache issue #' + cacheIssue.number + ', body length:', cacheIssue.body?.length || 0);
+    if (!cacheIssue.body || cacheIssue.body.trim().length === 0) {
+      console.warn('[Highscore] Cache issue exists but body is empty. GitHub Actions workflow needs to populate it.');
+    }
     let githubCacheData = parseCacheData(cacheIssue.body);
 
     // Migrate old format if needed
@@ -409,8 +401,14 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
         // Update browser cache for faster future access
         localStorage.setItem(HIGHSCORE_CACHE_KEY, JSON.stringify(githubCacheData));
         return filteredData;
+      } else {
+        console.warn('[Highscore] GitHub cache data exists but missing category or contributors for:', category);
       }
+    } else {
+      console.warn('[Highscore] Failed to parse GitHub cache data from issue body');
     }
+  } else {
+    console.warn('[Highscore] No cache issue found in repository');
   }
 
   // Step 3: No cache available - return error
@@ -444,11 +442,20 @@ function setRefreshCooldown() {
 }
 
 /**
- * Purge localStorage cache and fetch fresh data from GitHub issue
+ * Refresh highscore by clearing localStorage and re-fetching from GitHub issue cache
  * Has a 30-minute cooldown that persists across page reloads
+ *
+ * IMPORTANT: This does NOT calculate highscores - it only re-reads cached data
+ * from the GitHub issue. Highscore calculation is done exclusively by the
+ * "Update Contributor Highscore Cache" GitHub Actions workflow.
+ *
+ * This function simply:
+ * 1. Clears the browser's localStorage cache
+ * 2. Re-fetches from the GitHub issue cache (which is populated by GitHub Actions)
+ * 3. Applies a 30-minute cooldown to prevent spam
  */
 export async function refreshHighscoreCache(owner, repo, config = {}, category = 'allTime') {
-  console.log('[Highscore] Purging localStorage cache and fetching fresh data...');
+  console.log('[Highscore] Purging localStorage cache and fetching fresh data from GitHub issue...');
 
   // Check cooldown
   const cooldown = getRefreshCooldown();
@@ -466,6 +473,7 @@ export async function refreshHighscoreCache(owner, repo, config = {}, category =
   console.log('[Highscore] ✓ Set 30-minute cooldown');
 
   // Re-fetch from GitHub issue cache (will also update localStorage)
+  // Note: This does NOT trigger calculation - only reads existing cache
   return getContributorHighscore(owner, repo, config, category);
 }
 
