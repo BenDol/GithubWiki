@@ -91,6 +91,39 @@ class GitHubStorage extends StorageAdapter {
     }
   }
 
+  /**
+   * Create a label, truncating if necessary to fit GitHub's 50-char limit
+   * @private
+   */
+  _createLabel(prefix, value) {
+    const maxLength = 50;
+    const maxValueLength = maxLength - prefix.length;
+    const valueStr = String(value);
+
+    // Truncate value if too long
+    const truncatedValue = valueStr.length > maxValueLength
+      ? valueStr.substring(0, maxValueLength)
+      : valueStr;
+
+    return `${prefix}${truncatedValue}`;
+  }
+
+  /**
+   * Create a user label, truncating if necessary to fit GitHub's 50-char limit
+   * @private
+   */
+  _createUserLabel(userId) {
+    return this._createLabel('user-id:', userId);
+  }
+
+  /**
+   * Create an entity label (e.g., weapon-id), truncating if necessary
+   * @private
+   */
+  _createEntityLabel(entityId) {
+    return this._createLabel('weapon-id:', entityId);
+  }
+
   // ===== Generic CRUD Operations =====
 
   /**
@@ -101,7 +134,7 @@ class GitHubStorage extends StorageAdapter {
     try {
       // Search for issue with type label, user label, and version label
       const typeLabel = type;
-      const userLabel = `user-id:${userId}`;
+      const userLabel = this._createUserLabel(userId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
       const issues = await this._findIssuesByLabels([typeLabel, versionLabel]);
@@ -192,7 +225,7 @@ class GitHubStorage extends StorageAdapter {
 
       // Find existing issue (with or without version label)
       const typeLabel = type;
-      const userLabel = `user-id:${userId}`;
+      const userLabel = this._createUserLabel(userId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
       const allIssues = await this._findIssuesByLabels([typeLabel]);
@@ -247,7 +280,7 @@ class GitHubStorage extends StorageAdapter {
 
       // Find user's issue
       const typeLabel = type;
-      const userLabel = `user-id:${userId}`;
+      const userLabel = this._createUserLabel(userId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
       const allIssues = await this._findIssuesByLabels([typeLabel]);
@@ -295,7 +328,7 @@ class GitHubStorage extends StorageAdapter {
    */
   async loadGridSubmissions(entityId) {
     try {
-      const entityLabel = `weapon-id:${entityId}`;
+      const entityLabel = this._createEntityLabel(entityId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
       // Find entity's issue
@@ -330,7 +363,7 @@ class GitHubStorage extends StorageAdapter {
     }
 
     try {
-      const entityLabel = `weapon-id:${entityId}`;
+      const entityLabel = this._createEntityLabel(entityId);
       const versionLabel = `data-version:${this.dataVersion}`;
       const typeLabel = 'engraving-grid-submissions';
 
