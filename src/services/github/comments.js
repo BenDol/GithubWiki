@@ -1,6 +1,7 @@
 import { getOctokit, getAuthenticatedUser } from './api';
 import { createCommentIssueWithBot } from './botService';
 import { isBanned } from './admin';
+import { createPageLabel, createBranchLabel } from '../../utils/githubLabelUtils.js';
 
 /**
  * GitHub Comments API functions
@@ -20,8 +21,8 @@ export const findPageIssue = async (owner, repo, sectionId, pageId, branch) => {
   const octokit = getOctokit();
 
   // Search by unique page ID label (more reliable than title)
-  const pageLabel = `page:${sectionId}/${pageId}`;
-  const branchLabel = `branch:${branch}`;
+  const pageLabel = createPageLabel(sectionId, pageId);
+  const branchLabel = createBranchLabel(branch);
 
   console.log(`[Comments] Searching for page issue: ${pageLabel} in branch: ${branch}`);
 
@@ -69,8 +70,8 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
 
   // Create new issue for this page using bot (server-side via Netlify Function)
   // This keeps the bot token secure and prevents users from closing comment issues
-  const pageLabel = `page:${sectionId}/${pageId}`;
-  const branchLabel = `branch:${branch}`;
+  const pageLabel = createPageLabel(sectionId, pageId);
+  const branchLabel = createBranchLabel(branch);
 
   console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot (server-side)`);
 

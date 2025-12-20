@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { createUserIdLabel } from '../../utils/githubLabelUtils.js';
 
 /**
  * Skill Builds Storage System
@@ -149,7 +150,7 @@ export async function saveUserBuilds(owner, repo, username, userId, builds) {
 
     const issueTitle = `${BUILDS_TITLE_PREFIX} ${username}`;
     const issueBody = JSON.stringify(builds, null, 2);
-    const userIdLabel = userId ? `user-id:${userId}` : null;
+    const userIdLabel = userId ? createUserIdLabel(userId) : null;
 
     if (existingIssue) {
       // Update existing builds

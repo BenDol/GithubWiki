@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { createSectionLabel } from '../../utils/githubLabelUtils.js';
 
 /**
  * GitHub Issue Label Management
@@ -235,7 +236,7 @@ export const ensureAllWikiLabels = async (owner, repo, sections = [], allowedBra
  * Get section label name from section ID
  */
 export const getSectionLabel = (sectionId) => {
-  return `section:${sectionId}`;
+  return createSectionLabel(sectionId);
 };
 
 /**

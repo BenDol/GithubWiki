@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { createUserIdLabel } from '../../utils/githubLabelUtils.js';
 
 /**
  * Battle Loadouts Storage System
@@ -152,7 +153,7 @@ export async function saveUserLoadouts(owner, repo, username, userId, loadouts) 
 
     const issueTitle = `${LOADOUTS_TITLE_PREFIX} ${username}`;
     const issueBody = JSON.stringify(loadouts, null, 2);
-    const userIdLabel = userId ? `user-id:${userId}` : null;
+    const userIdLabel = userId ? createUserIdLabel(userId) : null;
 
     if (existingIssue) {
       // Update existing loadouts

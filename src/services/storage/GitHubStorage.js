@@ -18,6 +18,7 @@
 
 import { Octokit } from '@octokit/rest';
 import StorageAdapter from './StorageAdapter.js';
+import { createUserIdLabel, createWeaponIdLabel } from '../../utils/githubLabelUtils.js';
 
 class GitHubStorage extends StorageAdapter {
   /**
@@ -92,28 +93,11 @@ class GitHubStorage extends StorageAdapter {
   }
 
   /**
-   * Create a label, truncating if necessary to fit GitHub's 50-char limit
-   * @private
-   */
-  _createLabel(prefix, value) {
-    const maxLength = 50;
-    const maxValueLength = maxLength - prefix.length;
-    const valueStr = String(value);
-
-    // Truncate value if too long
-    const truncatedValue = valueStr.length > maxValueLength
-      ? valueStr.substring(0, maxValueLength)
-      : valueStr;
-
-    return `${prefix}${truncatedValue}`;
-  }
-
-  /**
    * Create a user label, truncating if necessary to fit GitHub's 50-char limit
    * @private
    */
   _createUserLabel(userId) {
-    return this._createLabel('user-id:', userId);
+    return createUserIdLabel(userId);
   }
 
   /**
@@ -121,7 +105,7 @@ class GitHubStorage extends StorageAdapter {
    * @private
    */
   _createEntityLabel(entityId) {
-    return this._createLabel('weapon-id:', entityId);
+    return createWeaponIdLabel(entityId);
   }
 
   // ===== Generic CRUD Operations =====

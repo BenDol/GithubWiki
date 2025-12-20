@@ -10,6 +10,7 @@
 import { useAuthStore } from '../../store/authStore';
 import { retryPlugin } from './octokitRetryPlugin.js';
 import { getGithubBotEndpoint, getCreateCommentIssueEndpoint } from '../../utils/apiEndpoints.js';
+import { createUserIdLabel } from '../../utils/githubLabelUtils.js';
 
 // Development-only imports - tree-shaken in production builds
 let Octokit;
@@ -517,7 +518,7 @@ const saveUserSnapshotDirectly = async (owner, repo, username, snapshotData, exi
 
   const issueTitle = `[User Snapshot] ${username}`;
   const issueBody = JSON.stringify(snapshotData, null, 2);
-  const userIdLabel = snapshotData.userId ? `user-id:${snapshotData.userId}` : null;
+  const userIdLabel = snapshotData.userId ? createUserIdLabel(snapshotData.userId) : null;
 
   if (existingIssueNumber) {
     // Update existing snapshot
