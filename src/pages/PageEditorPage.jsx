@@ -664,8 +664,8 @@ Include any supplementary details, notes, or related information.
       }
 
       // Check if this is the user's first contribution
-      const userPRs = await getUserPullRequests(owner, repo, user.login);
-      const isFirstEver = userPRs.length === 0;
+      const userPRsResult = await getUserPullRequests(owner, repo, user.login, null, 1, 1);
+      const isFirstEver = userPRsResult.prs.length === 0;
 
       if (isFirstEver) {
         console.log(`[PageEditor] This is ${user.login}'s first contribution!`);
@@ -1300,7 +1300,7 @@ Include any supplementary details, notes, or related information.
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl mx-auto">
           {/* Authenticated Edit */}
-          <div className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
+          <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
             <div className="text-4xl mb-3">👤</div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
               Sign In to Edit
@@ -1317,7 +1317,7 @@ Include any supplementary details, notes, or related information.
           </div>
 
           {/* Anonymous Edit */}
-          <div className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-green-500 dark:hover:border-green-400 transition-colors">
+          <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:border-green-500 dark:hover:border-green-400 transition-colors">
             <div className="text-4xl mb-3">🕶️</div>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
               Edit Anonymously

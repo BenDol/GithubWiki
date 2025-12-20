@@ -24,7 +24,7 @@ import { getOctokit } from './api';
  * - Fallback: Username in title - for legacy
  */
 
-const BUILDS_LABEL = 'skill-builds';
+const BUILDS_LABEL = 'skill-builds'; // Must match the type used in storage
 const BUILDS_TITLE_PREFIX = '[Skill Builds]';
 const MAX_BUILDS_PER_USER = 10; // Limit to prevent issue size bloat
 
@@ -308,3 +308,4 @@ export async function deleteUserBuild(owner, repo, username, userId, buildId) {
 
   return filteredBuilds;
 }
+

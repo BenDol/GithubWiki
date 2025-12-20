@@ -31,7 +31,7 @@ import { getGithubBotEndpoint } from '../../utils/apiEndpoints.js';
  * Comment Format:
  * ```json
  * {
- *   "type": "battle-loadout" | "skill-build" | "spirit-build",
+ *   "type": "battle-loadouts" | "skill-builds" | "spirit-builds",
  *   "checksum": "abc123...",
  *   "data": { ... build data ... },
  *   "createdAt": "ISO date"
@@ -49,6 +49,12 @@ const INDEX_HEADER = '# Build Share Index\n\n';
  * Builds are immutable, so no expiration needed
  */
 const buildCache = new Map();
+
+/**
+ * In-flight request tracking to prevent race conditions
+ * Prevents multiple concurrent calls from creating duplicate index issues
+ */
+const pendingIndexIssueRequests = new Map();
 
 /**
  * Generate SHA-256 checksum for build data
@@ -140,6 +146,8 @@ function serializeIndexMap(map) {
  * @returns {Promise<Object>} Issue object with { number, body }
  */
 async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
+  const cacheKey = `${owner}/${repo}`;
+
   try {
     // Cache the issue number globally to avoid repeated searches
     if (!bustCache && window.__BUILD_SHARE_INDEX_NUMBER) {
@@ -167,86 +175,117 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
       }
     }
 
-    // Search for existing index issue
-    let issues = [];
+    // Check if there's already a request in-flight for this repo
+    if (pendingIndexIssueRequests.has(cacheKey)) {
+      console.log('[Build Share] Waiting for in-flight index issue request...');
+      return pendingIndexIssueRequests.get(cacheKey);
+    }
 
-    if (import.meta.env.DEV && import.meta.env.VITE_WIKI_BOT_TOKEN) {
-      // Development: Use bot token directly
-      const { Octokit } = await import('octokit');
-      const OctokitWithRetry = Octokit.plugin(retryPlugin);
-      const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
-      const octokit = new OctokitWithRetry({
-        auth: botToken,
-        userAgent: 'GitHub-Wiki-Bot/1.0',
-        throttle: { enabled: false }, // Disable built-in throttling
-      });
+    // Start a new request and track it
+    const requestPromise = (async () => {
+      try {
+        // Search for existing index issue
+        let issues = [];
 
-      const { data } = await octokit.rest.issues.listForRepo({
-        owner,
-        repo,
-        labels: BUILD_SHARE_LABEL,
-        state: 'open',
-        per_page: 1,
-      });
+        if (import.meta.env.DEV && import.meta.env.VITE_WIKI_BOT_TOKEN) {
+          // Development: Use bot token directly
+          const { Octokit } = await import('octokit');
+          const OctokitWithRetry = Octokit.plugin(retryPlugin);
+          const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+          const octokit = new OctokitWithRetry({
+            auth: botToken,
+            userAgent: 'GitHub-Wiki-Bot/1.0',
+            throttle: { enabled: false }, // Disable built-in throttling
+          });
 
-      issues = data;
-    } else {
-      // Production: Use Netlify Function
-      const response = await fetch(getGithubBotEndpoint(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'list-issues',
+          const { data } = await octokit.rest.issues.listForRepo({
+            owner,
+            repo,
+            labels: BUILD_SHARE_LABEL,
+            state: 'open',
+            per_page: 100, // Fetch more to detect duplicates
+          });
+
+          issues = data;
+        } else {
+          // Production: Use Netlify Function
+          const response = await fetch(getGithubBotEndpoint(), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'list-issues',
+              owner,
+              repo,
+              labels: BUILD_SHARE_LABEL,
+              state: 'open',
+              per_page: 100, // Fetch more to detect duplicates
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.message || data.error || 'Failed to list issues');
+          }
+
+          issues = data.issues || [];
+        }
+
+        if (issues.length > 0) {
+          // If multiple index issues exist (race condition), use the oldest one
+          if (issues.length > 1) {
+            console.warn('[Build Share] ⚠️ Multiple index issues found!', {
+              count: issues.length,
+              numbers: issues.map(i => i.number)
+            });
+            // Sort by issue number (oldest first)
+            issues.sort((a, b) => a.number - b.number);
+          }
+
+          // Cache the issue number for future use
+          window.__BUILD_SHARE_INDEX_NUMBER = issues[0].number;
+
+          return {
+            number: issues[0].number,
+            body: issues[0].body || '',
+          };
+        }
+
+        // Create new index issue using bot service
+        const { createCommentIssueWithBot } = await import('./botService.js');
+
+        console.log('[Build Share] Creating new index issue...');
+
+        const issue = await createCommentIssueWithBot(
           owner,
           repo,
-          labels: BUILD_SHARE_LABEL,
-          state: 'open',
-          per_page: 1,
-        }),
-      });
+          BUILD_SHARE_TITLE,
+          INDEX_HEADER,
+          [BUILD_SHARE_LABEL, 'automated']
+        );
 
-      const data = await response.json();
+        console.log('[Build Share] ✓ Index issue created:', issue.number);
 
-      if (!response.ok) {
-        throw new Error(data.message || data.error || 'Failed to list issues');
+        return {
+          number: issue.number,
+          body: issue.body || INDEX_HEADER,
+        };
+      } catch (error) {
+        console.error('[Build Share] Error getting/creating index issue:', error);
+        throw error;
+      } finally {
+        // Remove from in-flight requests
+        pendingIndexIssueRequests.delete(cacheKey);
       }
+    })();
 
-      issues = data.issues || [];
-    }
-
-    if (issues.length > 0) {
-      // Cache the issue number for future use
-      window.__BUILD_SHARE_INDEX_NUMBER = issues[0].number;
-
-      return {
-        number: issues[0].number,
-        body: issues[0].body || '',
-      };
-    }
-
-    // Create new index issue using bot service
-    const { createCommentIssueWithBot } = await import('./botService.js');
-
-    console.log('[Build Share] Creating new index issue...');
-
-    const issue = await createCommentIssueWithBot(
-      owner,
-      repo,
-      BUILD_SHARE_TITLE,
-      INDEX_HEADER,
-      [BUILD_SHARE_LABEL, 'automated']
-    );
-
-    console.log('[Build Share] ✓ Index issue created:', issue.number);
-
-    return {
-      number: issue.number,
-      body: issue.body || INDEX_HEADER,
-    };
+    // Track this request
+    pendingIndexIssueRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   } catch (error) {
-    console.error('[Build Share] Error getting/creating index issue:', error);
+    console.error('[Build Share] Error in getOrCreateIndexIssue:', error);
     throw error;
   }
 }
@@ -255,7 +294,7 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
  * Save a build and get its short URL checksum
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
- * @param {string} buildType - Build type ("battle-loadout", "skill-build", "spirit-build")
+ * @param {string} buildType - Build type ("battle-loadouts", "skill-builds", "spirit-builds")
  * @param {Object} buildData - Build data object
  * @returns {Promise<string>} Checksum to use in URL
  */
@@ -499,3 +538,4 @@ export function getCacheStats() {
     checksums: Array.from(buildCache.keys()),
   };
 }
+

@@ -56,30 +56,42 @@ export function loggerPlugin() {
 
           req.on('end', () => {
             try {
-              const logData = JSON.parse(body);
-              const timestamp = new Date().toISOString();
-              const logEntry = `[${timestamp}] [${logData.type.toUpperCase()}] ${logData.message}\n`;
-
-              let logLine = logEntry;
-
-              if (logData.data) {
-                logLine += `Data: ${JSON.stringify(logData.data, null, 2)}\n`;
-              }
-
-              if (logData.stack) {
-                logLine += `Stack: ${logData.stack}\n`;
-              }
-
-              logLine += '\n---\n\n';
+              const payload = JSON.parse(body);
 
               // Rotate log if needed before appending
               rotateLogIfNeeded();
 
-              // Append to log file
-              fs.appendFileSync(logFile, logLine, 'utf-8');
+              // Handle batch format (new) or single log (backward compatibility)
+              const logs = payload.logs ? payload.logs : [payload];
+              let allLogLines = '';
+
+              // Process each log entry
+              for (const logData of logs) {
+                const timestamp = logData.timestamp || new Date().toISOString();
+                const logEntry = `[${timestamp}] [${logData.type.toUpperCase()}] ${logData.message}\n`;
+
+                let logLine = logEntry;
+
+                if (logData.data) {
+                  logLine += `Data: ${JSON.stringify(logData.data, null, 2)}\n`;
+                }
+
+                if (logData.stack) {
+                  logLine += `Stack: ${logData.stack}\n`;
+                }
+
+                logLine += '\n---\n\n';
+                allLogLines += logLine;
+              }
+
+              // Append all logs to file in one operation
+              fs.appendFileSync(logFile, allLogLines, 'utf-8');
 
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ success: true }));
+              res.end(JSON.stringify({
+                success: true,
+                logsWritten: logs.length
+              }));
             } catch (error) {
               console.error('Error writing log:', error);
               res.writeHead(500, { 'Content-Type': 'application/json' });

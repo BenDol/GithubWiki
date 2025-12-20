@@ -11,8 +11,9 @@ const DevPanel = () => {
 
   const clearLogFile = async () => {
     try {
-      // Only call log endpoint in development
-      if (import.meta.env.DEV) {
+      // Only call log endpoint in development (if enabled in config)
+      const isLoggingEnabled = window.__WIKI_CONFIG__?.features?.enableRemoteLoggingInDev ?? false;
+      if (import.meta.env.DEV && isLoggingEnabled) {
         await fetch('/api/log', { method: 'DELETE' });
       }
       clearLogs();

@@ -6,6 +6,8 @@ import { getUserPullRequests } from '../services/github/pullRequests';
 import { getUserPrestigeData, getCachedPrestigeDataSync } from '../services/github/prestige';
 import { getUserSnapshot } from '../services/github/userSnapshots';
 import { getCacheValue, setCacheValue, clearCacheValue } from '../utils/timeCache.js';
+import { cacheName } from '../utils/storageManager';
+import { getUserIdFromUsername } from '../services/github/githubCache';
 
 /**
  * Prestige data hook
@@ -46,11 +48,27 @@ export const useUserPrestige = (username) => {
         return;
       }
 
+      // Get userId for cache key (permanent identifier)
+      let userId = null;
+      try {
+        // Try to get userId from authenticated user first (fast)
+        if (user && user.login === username) {
+          userId = user.id;
+        } else {
+          // Fetch userId from GitHub API (will be cached)
+          userId = await getUserIdFromUsername(username);
+        }
+      } catch (error) {
+        console.warn(`[Prestige] Failed to get userId for ${username}, using username as fallback:`, error);
+        // Fallback to username if userId fetch fails (graceful degradation)
+        userId = username;
+      }
+
       // Check localStorage cache first (5 minute TTL)
-      const cacheKey = `prestige:${username}`;
+      const cacheKey = cacheName('prestige', userId);
       const cached = getCacheValue(cacheKey);
       if (cached) {
-        console.log(`[Prestige] Cache hit for ${username}`);
+        console.log(`[Prestige] Cache hit for user ${userId}`);
         setPrestigeData(cached);
         setLoading(false);
         return;
@@ -72,7 +90,6 @@ export const useUserPrestige = (username) => {
         };
 
         // Cache the result for 5 minutes
-        const cacheKey = `prestige:${username}`;
         setCacheValue(cacheKey, data, 5 * 60 * 1000);
         setPrestigeData(data);
         setLoading(false);
@@ -108,7 +125,6 @@ export const useUserPrestige = (username) => {
             };
 
             // Cache the result for 5 minutes
-            const cacheKey = `prestige:${username}`;
             setCacheValue(cacheKey, data, 5 * 60 * 1000);
             setPrestigeData(data);
             return;
@@ -136,7 +152,6 @@ export const useUserPrestige = (username) => {
           };
 
           // Cache the result for 5 minutes
-          const cacheKey = `prestige:${username}`;
           setCacheValue(cacheKey, data, 5 * 60 * 1000);
           setPrestigeData(data);
           return;
@@ -145,17 +160,32 @@ export const useUserPrestige = (username) => {
         // Third try: Calculate from PRs for authenticated user only
         if (isAuthenticated && user && username === user.login) {
           console.log(`[Prestige] No cache for ${username}, calculating from PRs (authenticated user)`);
-          const prs = await getUserPullRequests(owner, repo, username);
+
+          // Fetch ALL PRs for prestige calculation (paginate through all pages)
+          let allPRs = [];
+          let currentPage = 1;
+          let hasMorePages = true;
+
+          while (hasMorePages) {
+            const result = await getUserPullRequests(owner, repo, username, null, currentPage, 100);
+            allPRs = [...allPRs, ...result.prs];
+            hasMorePages = result.hasMore;
+            currentPage++;
+
+            console.log(`[Prestige] Fetched page ${currentPage - 1}, total PRs so far: ${allPRs.length}`);
+          }
+
+          console.log(`[Prestige] Loaded ${allPRs.length} total PRs for ${username}`);
 
           // Calculate stats
           const stats = {
-            totalPRs: prs.length,
-            openPRs: prs.filter(pr => pr.state === 'open').length,
-            mergedPRs: prs.filter(pr => pr.state === 'merged').length,
-            closedPRs: prs.filter(pr => pr.state === 'closed' && !pr.merged_at).length,
-            totalAdditions: prs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
-            totalDeletions: prs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
-            totalFiles: prs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
+            totalPRs: allPRs.length,
+            openPRs: allPRs.filter(pr => pr.state === 'open').length,
+            mergedPRs: allPRs.filter(pr => pr.state === 'merged').length,
+            closedPRs: allPRs.filter(pr => pr.state === 'closed' && !pr.merged_at).length,
+            totalAdditions: allPRs.reduce((sum, pr) => sum + (pr.additions || 0), 0),
+            totalDeletions: allPRs.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
+            totalFiles: allPRs.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
           };
 
           // Get prestige tier based on total PRs
@@ -164,7 +194,6 @@ export const useUserPrestige = (username) => {
           const data = { tier, stats };
 
           // Cache the result for 5 minutes
-          const cacheKey = `prestige:${username}`;
           setCacheValue(cacheKey, data, 5 * 60 * 1000);
           setPrestigeData(data);
         } else {
@@ -190,12 +219,16 @@ export const useUserPrestige = (username) => {
 /**
  * Hook to invalidate prestige cache for a user
  * Call this when user makes a new contribution
+ * @param {number|string} userIdOrUsername - User ID (preferred) or username (legacy)
  */
 export const useInvalidatePrestige = () => {
-  return useCallback((username) => {
-    const cacheKey = `prestige:${username}`;
+  return useCallback((userIdOrUsername) => {
+    if (typeof userIdOrUsername === 'string') {
+      console.warn('[Prestige] useInvalidatePrestige called with username instead of userId - consider updating to use userId');
+    }
+    const cacheKey = cacheName('prestige', userIdOrUsername);
     clearCacheValue(cacheKey);
-    console.log(`[Prestige] Cleared cache for ${username}`);
+    console.log(`[Prestige] Cleared cache for user ${userIdOrUsername}`);
   }, []);
 };
 
@@ -203,11 +236,14 @@ export const useInvalidatePrestige = () => {
  * Get prestige data from cache synchronously
  * Returns null if not cached or expired
  *
- * @param {string} username - GitHub username
+ * @param {number|string} userIdOrUsername - User ID (preferred) or username (legacy)
  * @returns {Object|null} Cached prestige data or null
  */
-export const getCachedPrestige = (username) => {
-  const cacheKey = `prestige:${username}`;
+export const getCachedPrestige = (userIdOrUsername) => {
+  if (typeof userIdOrUsername === 'string') {
+    console.warn('[Prestige] getCachedPrestige called with username instead of userId - consider updating to use userId');
+  }
+  const cacheKey = cacheName('prestige', userIdOrUsername);
   const cached = getCacheValue(cacheKey);
   return cached; // getCacheValue already handles expiration
 };

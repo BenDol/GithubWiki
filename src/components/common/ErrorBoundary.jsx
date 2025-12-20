@@ -27,8 +27,9 @@ class ErrorBoundary extends Component {
       errorInfo,
     });
 
-    // Log error to debug system (development only)
-    if (import.meta.env.DEV) {
+    // Log error to debug system (development only, if enabled in config)
+    const isLoggingEnabled = window.__WIKI_CONFIG__?.features?.enableRemoteLoggingInDev ?? false;
+    if (import.meta.env.DEV && isLoggingEnabled) {
       fetch('/api/log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -261,12 +261,19 @@ export const getFileContent = async (owner, repo, path, ref = 'main') => {
 };
 
 /**
- * Get commit history for a file
+ * Get commit history for a file with pagination metadata
+ *
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} path - File path
+ * @param {number} page - Page number (1-indexed, default: 1)
+ * @param {number} perPage - Items per page (default: 10)
+ * @returns {Promise<{commits: Array, hasMore: boolean}>}
  */
 export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) => {
   const octokit = getOctokit();
   try {
-    const { data } = await octokit.rest.repos.listCommits({
+    const { data, headers } = await octokit.rest.repos.listCommits({
       owner,
       repo,
       path,
@@ -274,7 +281,7 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       per_page: perPage,
     });
 
-    return data.map(commit => ({
+    const commits = data.map(commit => ({
       sha: commit.sha,
       message: commit.commit.message,
       author: {
@@ -291,10 +298,16 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       url: commit.html_url,
       parents: commit.parents,
     }));
+
+    // Check if there are more pages
+    // GitHub returns fewer than perPage if it's the last page
+    const hasMore = data.length === perPage;
+
+    return { commits, hasMore };
   } catch (error) {
     // Handle 404 (file not in repo) or 500 (file path doesn't exist)
     if (error.status === 404 || error.status === 500 || error.status === 409) {
-      return []; // Return empty array for files not yet in repo
+      return { commits: [], hasMore: false }; // Return empty result for files not yet in repo
     }
     throw error;
   }

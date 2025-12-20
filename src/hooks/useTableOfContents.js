@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import GithubSlugger from 'github-slugger';
 
 /**
  * Extract headings from markdown content to generate table of contents
@@ -8,17 +9,15 @@ export const extractHeadings = (content) => {
 
   const headingRegex = /^(#{1,6})\s+(.+)$/gm;
   const headings = [];
+  const slugger = new GithubSlugger();
   let match;
 
   while ((match = headingRegex.exec(content)) !== null) {
     const level = match[1].length;
     const text = match[2].trim();
 
-    // Generate slug (same as rehype-slug does)
-    const slug = text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+    // Generate slug using github-slugger (same as rehype-slug does)
+    const slug = slugger.slug(text);
 
     headings.push({
       level,

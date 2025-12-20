@@ -13,9 +13,9 @@ let registeredBuildTypes = {};
  *
  * @example
  * registerBuildTypes({
- *   'skill-build': '/skill-builder',
- *   'spirit-build': '/spirit-builder',
- *   'battle-loadout': '/battle-loadouts',
+ *   'skill-builds': '/skill-builder',
+ *   'spirit-builds': '/spirit-builder',
+ *   'battle-loadouts': '/battle-loadouts',
  *   'soul-weapon-engraving': '/soul-weapon-engraving'
  * });
  */
@@ -61,3 +61,4 @@ export function isBuildTypeRegistered(buildType) {
 export function clearRegisteredBuildTypes() {
   registeredBuildTypes = {};
 }
+

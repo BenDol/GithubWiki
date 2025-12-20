@@ -61,6 +61,49 @@ export default {
                 color: '#2563eb',
               },
             },
+            // Remove underlines from all headings
+            h1: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h2: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h3: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h4: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h5: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h6: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
             code: {
               backgroundColor: '#f3f4f6',
               padding: '0.2rem 0.4rem',
@@ -95,10 +138,53 @@ export default {
               backgroundColor: '#374151',
               color: '#e5e7eb',
             },
-            h1: { color: '#f3f4f6' },
-            h2: { color: '#f3f4f6' },
-            h3: { color: '#f3f4f6' },
-            h4: { color: '#f3f4f6' },
+            // Remove underlines from all headings in dark mode
+            h1: {
+              color: '#f3f4f6',
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h2: {
+              color: '#f3f4f6',
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h3: {
+              color: '#f3f4f6',
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h4: {
+              color: '#f3f4f6',
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h5: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
+            h6: {
+              borderBottomWidth: '0',
+              paddingBottom: '0',
+              a: {
+                textDecoration: 'none',
+              },
+            },
             strong: { color: '#f3f4f6' },
             blockquote: {
               color: '#d1d5db',

@@ -211,21 +211,29 @@ export const getPRBranchContent = async (owner, repo, branch, filePath, sha = nu
 };
 
 /**
- * Get all pull requests for a user in a repository
+ * Get pull requests for a user in a repository with pagination support
  * OPTIMIZED: Uses cache, eliminates N+1 query pattern, and de-duplicates concurrent requests
+ *
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} username - Username to filter PRs by
+ * @param {string} baseBranch - Base branch to filter by (optional)
+ * @param {number} page - Page number (1-indexed, default: 1)
+ * @param {number} perPage - Items per page (default: 10)
+ * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
-export const getUserPullRequests = async (owner, repo, username, baseBranch = null) => {
+export const getUserPullRequests = async (owner, repo, username, baseBranch = null, page = 1, perPage = 10) => {
   const store = useGitHubDataStore.getState();
-  const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}`;
+  const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
   // Check cache first
   const cached = store.getCachedPR(cacheKey);
   if (cached) {
-    console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username}`);
+    console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username} (page ${page})`);
     return cached;
   }
 
-  console.log(`[PR Cache] ✗ Cache miss for user PRs: ${username} - fetching from API`);
+  console.log(`[PR Cache] ✗ Cache miss for user PRs: ${username} (page ${page}) - fetching from API`);
 
   // Use de-duplication to prevent concurrent duplicate requests
   const dedupKey = `getUserPullRequests:${cacheKey}`;
@@ -241,36 +249,72 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
     const octokit = getOctokit();
     store.incrementAPICall();
 
-    const listParams = {
-      owner,
-      repo,
-      state: 'all',
-      sort: 'updated',
-      direction: 'desc',
-      per_page: 100,
-    };
+    // Fetch more than requested to account for filtering by username
+    // We'll fetch pages until we have enough user PRs or run out
+    const fetchPerPage = 100; // GitHub's max
+    let allUserPRs = [];
+    let currentFetchPage = 1;
+    let hasMorePages = true;
 
-    // Add base branch filter if provided
-    if (baseBranch) {
-      listParams.base = baseBranch;
-      console.log(`[PR Filter] Filtering PRs by base branch: ${baseBranch}`);
+    console.log(`[PR Fetch] Fetching PRs for ${username}, page ${page}, ${perPage} per page`);
+
+    // Calculate how many PRs to skip (for pagination)
+    const skipCount = (page - 1) * perPage;
+    const needCount = skipCount + perPage;
+
+    // Keep fetching until we have enough PRs for the requested page + 1 more to check hasMore
+    while (hasMorePages && allUserPRs.length < needCount + 1) {
+      const listParams = {
+        owner,
+        repo,
+        state: 'all',
+        sort: 'updated',
+        direction: 'desc',
+        per_page: fetchPerPage,
+        page: currentFetchPage,
+      };
+
+      // Add base branch filter if provided
+      if (baseBranch) {
+        listParams.base = baseBranch;
+      }
+
+      const { data } = await octokit.rest.pulls.list(listParams);
+
+      if (data.length === 0) {
+        hasMorePages = false;
+        break;
+      }
+
+      // Filter to only PRs created by the current user
+      const userPRsFromPage = data.filter(pr => pr.user.login === username);
+      allUserPRs = [...allUserPRs, ...userPRsFromPage];
+
+      console.log(`[PR Fetch] API page ${currentFetchPage}: Found ${userPRsFromPage.length}/${data.length} PRs by ${username}`);
+
+      // If we got fewer than fetchPerPage, we've reached the end
+      if (data.length < fetchPerPage) {
+        hasMorePages = false;
+      }
+
+      currentFetchPage++;
     }
 
-    // Get all pull requests (filtered by base if provided)
-    const { data } = await octokit.rest.pulls.list(listParams);
+    console.log(`[PR Fetch] Total PRs found for ${username}: ${allUserPRs.length}`);
 
-    // Filter to only PRs created by the current user
-    const userPRs = data.filter(pr => pr.user.login === username);
+    // Slice to get the requested page
+    const paginatedPRs = allUserPRs.slice(skipCount, skipCount + perPage);
+    const hasMore = allUserPRs.length > skipCount + perPage;
 
-    console.log(`[PR Filter] Found ${userPRs.length} PRs by ${username}${baseBranch ? ` targeting ${baseBranch}` : ''}`);
+    console.log(`[PR Pagination] Returning ${paginatedPRs.length} PRs for page ${page}, hasMore: ${hasMore}`);
 
     // NOTE: pulls.list() does NOT include additions, deletions, and changed_files
     // We need to fetch detailed PR data with pulls.get() for each PR
     // OPTIMIZATION: Fetch all in parallel to avoid sequential N+1 bottleneck
-    console.log(`[PR Details] Fetching detailed data for ${userPRs.length} PRs in parallel...`);
+    console.log(`[PR Details] Fetching detailed data for ${paginatedPRs.length} PRs in parallel...`);
 
     const detailedPRs = await Promise.all(
-      userPRs.map(async (pr) => {
+      paginatedPRs.map(async (pr) => {
         try {
           // Fetch detailed PR data
           const { data: detailedPR } = await octokit.rest.pulls.get({
@@ -332,13 +376,20 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
     );
 
     // Increment API call count for the additional .get() calls
-    store.incrementAPICall(userPRs.length);
+    store.incrementAPICall(paginatedPRs.length);
+
+    // Prepare result with pagination metadata
+    const result = {
+      prs: detailedPRs,
+      hasMore,
+      totalCount: allUserPRs.length, // Total count we know about (may be incomplete if we stopped fetching)
+    };
 
     // Cache the results
-    store.cachePR(cacheKey, detailedPRs);
-    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs with detailed stats for user: ${username}`);
+    store.cachePR(cacheKey, result);
+    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs with detailed stats for user: ${username} (page ${page})`);
 
-    return detailedPRs;
+    return result;
   });
 };
 

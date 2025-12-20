@@ -16,19 +16,12 @@ import { addAdmin } from '../../services/github/admin';
 const PageHistory = ({ sectionId, pageId }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
-  const { commits, loading, error } = usePageHistory(sectionId, pageId);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const { commits, loading, loadingMore, error, hasMore, loadMore } = usePageHistory(sectionId, pageId, 10);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
-
-  // Ref for commits section
-  const commitsRef = useRef(null);
 
   // Handle avatar click
   const handleAvatarClick = (e, username) => {
@@ -48,26 +41,14 @@ const PageHistory = ({ sectionId, pageId }) => {
   const handleMakeAdmin = async (username) => {
     if (!config?.wiki?.repository) return;
     try {
-      const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login);
+      const { owner, repo} = config.wiki.repository;
+      await addAdmin(username, owner, repo, user.login, config);
       alert(`✅ Successfully added ${username} as administrator`);
     } catch (error) {
       console.error('Failed to add admin:', error);
       alert('❌ Failed to add admin: ' + error.message);
     }
   };
-
-  // Reset to page 1 when commits change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [commits]);
-
-  // Scroll to commits section when page changes
-  useEffect(() => {
-    if (commitsRef.current && currentPage > 1) {
-      commitsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [currentPage]);
 
   if (loading) {
     return (
@@ -113,32 +94,19 @@ const PageHistory = ({ sectionId, pageId }) => {
     );
   }
 
-  // Calculate pagination
-  const totalPages = Math.ceil(commits.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedCommits = commits.slice(startIndex, endIndex);
-
   return (
     <div className="space-y-6">
-      <div ref={commitsRef} className="mb-6">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
           Page History
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
           {commits.length} {commits.length === 1 ? 'commit' : 'commits'}
-          {totalPages > 1 && (
-            <span className="ml-2">
-              (Showing {startIndex + 1}-{Math.min(endIndex, commits.length)})
-            </span>
-          )}
         </p>
       </div>
 
       <div className="space-y-4">
-        {paginatedCommits.map((commit, index) => {
-          // Calculate actual index in full commits array for "Latest" badge
-          const actualIndex = startIndex + index;
+        {commits.map((commit, index) => {
 
           // Check if this is an anonymous contribution
           const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
@@ -218,7 +186,7 @@ const PageHistory = ({ sectionId, pageId }) => {
                   </div>
 
                   <div className="flex items-center gap-2 ml-2">
-                    {actualIndex === 0 && (
+                    {index === 0 && (
                       <span className="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full">
                         Latest
                       </span>
@@ -292,74 +260,39 @@ const PageHistory = ({ sectionId, pageId }) => {
         })}
       </div>
 
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          {/* Previous button */}
+      {/* Load More Button */}
+      {hasMore && (
+        <div className="mt-8 flex items-center justify-center">
           <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+            {loadingMore ? (
+              <>
+                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Loading...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                Load More
+              </>
+            )}
           </button>
+        </div>
+      )}
 
-          {/* Page numbers */}
-          <div className="flex items-center gap-1">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-              // Show first page, last page, current page, and pages around current
-              const showPage =
-                pageNum === 1 ||
-                pageNum === totalPages ||
-                (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
-
-              // Show ellipsis
-              const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
-              const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
-
-              if (showEllipsisBefore || showEllipsisAfter) {
-                return (
-                  <span key={pageNum} className="px-2 text-gray-500 dark:text-gray-400">
-                    ...
-                  </span>
-                );
-              }
-
-              if (!showPage) return null;
-
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    currentPage === pageNum
-                      ? 'bg-blue-500 text-white'
-                      : 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Next button */}
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-
-          {/* Page info */}
-          <span className="ml-4 text-sm text-gray-600 dark:text-gray-400">
-            Page {currentPage} of {totalPages}
-          </span>
+      {/* Showing count */}
+      {!loading && commits.length > 0 && (
+        <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+          Showing {commits.length} commit{commits.length !== 1 ? 's' : ''}
+          {!hasMore && ' (all loaded)'}
         </div>
       )}
 

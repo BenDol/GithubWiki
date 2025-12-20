@@ -12,7 +12,7 @@ import { getCurrentUserAdminStatus } from '../../services/github/admin';
  * Prestige badge auto-loads for authenticated user
  */
 const UserMenu = () => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, isLoading: authLoading } = useAuthStore();
   const { config } = useWikiConfig();
   const [isOpen, setIsOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -22,8 +22,13 @@ const UserMenu = () => {
   // Load prestige data for current user
   const { tier: prestigeTier } = useUserPrestige(user?.login);
 
-  // Check if user is admin
+  // Check if user is admin (only after auth is ready)
   useEffect(() => {
+    // Wait for auth loading to complete before checking admin status
+    if (authLoading) {
+      return;
+    }
+
     if (!config || !user) {
       setIsAdmin(false);
       setAdminCheckLoading(false);
@@ -44,7 +49,7 @@ const UserMenu = () => {
     };
 
     checkAdmin();
-  }, [config, user]);
+  }, [config, user, authLoading]);
 
   // Close menu when clicking outside
   useEffect(() => {

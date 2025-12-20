@@ -56,6 +56,13 @@ function App() {
     }
   }, [config, addToast]);
 
+  // Expose config globally for utilities that need it (e.g., devStore)
+  useEffect(() => {
+    if (config) {
+      window.__WIKI_CONFIG__ = config;
+    }
+  }, [config]);
+
   // Set document title from config
   useEffect(() => {
     if (config?.wiki?.title) {

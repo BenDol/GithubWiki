@@ -25,74 +25,108 @@ import { getCachedCollaborators } from './githubCache';
  * - Prevents gaming through spam contributions
  */
 
+import { cacheName } from '../../utils/storageManager';
+
 const HIGHSCORE_ISSUE_TITLE = '[Cache] Contributor Highscore';
-const HIGHSCORE_CACHE_KEY = 'contributor_highscore_cache';
+const HIGHSCORE_CACHE_KEY = cacheName('contributor_highscore');
+
+/**
+ * In-flight request tracking to prevent race conditions
+ * Prevents multiple concurrent calls from creating duplicate highscore cache issues
+ */
+const pendingHighscoreIssueRequests = new Map();
 
 /**
  * Get or create the highscore cache issue
  * Returns null if user doesn't have permission to access issues
  */
 async function getHighscoreCacheIssue(owner, repo) {
+  const cacheKey = `${owner}/${repo}`;
   const octokit = getOctokit();
 
-  try {
-    // Search for existing cache issue
-    const { data: issues } = await octokit.rest.issues.listForRepo({
-      owner,
-      repo,
-      state: 'open',
-      labels: 'highscore-cache',
-      per_page: 100,
-    });
+  // Check if there's already a request in-flight for this repo
+  if (pendingHighscoreIssueRequests.has(cacheKey)) {
+    console.log('[Highscore] Waiting for in-flight cache issue request...');
+    return pendingHighscoreIssueRequests.get(cacheKey);
+  }
 
-    // Find issue with exact title match
-    const existingIssue = issues.find(issue => issue.title === HIGHSCORE_ISSUE_TITLE);
-
-    if (existingIssue) {
-      // Security: Verify issue was created by github-actions or wiki bot
-      const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
-      if (!validCreators.includes(existingIssue.user.login)) {
-        console.warn(`[Highscore] Security: Cache issue created by ${existingIssue.user.login}, expected github-actions or bot`);
-        return null;
-      }
-      return existingIssue;
-    }
-
-    // Create cache issue if it doesn't exist (requires write permissions)
-    console.log('[Highscore] Creating highscore cache issue...');
-    const { data: newIssue } = await octokit.rest.issues.create({
-      owner,
-      repo,
-      title: HIGHSCORE_ISSUE_TITLE,
-      body: JSON.stringify({
-        lastUpdated: null,
-        contributors: [],
-      }, null, 2),
-      labels: ['highscore-cache', 'automated'],
-    });
-
-    // Lock the issue to prevent unwanted comments
+  // Start a new request and track it
+  const requestPromise = (async () => {
     try {
-      await octokit.rest.issues.lock({
+      // Search for existing cache issue
+      const { data: issues } = await octokit.rest.issues.listForRepo({
         owner,
         repo,
-        issue_number: newIssue.number,
-        lock_reason: 'off-topic',
+        state: 'open',
+        labels: 'highscore-cache',
+        per_page: 100,
       });
-      console.log('[Highscore] Locked cache issue to collaborators only');
-    } catch (lockError) {
-      console.warn('[Highscore] Failed to lock issue (may not have permissions):', lockError.message);
-    }
 
-    return newIssue;
-  } catch (error) {
-    if (error.status === 403 || error.status === 401) {
-      console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
-      return null;
+      // Find issue with exact title match
+      const existingIssue = issues.find(issue => issue.title === HIGHSCORE_ISSUE_TITLE);
+
+      if (existingIssue) {
+        // Security: Verify issue was created by github-actions or wiki bot
+        const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
+        if (!validCreators.includes(existingIssue.user.login)) {
+          console.warn(`[Highscore] Security: Cache issue created by ${existingIssue.user.login}, expected github-actions or bot`);
+          return null;
+        }
+
+        // Check for duplicates
+        if (issues.length > 1) {
+          console.warn('[Highscore] ⚠️ Multiple cache issues found!', {
+            count: issues.length,
+            numbers: issues.map(i => i.number)
+          });
+        }
+
+        return existingIssue;
+      }
+
+      // Create cache issue if it doesn't exist (requires write permissions)
+      console.log('[Highscore] Creating highscore cache issue...');
+      const { data: newIssue } = await octokit.rest.issues.create({
+        owner,
+        repo,
+        title: HIGHSCORE_ISSUE_TITLE,
+        body: JSON.stringify({
+          lastUpdated: null,
+          contributors: [],
+        }, null, 2),
+        labels: ['highscore-cache', 'automated'],
+      });
+
+      // Lock the issue to prevent unwanted comments
+      try {
+        await octokit.rest.issues.lock({
+          owner,
+          repo,
+          issue_number: newIssue.number,
+          lock_reason: 'off-topic',
+        });
+        console.log('[Highscore] Locked cache issue to collaborators only');
+      } catch (lockError) {
+        console.warn('[Highscore] Failed to lock issue (may not have permissions):', lockError.message);
+      }
+
+      return newIssue;
+    } catch (error) {
+      if (error.status === 403 || error.status === 401) {
+        console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
+        return null;
+      }
+      console.error('[Highscore] Failed to get/create cache issue:', error);
+      throw error;
+    } finally {
+      // Remove from in-flight requests
+      pendingHighscoreIssueRequests.delete(cacheKey);
     }
-    console.error('[Highscore] Failed to get/create cache issue:', error);
-    throw error;
-  }
+  })();
+
+  // Track this request
+  pendingHighscoreIssueRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 /**
@@ -386,7 +420,7 @@ export async function getContributorHighscore(owner, repo, config, category = 'a
   );
 }
 
-const REFRESH_COOLDOWN_KEY = 'highscore_refresh_cooldown';
+const REFRESH_COOLDOWN_KEY = cacheName('highscore_refresh_cooldown');
 const COOLDOWN_MINUTES = 30;
 
 /**

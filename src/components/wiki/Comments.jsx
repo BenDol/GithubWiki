@@ -41,9 +41,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
   // Lazy loading state
-  const [visibleCount, setVisibleCount] = useState(10); // Show 10 comments initially
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef(null);
+  const PER_PAGE = 10;
 
   // Rate limiting state
   const reactionTimestamps = useRef([]);
@@ -97,7 +99,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
   // Reaction caching helpers (prevents stale reactions after page reload)
   const getReactionsCacheKey = (commentId) => {
-    return `wiki-reactions:${commentId}`;
+    return `cache:reactions:${commentId}`;
   };
 
   const getCachedReactions = (commentId) => {
@@ -195,8 +197,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         if (pageIssue) {
           setIssue(pageIssue);
 
-          // Load comments for the issue
-          let issueComments = await getIssueComments(owner, repo, pageIssue.number);
+          // Load first page of comments for the issue
+          const result = await getIssueComments(owner, repo, pageIssue.number, 1, PER_PAGE);
+          let issueComments = result.comments;
 
           // DEV: Add 100 fake comments for testing lazy loading
           if (import.meta.env.DEV && ENABLE_FAKE_COMMENTS) {
@@ -225,15 +228,18 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
               html_url: `https://github.com/${owner}/${repo}/issues/4#issuecomment-${8000000 + i}`
             }));
             issueComments = [...issueComments, ...fakeComments];
+            setHasMore(true); // Always show "more" with fake comments
             console.log('[Comments] Added 100 fake comments for testing');
+          } else {
+            setHasMore(result.hasMore);
           }
 
           setComments(issueComments);
+          setCurrentPage(1);
 
-          // Load reactions only for initially visible comments (lazy load rest)
+          // Load reactions for all comments on first page
           const reactions = {};
-          const initialComments = issueComments.slice(0, 10);
-          for (const comment of initialComments) {
+          for (const comment of issueComments) {
             // Skip loading reactions for fake test comments (dev only)
             const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
             if (!isFakeComment) {
@@ -267,53 +273,57 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
 
   // Lazy load more comments when sentinel is visible
   const loadMore = useCallback(async () => {
-    if (loadingMore || visibleCount >= comments.length || !config) return;
+    if (loadingMore || !hasMore || !config || !issue) return;
 
     setLoadingMore(true);
 
     try {
-      const newVisibleCount = Math.min(visibleCount + 10, comments.length);
-      const newComments = comments.slice(visibleCount, newVisibleCount);
-
-      // Load reactions for newly visible comments
       const { owner, repo } = config.wiki.repository;
-      const newReactions = { ...commentReactions };
+      const nextPage = currentPage + 1;
 
+      console.log(`[Comments] Loading more comments, page ${nextPage}`);
+      const result = await getIssueComments(owner, repo, issue.number, nextPage, PER_PAGE);
+
+      // Append new comments to existing list
+      const newComments = result.comments;
+      setComments(prev => [...prev, ...newComments]);
+      setHasMore(result.hasMore);
+      setCurrentPage(nextPage);
+
+      // Load reactions for newly loaded comments
+      const newReactions = { ...commentReactions };
       for (const comment of newComments) {
-        if (!newReactions[comment.id]) {
-          // Skip loading reactions for fake test comments (dev only)
-          const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
-          if (!isFakeComment) {
-            // Try to load from cache first
-            const cachedReactions = getCachedReactions(comment.id);
-            if (cachedReactions) {
-              newReactions[comment.id] = cachedReactions;
-            } else {
-              // If not cached, fetch from GitHub and cache the result
-              const commentReactionList = await getCommentReactions(owner, repo, comment.id);
-              newReactions[comment.id] = commentReactionList;
-              cacheReactions(comment.id, commentReactionList);
-            }
+        // Skip loading reactions for fake test comments (dev only)
+        const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
+        if (!isFakeComment) {
+          // Try to load from cache first
+          const cachedReactions = getCachedReactions(comment.id);
+          if (cachedReactions) {
+            newReactions[comment.id] = cachedReactions;
           } else {
-            newReactions[comment.id] = [];
+            // If not cached, fetch from GitHub and cache the result
+            const commentReactionList = await getCommentReactions(owner, repo, comment.id);
+            newReactions[comment.id] = commentReactionList;
+            cacheReactions(comment.id, commentReactionList);
           }
+        } else {
+          newReactions[comment.id] = [];
         }
       }
 
       setCommentReactions(newReactions);
-      setVisibleCount(newVisibleCount);
     } catch (err) {
       console.error('Failed to load more comments:', err);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, visibleCount, comments, config, commentReactions]);
+  }, [loadingMore, hasMore, currentPage, config, issue, commentReactions, PER_PAGE]);
 
   // Set up IntersectionObserver for lazy loading
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-    if (visibleCount >= comments.length) return; // All loaded
+    if (!hasMore) return; // All loaded
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -331,7 +341,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         observer.unobserve(sentinel);
       }
     };
-  }, [loadMore, visibleCount, comments.length]);
+  }, [loadMore, hasMore]);
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return;
@@ -380,10 +390,10 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       const createdComment = await createIssueComment(owner, repo, pageIssue.number, newComment, config);
       console.log('[Comments] Comment created:', createdComment);
 
-      // Reload comments
-      console.log('[Comments] Reloading all comments...');
-      const updatedComments = await getIssueComments(owner, repo, pageIssue.number);
-      console.log('[Comments] Loaded comments:', updatedComments.length, updatedComments);
+      // Reload first page of comments (reset pagination)
+      console.log('[Comments] Reloading first page of comments...');
+      const result = await getIssueComments(owner, repo, pageIssue.number, 1, PER_PAGE);
+      let updatedComments = result.comments;
 
       // GitHub API may have stale cache - ensure the new comment is included
       const commentExists = updatedComments.some(c => c.id === createdComment.id);
@@ -402,17 +412,14 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       }
 
       setComments(updatedComments);
+      setHasMore(result.hasMore);
+      setCurrentPage(1);
       setNewComment('');
 
-      // Load reactions for visible comments (including the new one)
-      const newVisibleCount = Math.min(10, updatedComments.length);
-      console.log('[Comments] Setting visible count to:', newVisibleCount);
-      setVisibleCount(newVisibleCount);
-
+      // Load reactions for all comments on the page
+      console.log('[Comments] Loading reactions for', updatedComments.length, 'comments');
       const newReactions = {};
-      const visibleComments = updatedComments.slice(0, newVisibleCount);
-      console.log('[Comments] Loading reactions for', visibleComments.length, 'comments');
-      for (const comment of visibleComments) {
+      for (const comment of updatedComments) {
         // Skip loading reactions for fake test comments (dev only)
         const isFakeComment = ENABLE_FAKE_COMMENTS && comment.id >= FAKE_COMMENT_ID_START;
         if (!isFakeComment) {
@@ -727,13 +734,15 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   };
 
   const handleUserBanned = () => {
-    // Reload comments to reflect ban status changes
+    // Reload comments to reflect ban status changes (reset pagination)
     const loadComments = async () => {
       if (!config || !issue) return;
       try {
         const { owner, repo } = config.wiki.repository;
-        const updatedComments = await getIssueComments(owner, repo, issue.number);
-        setComments(updatedComments);
+        const result = await getIssueComments(owner, repo, issue.number, 1, PER_PAGE);
+        setComments(result.comments);
+        setHasMore(result.hasMore);
+        setCurrentPage(1);
       } catch (err) {
         console.error('Failed to reload comments:', err);
       }
@@ -856,7 +865,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           </div>
         ) : (
           <>
-            {comments.slice(0, visibleCount).map((comment) => (
+            {comments.map((comment) => (
             <div
               key={comment.id}
               className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
@@ -972,7 +981,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           ))}
 
           {/* Sentinel element for IntersectionObserver */}
-          {visibleCount < comments.length && (
+          {hasMore && (
             <div ref={sentinelRef} className="py-4">
               {loadingMore ? (
                 <div className="flex justify-center">
@@ -983,7 +992,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                   onClick={loadMore}
                   className="w-full py-3 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
                 >
-                  Load More Comments ({comments.length - visibleCount} remaining)
+                  Load More Comments
                 </button>
               )}
             </div>

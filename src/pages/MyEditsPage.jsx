@@ -49,7 +49,22 @@ const MyEditsPage = () => {
 
         const { owner, repo } = config.wiki.repository;
         console.log(`[MyEdits] Loading PRs for branch: ${branch}`);
-        let prs = await getUserPullRequests(owner, repo, user.login, branch);
+
+        // Fetch ALL PRs (paginate through all pages)
+        let allPRs = [];
+        let currentPage = 1;
+        let hasMorePages = true;
+
+        while (hasMorePages) {
+          const result = await getUserPullRequests(owner, repo, user.login, branch, currentPage, 100);
+          allPRs = [...allPRs, ...result.prs];
+          hasMorePages = result.hasMore;
+          currentPage++;
+          console.log(`[MyEdits] Fetched page ${currentPage - 1}, total PRs so far: ${allPRs.length}`);
+        }
+
+        console.log(`[MyEdits] Loaded ${allPRs.length} total PRs for ${user.login}`);
+        let prs = allPRs;
 
         // DEV: Add fake PRs for testing pagination
         const ENABLE_FAKE_PRS = false; // Set to true to enable fake test data

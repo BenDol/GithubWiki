@@ -27,7 +27,7 @@ import { getOctokit } from './api';
  * - Fallback: Username in title - for legacy
  */
 
-const LOADOUTS_LABEL = 'battle-loadouts';
+const LOADOUTS_LABEL = 'battle-loadouts'; // Must match the type used in storage
 const LOADOUTS_TITLE_PREFIX = '[Battle Loadouts]';
 const MAX_LOADOUTS_PER_USER = 10; // Limit to prevent issue size bloat
 
@@ -246,3 +246,4 @@ export async function deleteUserLoadout(owner, repo, username, userId, loadoutId
 
   return filteredLoadouts;
 }
+

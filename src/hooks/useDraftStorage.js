@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
+import { cacheName } from '../utils/storageManager';
 
 /**
  * Custom Hook: useDraftStorage
@@ -8,7 +9,7 @@ import { useRef, useCallback, useEffect } from 'react';
  * - Loads draft on mount
  * - Clears draft after successful save
  *
- * @param {string} storageKey - Base key for localStorage (e.g., 'skillBuilder', 'spiritBuilder')
+ * @param {string} storageKey - Base key for localStorage (e.g., 'skill_builder', 'spirit_builder')
  * @param {any} user - User object with id property (or null for anonymous)
  * @param {boolean} isModal - If true, disables auto-save/load (modal mode)
  * @param {Object} draftData - Data to save to localStorage
@@ -18,10 +19,16 @@ import { useRef, useCallback, useEffect } from 'react';
 export function useDraftStorage(storageKey, user, isModal, draftData, debounceMs = 1000) {
   const saveTimeoutRef = useRef(null);
 
-  // Generate user-specific localStorage key
+  // Generate user-specific localStorage key using storage manager
   const getStorageKey = useCallback(() => {
     const userId = user?.id || 'anonymous';
-    return `${storageKey}_draft_${userId}`;
+    // Convert camelCase to snake_case (without _draft suffix)
+    const snakeCaseKey = storageKey
+      .replace(/([A-Z])/g, '_$1')
+      .toLowerCase()
+      .replace(/^_/, '');
+    // Use new draft format: cache:userId:draft:name
+    return `cache:${userId}:draft:${snakeCaseKey}`;
   }, [storageKey, user]);
 
   // Save current state to localStorage (debounced)

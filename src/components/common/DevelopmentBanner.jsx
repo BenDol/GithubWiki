@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { cacheName, getItem, setItem, removeItem } from '../../utils/storageManager';
 
 /**
  * Development Banner Component
@@ -23,7 +24,7 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 const DevelopmentBanner = () => {
   const { config } = useWikiConfig();
   const [visible, setVisible] = useState(false);
-  const STORAGE_KEY = 'dev-banner-dismissed';
+  const STORAGE_KEY = cacheName('dev_banner_dismissed');
 
   // Get config values with defaults
   const bannerEnabled = config?.features?.developmentBanner?.enabled ?? false;
@@ -37,7 +38,7 @@ const DevelopmentBanner = () => {
     }
 
     // Check if banner was previously dismissed
-    const dismissedData = localStorage.getItem(STORAGE_KEY);
+    const dismissedData = getItem(STORAGE_KEY);
 
     if (!dismissedData) {
       // Never dismissed before - show banner
@@ -46,13 +47,13 @@ const DevelopmentBanner = () => {
     }
 
     try {
-      const { timestamp } = JSON.parse(dismissedData);
+      const { timestamp } = dismissedData;
       const now = Date.now();
       const expiryTime = timestamp + (expiryMinutes * 60 * 1000);
 
       if (now > expiryTime) {
         // Expired - remove from storage and show banner
-        localStorage.removeItem(STORAGE_KEY);
+        removeItem(STORAGE_KEY);
         setVisible(true);
       } else {
         // Still within expiry time - keep hidden
@@ -60,17 +61,17 @@ const DevelopmentBanner = () => {
       }
     } catch (error) {
       // Invalid data - remove and show banner
-      localStorage.removeItem(STORAGE_KEY);
+      removeItem(STORAGE_KEY);
       setVisible(true);
     }
-  }, [bannerEnabled, expiryMinutes]);
+  }, [bannerEnabled, expiryMinutes, STORAGE_KEY]);
 
   const handleDismiss = () => {
     setVisible(false);
     const dismissalData = {
       timestamp: Date.now()
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dismissalData));
+    setItem(STORAGE_KEY, dismissalData);
   };
 
   // Don't render if disabled or not visible

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { configName, getItem, removeItem } from '../utils/storageManager';
 
 /**
  * Detect system dark mode preference
@@ -21,6 +22,7 @@ export const useUIStore = create(
       searchOpen: false,
       darkMode: getSystemDarkMode(), // Initialize from system preference
       userPreference: null, // null = follow system, true/false = user override
+      sidebarWidth: 256, // Default sidebar width in pixels
       activeModal: null,
       toasts: [],
 
@@ -28,6 +30,8 @@ export const useUIStore = create(
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+      setSidebarWidth: (width) => set({ sidebarWidth: width }),
 
       toggleSearch: () => set((state) => ({ searchOpen: !state.searchOpen })),
 
@@ -93,13 +97,26 @@ export const useUIStore = create(
       clearToasts: () => set({ toasts: [] }),
     }),
     {
-      name: 'wiki-ui-storage',
+      name: configName('wiki_ui'),
       partialize: (state) => ({
         userPreference: state.userPreference, // Save user's explicit preference (or null for system)
         sidebarOpen: state.sidebarOpen,
+        sidebarWidth: state.sidebarWidth, // Save sidebar width
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+
+        // Migrate old sidebar_width from separate config key
+        if (!state.sidebarWidth || state.sidebarWidth === 256) {
+          const oldKey = configName('sidebar_width');
+          const oldValue = getItem(oldKey);
+          if (oldValue && typeof oldValue === 'number') {
+            state.sidebarWidth = oldValue;
+            // Remove old key after migration
+            removeItem(oldKey);
+            console.log('[UIStore] Migrated sidebar_width to wiki_ui config');
+          }
+        }
 
         // Determine effective dark mode
         let effectiveDarkMode;

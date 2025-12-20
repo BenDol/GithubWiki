@@ -1,5 +1,6 @@
 import { getOctokit } from './api';
 import { getCachedUserProfile } from './githubCache';
+import { saveUserSnapshotWithBot } from './botService';
 
 /**
  * User Profile Snapshot System
@@ -79,7 +80,8 @@ export async function getUserSnapshot(owner, repo, username, userId = null) {
     }
 
     // Security: Verify issue was created by github-actions or wiki bot
-    const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
+    // Note: We allow user-created snapshots temporarily for backward compatibility
+    const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME, username];
     if (!validCreators.includes(snapshotIssue.user.login)) {
       console.warn(`[UserSnapshot] Security: Snapshot issue created by ${snapshotIssue.user.login}, expected github-actions or bot`);
       return null;
@@ -101,7 +103,7 @@ export async function getUserSnapshot(owner, repo, username, userId = null) {
 }
 
 /**
- * Save or update snapshot data for a user
+ * Save or update snapshot data for a user using the bot
  * Uses user ID for permanent identification (usernames can change)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
@@ -149,74 +151,14 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
       }
     }
 
-    const issueTitle = `${SNAPSHOT_TITLE_PREFIX} ${username}`;
-    const issueBody = JSON.stringify(snapshotData, null, 2);
-    const userIdLabel = snapshotData.userId ? `user-id:${snapshotData.userId}` : null;
+    // Use bot service to create/update the snapshot
+    const existingIssueNumber = existingIssue?.number || null;
+    console.log(`[UserSnapshot] ${existingIssueNumber ? 'Updating' : 'Creating'} snapshot for ${username} using bot...`);
 
-    if (existingIssue) {
-      // Update existing snapshot (update both title and labels in case username changed or migration needed)
-      console.log(`[UserSnapshot] Updating snapshot for ${username} (issue #${existingIssue.number})`);
+    const issue = await saveUserSnapshotWithBot(owner, repo, username, snapshotData, existingIssueNumber);
+    console.log(`[UserSnapshot] ✓ Snapshot ${existingIssueNumber ? 'updated' : 'created'} for ${username} (issue #${issue.number})`);
 
-      // Update title and body
-      const { data: updatedIssue } = await octokit.rest.issues.update({
-        owner,
-        repo,
-        issue_number: existingIssue.number,
-        title: issueTitle, // Update title to reflect current username
-        body: issueBody,
-      });
-
-      // Add user ID label if missing (migration for legacy snapshots)
-      if (userIdLabel) {
-        const hasUserIdLabel = existingIssue.labels.some(label =>
-          (typeof label === 'string' && label.startsWith('user-id:')) ||
-          (typeof label === 'object' && label.name?.startsWith('user-id:'))
-        );
-
-        if (!hasUserIdLabel) {
-          console.log(`[UserSnapshot] Adding user-id label to legacy snapshot for ${username}`);
-          await octokit.rest.issues.addLabels({
-            owner,
-            repo,
-            issue_number: existingIssue.number,
-            labels: [userIdLabel],
-          });
-        }
-      }
-
-      return updatedIssue;
-    } else {
-      // Create new snapshot with user ID label
-      console.log(`[UserSnapshot] Creating new snapshot for ${username}${userIdLabel ? ` (ID: ${snapshotData.userId})` : ''}`);
-
-      const labels = [SNAPSHOT_LABEL, 'automated'];
-      if (userIdLabel) {
-        labels.push(userIdLabel);
-      }
-
-      const { data: newIssue } = await octokit.rest.issues.create({
-        owner,
-        repo,
-        title: issueTitle,
-        body: issueBody,
-        labels,
-      });
-
-      // Lock the issue to prevent unwanted comments
-      try {
-        await octokit.rest.issues.lock({
-          owner,
-          repo,
-          issue_number: newIssue.number,
-          lock_reason: 'off-topic',
-        });
-        console.log(`[UserSnapshot] Locked snapshot issue for ${username} to collaborators only`);
-      } catch (lockError) {
-        console.warn(`[UserSnapshot] Failed to lock issue for ${username} (may not have permissions):`, lockError.message);
-      }
-
-      return newIssue;
-    }
+    return issue;
   } catch (error) {
     console.error(`[UserSnapshot] Failed to save snapshot for ${username}:`, error);
     throw error;

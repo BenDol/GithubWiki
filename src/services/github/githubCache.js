@@ -264,6 +264,22 @@ export async function getCachedUserProfile(username) {
 }
 
 /**
+ * Get user ID from username
+ * Uses cached profile data to avoid unnecessary API calls
+ * @param {string} username - GitHub username
+ * @returns {Promise<number>} User ID
+ */
+export async function getUserIdFromUsername(username) {
+  try {
+    const profile = await getCachedUserProfile(username);
+    return profile.id;
+  } catch (error) {
+    console.error(`[GitHub Cache] Failed to get user ID for ${username}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Get repository collaborators with caching
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name

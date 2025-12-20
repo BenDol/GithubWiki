@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 import SearchBar from '../search/SearchBar';
 import LoginButton from '../auth/LoginButton';
 import UserMenu from '../auth/UserMenu';
+import FirstTimeTutorial from '../common/FirstTimeTutorial';
 
 /**
  * Header component with navigation, search, and user menu
@@ -15,7 +16,21 @@ const Header = ({ onOpenDataBrowser }) => {
   const { darkMode, toggleDarkMode, toggleSidebar } = useUIStore();
   const { isAuthenticated, user } = useAuthStore();
   const [isToolsDropdownOpen, setIsToolsDropdownOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const toolsDropdownRef = useRef(null);
+  const toolsButtonRef = useRef(null);
+  const hamburgerButtonRef = useRef(null);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -32,13 +47,14 @@ const Header = ({ onOpenDataBrowser }) => {
   if (!config) return null;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <header className="sticky top-0 z-50 w-full border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-2 sm:px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Left side - Logo and Home link */}
           <div className="flex items-center space-x-6">
             {/* Mobile menu button */}
             <button
+              ref={hamburgerButtonRef}
               onClick={toggleSidebar}
               className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
               aria-label="Toggle sidebar"
@@ -83,6 +99,7 @@ const Header = ({ onOpenDataBrowser }) => {
               {config.wiki?.tools && config.wiki.tools.length > 0 && (
                 <div className="relative" ref={toolsDropdownRef}>
                   <button
+                    ref={toolsButtonRef}
                     onClick={() => setIsToolsDropdownOpen(!isToolsDropdownOpen)}
                     className="px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white transition-colors flex items-center gap-2"
                   >
@@ -176,6 +193,14 @@ const Header = ({ onOpenDataBrowser }) => {
           </div>
         </div>
       </div>
+
+      {/* First-time tutorial - points at Tools */}
+      {config.wiki?.tools && config.wiki.tools.length > 0 && (
+        <FirstTimeTutorial
+          targetRef={isMobile ? hamburgerButtonRef : toolsButtonRef}
+          isMobile={isMobile}
+        />
+      )}
     </header>
   );
 };

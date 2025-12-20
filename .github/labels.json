@@ -121,6 +121,11 @@
       "color": "e99695"
     },
     {
+      "name": "email-verification",
+      "description": "Email verification code storage for anonymous edits",
+      "color": "f9d0c4"
+    },
+    {
       "name": "user-snapshot",
       "description": "User profile snapshot data (managed by bot)",
       "color": "5319e7"
@@ -134,6 +139,26 @@
       "name": "battle-loadouts",
       "description": "User battle loadout storage (managed by bot)",
       "color": "1d76db"
+    },
+    {
+      "name": "my-spirits",
+      "description": "User spirit collection storage (managed by bot)",
+      "color": "9f1ddb"
+    },
+    {
+      "name": "spirit-builds",
+      "description": "User spirit build storage (managed by bot)",
+      "color": "db1d7a"
+    },
+    {
+      "name": "soul-weapon-grids",
+      "description": "Soul weapon engraving grid submissions (managed by bot)",
+      "color": "db8c1d"
+    },
+    {
+      "name": "data-version:v1",
+      "description": "Data model version 1 (storage versioning)",
+      "color": "5319e7"
     },
     {
       "name": "wiki-admin:admins",

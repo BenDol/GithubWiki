@@ -135,7 +135,7 @@ const TreeNode = ({
         {showAddButton && onAddClick && (
           <button
             onClick={onAddClick}
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors bg-white dark:bg-gray-900"
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-1.5 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors bg-gray-50 dark:bg-gray-900"
             title="Create new page"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -175,12 +175,8 @@ const Sidebar = () => {
   const [pages, setPages] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Sidebar width state (default 256px = w-64, but clamped to 85% on mobile)
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const stored = localStorage.getItem('sidebarWidth');
-    const defaultWidth = 256;
-    return stored ? parseInt(stored, 10) : defaultWidth;
-  });
+  // Sidebar width state from uiStore (default 256px = w-64, but clamped to 85% on mobile)
+  const { sidebarWidth, setSidebarWidth } = useUIStore();
 
   // Responsive sidebar width - max 85% of screen width on mobile
   const effectiveSidebarWidth = typeof window !== 'undefined' && window.innerWidth < 1024
@@ -230,7 +226,29 @@ const Sidebar = () => {
         const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
         if (response.ok) {
           const searchIndex = await response.json();
-          setPages(searchIndex.filter(page => page.pageId !== 'index'));
+          const discoveredPages = searchIndex.filter(page => page.pageId !== 'index');
+
+          // Add custom pages from section configs
+          const customPages = [];
+          if (config?.sections) {
+            config.sections.forEach(section => {
+              if (section.pages && Array.isArray(section.pages)) {
+                section.pages.forEach(page => {
+                  customPages.push({
+                    id: `${section.id}:${page.path}`,
+                    section: section.id,
+                    pageId: page.path.replace(/^\//, ''), // Remove leading slash
+                    title: page.title,
+                    path: page.path,
+                    isCustomRoute: true,
+                    icon: page.icon,
+                  });
+                });
+              }
+            });
+          }
+
+          setPages([...discoveredPages, ...customPages]);
         }
       } catch (err) {
         console.error('Failed to load pages for sidebar:', err);
@@ -240,7 +258,7 @@ const Sidebar = () => {
     };
 
     loadPages();
-  }, []);
+  }, [config]);
 
   // Handle sidebar resize
   useEffect(() => {
@@ -260,9 +278,7 @@ const Sidebar = () => {
 
     const handleMouseUp = () => {
       setIsResizing(false);
-      // Save to localStorage
-      localStorage.setItem('sidebarWidth', sidebarWidth.toString());
-      // Remove cursor styles
+      // Remove cursor styles (sidebarWidth auto-persists via uiStore)
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -389,7 +405,7 @@ const Sidebar = () => {
         className={`
           fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)]
           flex-shrink-0 overflow-y-auto border-r border-gray-200 dark:border-gray-800
-          bg-white dark:bg-gray-900 transition-transform duration-200
+          bg-gray-50 dark:bg-gray-900 transition-transform duration-200
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${isResizing ? 'select-none' : ''}
         `}
@@ -445,7 +461,7 @@ const Sidebar = () => {
                 const isLastCategory = categoryIndex === sortedCategories.length - 1;
 
                 return (
-                  <div key={category.id}>
+                  <div key={category.id} data-category-id={category.id}>
                     {/* Category node */}
                     <TreeNode
                       icon={category.icon}
@@ -479,10 +495,10 @@ const Sidebar = () => {
                               return (
                                 <TreeNode
                                   key={page.id}
-                                  icon="📄"
-                                  title={getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
-                                  path={`/${page.section}/${page.pageId}`}
-                                  isActive={isPageActive(section.path, page.pageId)}
+                                  icon={page.icon || "📄"}
+                                  title={page.isCustomRoute ? page.title : getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
+                                  path={page.isCustomRoute ? page.path : `/${page.section}/${page.pageId}`}
+                                  isActive={page.isCustomRoute ? location.pathname === page.path : isPageActive(section.path, page.pageId)}
                                   hasChildren={false}
                                   level={1}
                                   isLastChild={isLastPage}
@@ -523,10 +539,10 @@ const Sidebar = () => {
                             return (
                               <TreeNode
                                 key={page.id}
-                                icon="📄"
-                                title={getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
-                                path={`/${page.section}/${page.pageId}`}
-                                isActive={isPageActive(section.path, page.pageId)}
+                                icon={page.icon || "📄"}
+                                title={page.isCustomRoute ? page.title : getDisplayTitle(page.pageId, page.title, autoFormatTitles)}
+                                path={page.isCustomRoute ? page.path : `/${page.section}/${page.pageId}`}
+                                isActive={page.isCustomRoute ? location.pathname === page.path : isPageActive(section.path, page.pageId)}
                                 hasChildren={false}
                                 level={2}
                                 isLastChild={isLastPage}

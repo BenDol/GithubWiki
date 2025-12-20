@@ -3,7 +3,7 @@
  * Handles version checking and cache purging on updates
  */
 
-import { configName, getItem, setItem, clearAllCaches, clearAllCachesExceptDrafts } from './storageManager';
+import { configName, getItem, setItem, removeItem, clearAllCaches, clearAllCachesExceptDrafts } from './storageManager';
 import { migrateAll, needsMigration } from './storageMigration';
 
 const VERSION_KEY = configName('app_version');
@@ -93,6 +93,15 @@ export const initializeVersionSystem = async (config) => {
         from: storedVersion,
         to: currentVersion,
       });
+
+      // Check if we should force re-login
+      const forceRelog = config?.features?.forceRelogOnUpdate ?? false;
+      if (forceRelog) {
+        console.log('[VersionManager] Force re-login enabled, clearing authentication...');
+        const authKey = configName('wiki_auth');
+        removeItem(authKey);
+        console.log('[VersionManager] Authentication cleared, user will need to re-login');
+      }
 
       // Check if we should purge caches
       // VITE_PURGE_CLIENT_CACHE env var forces cache purge (set by commit message keyword)

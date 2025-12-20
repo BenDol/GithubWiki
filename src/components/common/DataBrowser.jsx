@@ -518,7 +518,7 @@ const DataBrowser = ({ dataFiles = [] }) => {
               )}
 
               {!loading && !error && filteredData && (
-                <div className="font-mono text-xs sm:text-sm">
+                <div className="font-mono text-xs sm:text-sm min-w-max">
                   {renderValue(filteredData, 'root')}
                 </div>
               )}

@@ -2,6 +2,7 @@ import { getOctokit, getAuthenticatedUser } from './api';
 import { createAdminIssueWithBot, updateAdminIssueWithBot } from './botService';
 import { detectCurrentBranch } from './branchNamespace';
 import { getCacheValue, setCacheValue, clearCacheValue } from '../../utils/timeCache.js';
+import { cacheName } from '../../utils/storageManager';
 
 /**
  * GitHub Admin Service
@@ -12,6 +13,10 @@ import { getCacheValue, setCacheValue, clearCacheValue } from '../../utils/timeC
 const ADMIN_LIST_LABEL = 'wiki-admin-list';
 const BANNED_USERS_LABEL = 'wiki-ban-list';
 const AUTOMATED_LABEL = 'automated';
+
+// In-flight request tracking to prevent race conditions
+const pendingAdminIssueRequests = new Map();
+const pendingBanIssueRequests = new Map();
 
 /**
  * Check if a user is the repository owner
@@ -31,54 +36,90 @@ export const isRepositoryOwner = (username, owner) => {
  * @returns {Promise<Object>} Issue object containing admins list
  */
 export const getOrCreateAdminsIssue = async (owner, repo, config) => {
-  const octokit = getOctokit();
-
   // Detect current branch for namespace isolation
   const branch = await detectCurrentBranch(config);
   const branchLabel = `branch:${branch}`;
+  const cacheKey = `${owner}/${repo}/${branch}`;
+  console.log(`[Admin] getOrCreateAdminsIssue called - branch: ${branch}, cacheKey: ${cacheKey}`);
 
-  try {
-    // Search for existing admins issue using listForRepo (fast, reliable)
-    const { data: issues } = await octokit.rest.issues.listForRepo({
-      owner,
-      repo,
-      labels: `${ADMIN_LIST_LABEL},${branchLabel}`,
-      state: 'open',
-      per_page: 1,
-    });
-
-    const existingIssue = issues.find(
-      issue => issue.title === '[Admin List]'
-    );
-
-    if (existingIssue) {
-      // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
-      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
-      if (existingIssue.user.login !== botUsername) {
-        console.warn(`[Admin] Security: Admin list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
-        throw new Error('Invalid admin list issue - not created by bot');
-      }
-      console.log(`[Admin] Found existing admin list issue #${existingIssue.number}`);
-      return existingIssue;
-    }
-
-    // Create new admins issue using bot service
-    console.log('[Admin] Creating admins list issue with bot...');
-    const newIssue = await createAdminIssueWithBot(
-      owner,
-      repo,
-      '[Admin List]',
-      `🔐 **Wiki Administrators**\n\nThis issue stores the list of wiki administrators who have permission to manage users and content.\n\n**Admin List:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Only the repository owner can modify the admin list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
-      [ADMIN_LIST_LABEL, branchLabel, AUTOMATED_LABEL],
-      true // Lock the issue
-    );
-
-    console.log(`[Admin] Created admins list issue #${newIssue.number}`);
-    return newIssue;
-  } catch (error) {
-    console.error('Failed to get/create admins issue:', error);
-    throw error;
+  // Check cache first (1-minute TTL to reduce GitHub API calls and prevent race conditions)
+  const cached = getCacheValue(cacheName('admin_issue', cacheKey));
+  if (cached) {
+    console.log(`[Admin] Using cached admin list issue #${cached.number}`);
+    return cached;
   }
+
+  // Check if there's already a request in-flight for this key
+  if (pendingAdminIssueRequests.has(cacheKey)) {
+    console.log('[Admin] Waiting for in-flight admin list issue request...');
+    return pendingAdminIssueRequests.get(cacheKey);
+  }
+
+  // Start a new request and track it
+  const requestPromise = (async () => {
+    try {
+      const octokit = getOctokit();
+
+      // Search for existing admins issue using listForRepo (fast, reliable)
+      console.log(`[Admin] Searching for admin list with labels: "${ADMIN_LIST_LABEL},${branchLabel}" in ${owner}/${repo}`);
+      const { data: issues } = await octokit.rest.issues.listForRepo({
+        owner,
+        repo,
+        labels: `${ADMIN_LIST_LABEL},${branchLabel}`,
+        state: 'open',
+        per_page: 1,
+      });
+      console.log(`[Admin] Search returned ${issues.length} issue(s)`);
+      if (issues.length > 0) {
+        console.log(`[Admin] Found issues:`, issues.map(i => ({ number: i.number, title: i.title, labels: i.labels.map(l => l.name) })));
+      }
+
+      const existingIssue = issues.find(
+        issue => issue.title === '[Admin List]'
+      );
+
+      if (existingIssue) {
+        // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
+        const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+        if (existingIssue.user.login !== botUsername) {
+          console.warn(`[Admin] Security: Admin list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+          throw new Error('Invalid admin list issue - not created by bot');
+        }
+        console.log(`[Admin] Found existing admin list issue #${existingIssue.number}`);
+
+        // Cache for 1 minute
+        setCacheValue(cacheName('admin_issue', cacheKey), existingIssue, 60000);
+        return existingIssue;
+      }
+
+      // Create new admins issue using bot service
+      console.log(`[Admin] Creating admins list issue with bot... Labels: [${ADMIN_LIST_LABEL}, ${branchLabel}, ${AUTOMATED_LABEL}]`);
+      const newIssue = await createAdminIssueWithBot(
+        owner,
+        repo,
+        '[Admin List]',
+        `🔐 **Wiki Administrators**\n\nThis issue stores the list of wiki administrators who have permission to manage users and content.\n\n**Admin List:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Only the repository owner can modify the admin list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
+        [ADMIN_LIST_LABEL, branchLabel, AUTOMATED_LABEL],
+        true // Lock the issue
+      );
+
+      console.log(`[Admin] Created admins list issue #${newIssue.number}`);
+
+      // Cache for 1 minute
+      setCacheValue(cacheName('admin_issue', cacheKey), newIssue, 60000);
+      return newIssue;
+    } catch (error) {
+      console.error('Failed to get/create admins issue:', error);
+      throw error;
+    } finally {
+      // Remove from in-flight requests
+      pendingAdminIssueRequests.delete(cacheKey);
+    }
+  })();
+
+  // Track this request
+  pendingAdminIssueRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 };
 
 /**
@@ -89,54 +130,90 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
  * @returns {Promise<Object>} Issue object containing banned users list
  */
 export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
-  const octokit = getOctokit();
-
   // Detect current branch for namespace isolation
   const branch = await detectCurrentBranch(config);
   const branchLabel = `branch:${branch}`;
+  const cacheKey = `${owner}/${repo}/${branch}`;
+  console.log(`[Admin] getOrCreateBannedUsersIssue called - branch: ${branch}, cacheKey: ${cacheKey}`);
 
-  try {
-    // Search for existing banned users issue using listForRepo (fast, reliable)
-    const { data: issues } = await octokit.rest.issues.listForRepo({
-      owner,
-      repo,
-      labels: `${BANNED_USERS_LABEL},${branchLabel}`,
-      state: 'open',
-      per_page: 1,
-    });
-
-    const existingIssue = issues.find(
-      issue => issue.title === '[Ban List]'
-    );
-
-    if (existingIssue) {
-      // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
-      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
-      if (existingIssue.user.login !== botUsername) {
-        console.warn(`[Admin] Security: Ban list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
-        throw new Error('Invalid ban list issue - not created by bot');
-      }
-      console.log(`[Admin] Found existing ban list issue #${existingIssue.number}`);
-      return existingIssue;
-    }
-
-    // Create new banned users issue using bot service
-    console.log('[Admin] Creating banned users issue with bot...');
-    const newIssue = await createAdminIssueWithBot(
-      owner,
-      repo,
-      '[Ban List]',
-      `🚫 **Banned Users**\n\nThis issue stores the list of users who are banned from commenting and contributing to the wiki.\n\n**Banned Users:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Repository owner and admins can manage the ban list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
-      [BANNED_USERS_LABEL, branchLabel, AUTOMATED_LABEL],
-      true // Lock the issue
-    );
-
-    console.log(`[Admin] Created banned users issue #${newIssue.number}`);
-    return newIssue;
-  } catch (error) {
-    console.error('Failed to get/create banned users issue:', error);
-    throw error;
+  // Check cache first (1-minute TTL to reduce GitHub API calls and prevent race conditions)
+  const cached = getCacheValue(cacheName('ban_issue', cacheKey));
+  if (cached) {
+    console.log(`[Admin] Using cached ban list issue #${cached.number}`);
+    return cached;
   }
+
+  // Check if there's already a request in-flight for this key
+  if (pendingBanIssueRequests.has(cacheKey)) {
+    console.log('[Admin] Waiting for in-flight ban list issue request...');
+    return pendingBanIssueRequests.get(cacheKey);
+  }
+
+  // Start a new request and track it
+  const requestPromise = (async () => {
+    try {
+      const octokit = getOctokit();
+
+      // Search for existing banned users issue using listForRepo (fast, reliable)
+      console.log(`[Admin] Searching for ban list with labels: "${BANNED_USERS_LABEL},${branchLabel}" in ${owner}/${repo}`);
+      const { data: issues } = await octokit.rest.issues.listForRepo({
+        owner,
+        repo,
+        labels: `${BANNED_USERS_LABEL},${branchLabel}`,
+        state: 'open',
+        per_page: 1,
+      });
+      console.log(`[Admin] Search returned ${issues.length} issue(s)`);
+      if (issues.length > 0) {
+        console.log(`[Admin] Found issues:`, issues.map(i => ({ number: i.number, title: i.title, labels: i.labels.map(l => l.name) })));
+      }
+
+      const existingIssue = issues.find(
+        issue => issue.title === '[Ban List]'
+      );
+
+      if (existingIssue) {
+        // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
+        const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+        if (existingIssue.user.login !== botUsername) {
+          console.warn(`[Admin] Security: Ban list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+          throw new Error('Invalid ban list issue - not created by bot');
+        }
+        console.log(`[Admin] Found existing ban list issue #${existingIssue.number}`);
+
+        // Cache for 1 minute
+        setCacheValue(cacheName('ban_issue', cacheKey), existingIssue, 60000);
+        return existingIssue;
+      }
+
+      // Create new banned users issue using bot service
+      console.log(`[Admin] Creating banned users issue with bot... Labels: [${BANNED_USERS_LABEL}, ${branchLabel}, ${AUTOMATED_LABEL}]`);
+      const newIssue = await createAdminIssueWithBot(
+        owner,
+        repo,
+        '[Ban List]',
+        `🚫 **Banned Users**\n\nThis issue stores the list of users who are banned from commenting and contributing to the wiki.\n\n**Banned Users:**\n\`\`\`json\n[]\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Repository owner and admins can manage the ban list via the Admin Panel.\n\n🤖 *This issue is managed by the wiki bot.*`,
+        [BANNED_USERS_LABEL, branchLabel, AUTOMATED_LABEL],
+        true // Lock the issue
+      );
+
+      console.log(`[Admin] Created banned users issue #${newIssue.number}`);
+
+      // Cache for 1 minute
+      setCacheValue(cacheName('ban_issue', cacheKey), newIssue, 60000);
+      return newIssue;
+    } catch (error) {
+      console.error('Failed to get/create banned users issue:', error);
+      throw error;
+    } finally {
+      // Remove from in-flight requests
+      pendingBanIssueRequests.delete(cacheKey);
+    }
+  })();
+
+  // Track this request
+  pendingBanIssueRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 };
 
 /**
@@ -258,17 +335,9 @@ export const isAdmin = async (username, owner, repo, config) => {
  * @returns {Promise<boolean>} True if user is banned
  */
 export const isBanned = async (username, owner, repo, config) => {
-  // Check cache first (10-minute TTL to reduce GitHub API calls)
-  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
-  const cached = getCacheValue(cacheKey);
-  if (cached !== null) {
-    console.log(`[Admin] Ban check cache hit for ${username}`);
-    return cached;
-  }
+  console.log(`[Admin] Checking if ${username} is banned...`);
 
-  console.log(`[Admin] Ban check cache miss for ${username}, fetching from GitHub...`);
-
-  // Fetch user ID for comparison
+  // Fetch user ID for cache key and comparison
   const octokit = getOctokit();
   let userId;
   try {
@@ -280,6 +349,17 @@ export const isBanned = async (username, owner, repo, config) => {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
     // Continue without userId, will fallback to username comparison
   }
+
+  // Check cache first (10-minute TTL to reduce GitHub API calls)
+  // Use userId as cache key (permanent identifier, survives username changes)
+  const cacheKey = cacheName(`ban_check_${owner}_${repo}`, userId || username);
+  const cached = getCacheValue(cacheKey);
+  if (cached !== null) {
+    console.log(`[Admin] Ban check cache hit for user ${userId || username}`);
+    return cached;
+  }
+
+  console.log(`[Admin] Ban check cache miss for user ${userId || username}, fetching from GitHub...`);
 
   // Check ban list (prefer userId, fallback to username for backwards compatibility)
   const bannedUsers = await getBannedUsers(owner, repo, config);
@@ -294,7 +374,7 @@ export const isBanned = async (username, owner, repo, config) => {
 
   // Cache the result for 10 minutes (600000ms)
   setCacheValue(cacheKey, isBannedResult, 600000);
-  console.log(`[Admin] Cached ban check result for ${username}: ${isBannedResult}`);
+  console.log(`[Admin] Cached ban check result for user ${userId || username}: ${isBannedResult}`);
 
   return isBannedResult;
 };
@@ -364,6 +444,12 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, admins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
+  // Clear issue cache to force refresh on next read
+  const branch = await detectCurrentBranch(config);
+  const issueCacheKey = `${owner}/${repo}/${branch}`;
+  clearCacheValue(cacheName('admin_issue', issueCacheKey));
+  console.log(`[Admin] Cleared admin issue cache after adding ${username}`);
+
   console.log(`[Admin] Added admin: ${username} (ID: ${userId})`);
   return admins;
 };
@@ -420,6 +506,12 @@ export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   // Update issue using bot service
   const newBody = updateUserListInIssue(issue.body, updatedAdmins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
+
+  // Clear issue cache to force refresh on next read
+  const branch = await detectCurrentBranch(config);
+  const issueCacheKey = `${owner}/${repo}/${branch}`;
+  clearCacheValue(cacheName('admin_issue', issueCacheKey));
+  console.log(`[Admin] Cleared admin issue cache after removing ${username}`);
 
   console.log(`[Admin] Removed admin: ${username} (ID: ${userId})`);
   return updatedAdmins;
@@ -490,6 +582,12 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
       if (updatedAdmins.length < admins.length) {
         const newAdminBody = updateUserListInIssue(adminIssue.body, updatedAdmins);
         await updateAdminIssueWithBot(owner, repo, adminIssue.number, newAdminBody);
+
+        // Clear admin issue cache
+        const branch = await detectCurrentBranch(config);
+        const issueCacheKey = `${owner}/${repo}/${branch}`;
+        clearCacheValue(cacheName('admin_issue', issueCacheKey));
+
         console.log(`[Admin] Removed ${username} from admin list before banning`);
       }
     } catch (error) {
@@ -528,10 +626,16 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
   const newBody = updateUserListInIssue(issue.body, bannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear cache for this user so next check gets fresh data
-  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
+  // Clear issue cache to force refresh on next read
+  const branch = await detectCurrentBranch(config);
+  const issueCacheKey = `${owner}/${repo}/${branch}`;
+  clearCacheValue(cacheName('ban_issue', issueCacheKey));
+  console.log(`[Admin] Cleared ban issue cache after banning ${username}`);
+
+  // Clear cache for this user so next check gets fresh data (use userId)
+  const cacheKey = cacheName(`ban_check_${owner}_${repo}`, userId);
   clearCacheValue(cacheKey);
-  console.log(`[Admin] Cleared ban check cache for ${username}`);
+  console.log(`[Admin] Cleared ban check cache for user ${userId}`);
 
   console.log(`[Admin] Banned user: ${username} (ID: ${userId})`);
   return bannedUsers;
@@ -591,10 +695,16 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, updatedBannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear cache for this user so next check gets fresh data
-  const cacheKey = `ban-check:${username}:${owner}/${repo}`;
+  // Clear issue cache to force refresh on next read
+  const branch = await detectCurrentBranch(config);
+  const issueCacheKey = `${owner}/${repo}/${branch}`;
+  clearCacheValue(cacheName('ban_issue', issueCacheKey));
+  console.log(`[Admin] Cleared ban issue cache after unbanning ${username}`);
+
+  // Clear cache for this user so next check gets fresh data (use userId)
+  const cacheKey = cacheName(`ban_check_${owner}_${repo}`, userId);
   clearCacheValue(cacheKey);
-  console.log(`[Admin] Cleared ban check cache for ${username}`);
+  console.log(`[Admin] Cleared ban check cache for user ${userId}`);
 
   console.log(`[Admin] Unbanned user: ${username} (ID: ${userId})`);
   return updatedBannedUsers;

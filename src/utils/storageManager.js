@@ -163,7 +163,7 @@ export const clearAllCaches = () => {
 export const clearAllCachesExceptDrafts = () => {
   try {
     const allCacheKeys = getKeys('cache:*');
-    const nonDraftKeys = allCacheKeys.filter(key => !key.includes('_draft'));
+    const nonDraftKeys = allCacheKeys.filter(key => !key.includes(':draft:'));
     nonDraftKeys.forEach(key => localStorage.removeItem(key));
     console.log(`[StorageManager] Cleared ${nonDraftKeys.length} cache keys (preserved ${allCacheKeys.length - nonDraftKeys.length} drafts)`);
     return nonDraftKeys.length;

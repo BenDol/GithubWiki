@@ -38,7 +38,7 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
     if (!config?.wiki?.repository) return;
     try {
       const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login);
+      await addAdmin(username, owner, repo, user.login, config);
       alert(`✅ Successfully added ${username} as administrator`);
     } catch (error) {
       console.error('Failed to add admin:', error);

@@ -494,3 +494,150 @@ export const isBotAvailable = async () => {
     return false;
   }
 };
+
+/**
+ * Save or update user snapshot issue with bot token (DEVELOPMENT ONLY)
+ */
+const saveUserSnapshotDirectly = async (owner, repo, username, snapshotData, existingIssueNumber = null) => {
+  if (!import.meta.env.DEV) {
+    throw new Error('Direct API calls are disabled in production builds');
+  }
+
+  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  if (!botToken) {
+    throw new Error('Bot token not configured');
+  }
+
+  const OctokitWithRetry = Octokit.plugin(retryPlugin);
+  const octokit = new OctokitWithRetry({
+    auth: botToken,
+    userAgent: 'GitHub-Wiki-Bot/1.0',
+    throttle: { enabled: false },
+  });
+
+  const issueTitle = `[User Snapshot] ${username}`;
+  const issueBody = JSON.stringify(snapshotData, null, 2);
+  const userIdLabel = snapshotData.userId ? `user-id:${snapshotData.userId}` : null;
+
+  if (existingIssueNumber) {
+    // Update existing snapshot
+    const { data: updatedIssue } = await octokit.rest.issues.update({
+      owner,
+      repo,
+      issue_number: existingIssueNumber,
+      title: issueTitle,
+      body: issueBody,
+    });
+
+    // Add user ID label if missing
+    if (userIdLabel) {
+      try {
+        await octokit.rest.issues.addLabels({
+          owner,
+          repo,
+          issue_number: existingIssueNumber,
+          labels: [userIdLabel],
+        });
+      } catch (err) {
+        console.warn('[Bot Service] Failed to add user-id label:', err.message);
+      }
+    }
+
+    return updatedIssue;
+  } else {
+    // Create new snapshot
+    const labels = ['user-snapshot', 'automated'];
+    if (userIdLabel) {
+      labels.push(userIdLabel);
+    }
+
+    const { data: newIssue } = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title: issueTitle,
+      body: issueBody,
+      labels,
+    });
+
+    // Lock the issue
+    try {
+      await octokit.rest.issues.lock({
+        owner,
+        repo,
+        issue_number: newIssue.number,
+        lock_reason: 'off-topic',
+      });
+    } catch (lockError) {
+      console.warn('[Bot Service] Failed to lock user snapshot:', lockError.message);
+    }
+
+    return newIssue;
+  }
+};
+
+/**
+ * Save or update user snapshot using the bot token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} username - GitHub username
+ * @param {Object} snapshotData - Snapshot data to save
+ * @param {number} [existingIssueNumber] - Existing issue number to update
+ * @returns {Promise<Object>} Created/updated issue data
+ */
+export const saveUserSnapshotWithBot = async (owner, repo, username, snapshotData, existingIssueNumber = null) => {
+  try {
+    // Get user credentials for server-side verification
+    const { user, getToken } = useAuthStore.getState();
+    const userToken = getToken();
+    const requestingUsername = user?.login;
+
+    if (!userToken || !requestingUsername) {
+      throw new Error('Authentication required to save user snapshot');
+    }
+
+    // Development mode: Try direct API call first
+    if (import.meta.env.DEV) {
+      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+
+      if (hasLocalToken) {
+        console.log('[Bot Service] Development mode: Using direct API call for user snapshot');
+        return await saveUserSnapshotDirectly(owner, repo, username, snapshotData, existingIssueNumber);
+      } else {
+        console.log('[Bot Service] Development mode: No local token, trying Netlify Dev function...');
+      }
+    }
+
+    // Production mode OR development without local token: Use Netlify Function
+    console.log('[Bot Service] Saving user snapshot via Netlify Function...');
+
+    const response = await fetch(getGithubBotEndpoint(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'save-user-snapshot',
+        owner,
+        repo,
+        username,
+        snapshotData,
+        existingIssueNumber,
+        userToken,
+        requestingUsername,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[Bot Service] Failed to save user snapshot:', data);
+      throw new Error(data.message || data.error || 'Failed to save user snapshot');
+    }
+
+    console.log('[Bot Service] ✓ User snapshot saved:', data.issue);
+    return data.issue;
+  } catch (error) {
+    console.error('[Bot Service] Error saving user snapshot:', error);
+    throw error;
+  }
+};

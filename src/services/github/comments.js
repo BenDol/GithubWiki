@@ -100,13 +100,15 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
 };
 
 /**
- * Get comments for a page issue
+ * Get comments for a page issue with pagination support
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {number} issueNumber - Issue number
- * @returns {Promise<Array>} Array of comments
+ * @param {number} page - Page number (1-indexed, default: 1)
+ * @param {number} perPage - Items per page (default: 10)
+ * @returns {Promise<{comments: Array, hasMore: boolean}>} Comments with pagination metadata
  */
-export const getIssueComments = async (owner, repo, issueNumber) => {
+export const getIssueComments = async (owner, repo, issueNumber, page = 1, perPage = 10) => {
   const octokit = getOctokit();
 
   try {
@@ -114,10 +116,11 @@ export const getIssueComments = async (owner, repo, issueNumber) => {
       owner,
       repo,
       issue_number: issueNumber,
-      per_page: 100,
+      page,
+      per_page: perPage,
     });
 
-    return comments.map(comment => ({
+    const mappedComments = comments.map(comment => ({
       id: comment.id,
       body: comment.body,
       user: {
@@ -130,6 +133,12 @@ export const getIssueComments = async (owner, repo, issueNumber) => {
       reactions: comment.reactions,
       html_url: comment.html_url,
     }));
+
+    // Check if there are more pages
+    // GitHub returns fewer than perPage if it's the last page
+    const hasMore = comments.length === perPage;
+
+    return { comments: mappedComments, hasMore };
   } catch (error) {
     console.error('Failed to get issue comments:', error);
     throw error;

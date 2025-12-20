@@ -40,6 +40,11 @@ const frameworkMigrations = [
     migrator: (key) => 'cache:highscore_refresh_cooldown',
   },
   {
+    name: 'contributor_prestige_cache',
+    matcher: (key) => key === 'contributor_prestige_cache',
+    migrator: (key) => 'cache:contributor_prestige',
+  },
+  {
     name: 'dev-banner-dismissed',
     matcher: (key) => key === 'dev-banner-dismissed',
     migrator: (key) => 'cache:dev_banner_dismissed',
@@ -72,6 +77,9 @@ const frameworkMigrations = [
   },
 
   // Username-specific cache entries (generic prestige system)
+  // NOTE: These migrate legacy keys to username-based format
+  // The system now uses userId-based keys (cache:userId:prestige)
+  // Old username-based keys will naturally expire via TTL and be replaced
   {
     name: 'prestige cache',
     matcher: (key) => /^prestige:(.+)$/.test(key),
@@ -81,6 +89,23 @@ const frameworkMigrations = [
 
       const [, username] = match;
       return `cache:${username}:prestige`;
+    },
+  },
+
+  // Ban check cache entries
+  // NOTE: These migrate legacy keys to username-based format
+  // The system now uses userId-based keys (cache:userId:ban_check_...)
+  // Old username-based keys will naturally expire via TTL and be replaced
+  {
+    name: 'ban check cache',
+    matcher: (key) => /^ban-check:(.+):(.+)$/.test(key),
+    migrator: (key) => {
+      const match = key.match(/^ban-check:(.+):(.+)$/);
+      if (!match) return key;
+
+      const [, username, repo] = match;
+      const repoKey = repo.replace(/\//g, '_');
+      return `cache:${username}:ban_check_${repoKey}`;
     },
   },
 

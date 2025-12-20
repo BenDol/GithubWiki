@@ -39,8 +39,10 @@ const ProfilePage = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
-  // Pagination state
+  // Lazy loading state
   const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const itemsPerPage = 10;
 
   // Ref for Edit Requests section
@@ -65,7 +67,7 @@ const ProfilePage = () => {
     if (!config?.wiki?.repository) return;
     try {
       const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, currentUser.login);
+      await addAdmin(username, owner, repo, currentUser.login, config);
       alert(`✅ Successfully added ${username} as administrator`);
     } catch (error) {
       console.error('Failed to add admin:', error);
@@ -167,10 +169,12 @@ const ProfilePage = () => {
           console.log(`[Profile] Loading own profile with live data`);
           setProfileUser(currentUser);
 
-          // Fetch pull requests for own profile
-          console.log(`[Profile] Loading PRs for user: ${targetUsername}, branch: ${branch}`);
-          const prs = await getUserPullRequests(owner, repo, targetUsername, branch);
-          setPullRequests(prs);
+          // Fetch pull requests for own profile (page 1)
+          console.log(`[Profile] Loading PRs for user: ${targetUsername}, branch: ${branch}, page 1`);
+          const result = await getUserPullRequests(owner, repo, targetUsername, branch, 1, itemsPerPage);
+          setPullRequests(result.prs);
+          setHasMore(result.hasMore);
+          setCurrentPage(1);
 
           // Fetch highscore stats (for prestige calculation)
           if (config?.features?.contributorHighscore?.enabled) {
@@ -229,15 +233,32 @@ const ProfilePage = () => {
     setCurrentPage(1);
   }, [showClosed]);
 
-  // Scroll to Edit Requests section when page changes
-  useEffect(() => {
-    if (editRequestsRef.current) {
-      editRequestsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [currentPage]);
-
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+    setCurrentPage(1);
+    setHasMore(false);
+  };
+
+  const handleLoadMore = async () => {
+    if (!config || !targetUsername || !branch || loadingMore || !hasMore) return;
+
+    try {
+      setLoadingMore(true);
+      const { owner, repo } = config.wiki.repository;
+      const nextPage = currentPage + 1;
+
+      console.log(`[Profile] Loading more PRs, page ${nextPage}`);
+      const result = await getUserPullRequests(owner, repo, targetUsername, branch, nextPage, itemsPerPage);
+
+      // Append new PRs to existing list
+      setPullRequests(prev => [...prev, ...result.prs]);
+      setHasMore(result.hasMore);
+      setCurrentPage(nextPage);
+    } catch (error) {
+      console.error('[Profile] Failed to load more PRs:', error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const togglePRExpanded = (prNumber) => {
@@ -354,16 +375,10 @@ const ProfilePage = () => {
     );
   };
 
-  // Filter pull requests based on showClosed state
+  // Filter pull requests based on showClosed state (client-side filtering on loaded PRs)
   const filteredPullRequests = showClosed
     ? pullRequests
     : pullRequests.filter(pr => pr.state === 'open');
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredPullRequests.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedPullRequests = filteredPullRequests.slice(startIndex, endIndex);
 
   // Calculate contribution statistics from PRs
   // ONLY count additions/deletions/files from MERGED PRs (not closed without merging)
@@ -800,7 +815,8 @@ const ProfilePage = () => {
             </h2>
             {filteredPullRequests.length > 0 && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredPullRequests.length)} of {filteredPullRequests.length}
+                Showing {filteredPullRequests.length} edit request{filteredPullRequests.length !== 1 ? 's' : ''}
+                {!hasMore && ' (all loaded)'}
                 {snapshotData?.pullRequestsTruncated && !isOwnProfile && (
                   <span className="text-gray-500 dark:text-gray-500"> • Most recent 100 shown</span>
                 )}
@@ -854,7 +870,7 @@ const ProfilePage = () => {
       ) : (
         <>
         <div className="space-y-4">
-          {paginatedPullRequests.map((pr) => {
+          {filteredPullRequests.map((pr) => {
             const isExpanded = expandedPRs.has(pr.number);
             const isClosed = pr.state === 'closed' || pr.state === 'merged';
             const isMerged = pr.state === 'merged' || pr.merged_at;
@@ -1053,74 +1069,39 @@ const ProfilePage = () => {
           })}
         </div>
 
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="mt-8 flex items-center justify-center gap-2">
-            {/* Previous button */}
+        {/* Load More Button */}
+        {hasMore && (
+          <div className="mt-8 flex items-center justify-center">
             <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="px-6 py-3 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              {loadingMore ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                  Load More
+                </>
+              )}
             </button>
+          </div>
+        )}
 
-            {/* Page numbers */}
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-                // Show first page, last page, current page, and pages around current
-                const showPage =
-                  pageNum === 1 ||
-                  pageNum === totalPages ||
-                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
-
-                // Show ellipsis
-                const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
-                const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
-
-                if (showEllipsisBefore || showEllipsisAfter) {
-                  return (
-                    <span key={pageNum} className="px-2 text-gray-500 dark:text-gray-400">
-                      ...
-                    </span>
-                  );
-                }
-
-                if (!showPage) return null;
-
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`min-w-[40px] px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      currentPage === pageNum
-                        ? 'bg-blue-500 text-white'
-                        : 'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Next button */}
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-
-            {/* Page info */}
-            <span className="ml-4 text-sm text-gray-600 dark:text-gray-400">
-              Page {currentPage} of {totalPages} ({filteredPullRequests.length} total)
-            </span>
+        {/* Showing count */}
+        {!loading && filteredPullRequests.length > 0 && (
+          <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+            Showing {filteredPullRequests.length} edit request{filteredPullRequests.length !== 1 ? 's' : ''}
+            {!hasMore && ' (all loaded)'}
           </div>
         )}
         </>

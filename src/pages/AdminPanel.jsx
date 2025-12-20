@@ -62,7 +62,7 @@ const AdminPanel = () => {
         const { owner, repo } = config.wiki.repository;
 
         // Check if user is admin or owner
-        const status = await getCurrentUserAdminStatus(owner, repo);
+        const status = await getCurrentUserAdminStatus(owner, repo, config);
         setAdminStatus(status);
 
         if (!status.isAdmin) {
@@ -92,8 +92,8 @@ const AdminPanel = () => {
     try {
       const { owner, repo } = config.wiki.repository;
       const [adminsData, bannedData] = await Promise.all([
-        getAdmins(owner, repo),
-        getBannedUsers(owner, repo),
+        getAdmins(owner, repo, config),
+        getBannedUsers(owner, repo, config),
       ]);
       setAdmins(adminsData);
       setBannedUsers(bannedData);
@@ -118,7 +118,7 @@ const AdminPanel = () => {
     try {
       setBanLoading(true);
       const { owner, repo } = config.wiki.repository;
-      await banUser(banUsername.trim(), banReason.trim(), owner, repo, adminStatus.username);
+      await banUser(banUsername.trim(), banReason.trim(), owner, repo, adminStatus.username, config);
 
       alert(`✅ Successfully banned ${banUsername}`);
       setBanUsername('');
@@ -144,7 +144,7 @@ const AdminPanel = () => {
 
     try {
       const { owner, repo } = config.wiki.repository;
-      await unbanUser(username, owner, repo, adminStatus.username);
+      await unbanUser(username, owner, repo, adminStatus.username, config);
 
       alert(`✅ Successfully unbanned ${username}`);
       await loadData();
@@ -174,7 +174,7 @@ const AdminPanel = () => {
     try {
       setAddAdminLoading(true);
       const { owner, repo } = config.wiki.repository;
-      await addAdmin(addAdminUsername.trim(), owner, repo, adminStatus.username);
+      await addAdmin(addAdminUsername.trim(), owner, repo, adminStatus.username, config);
 
       alert(`✅ Successfully added ${addAdminUsername} as admin`);
       setAddAdminUsername('');
@@ -204,7 +204,7 @@ const AdminPanel = () => {
 
     try {
       const { owner, repo } = config.wiki.repository;
-      await removeAdmin(username, owner, repo, adminStatus.username);
+      await removeAdmin(username, owner, repo, adminStatus.username, config);
 
       alert(`✅ Successfully removed ${username} as admin`);
       await loadData();

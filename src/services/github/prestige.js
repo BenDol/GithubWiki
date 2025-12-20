@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { cacheName } from '../../utils/storageManager';
 
 /**
  * Contributor Prestige Service
@@ -7,7 +8,7 @@ import { getOctokit } from './api';
  */
 
 const PRESTIGE_CACHE_ISSUE_TITLE = '[Cache] Contributor Prestige';
-const PRESTIGE_CACHE_KEY = 'contributor_prestige_cache';
+const PRESTIGE_CACHE_KEY = cacheName('contributor_prestige');
 
 /**
  * Get the prestige cache issue
