@@ -273,6 +273,9 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
 
         console.log('[Build Share] ✓ Index issue created:', issue.number);
 
+        // Cache the issue number for future use
+        window.__BUILD_SHARE_INDEX_NUMBER = issue.number;
+
         return {
           number: issue.number,
           body: issue.body || INDEX_HEADER,
@@ -281,8 +284,11 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
         console.error('[Build Share] Error getting/creating index issue:', error);
         throw error;
       } finally {
-        // Remove from in-flight requests
-        pendingIndexIssueRequests.delete(cacheKey);
+        // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+        // This ensures concurrent requests during this window get the same result
+        setTimeout(() => {
+          pendingIndexIssueRequests.delete(cacheKey);
+        }, 5000);
       }
     })();
 

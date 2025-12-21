@@ -107,13 +107,16 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
 
       // Cache for 1 minute
       setCacheValue(cacheName('admin_issue', cacheKey), newIssue, 60000);
+
       return newIssue;
     } catch (error) {
       console.error('Failed to get/create admins issue:', error);
       throw error;
     } finally {
-      // Remove from in-flight requests
-      pendingAdminIssueRequests.delete(cacheKey);
+      // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+      setTimeout(() => {
+        pendingAdminIssueRequests.delete(cacheKey);
+      }, 5000);
     }
   })();
 
@@ -201,13 +204,16 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
 
       // Cache for 1 minute
       setCacheValue(cacheName('ban_issue', cacheKey), newIssue, 60000);
+
       return newIssue;
     } catch (error) {
       console.error('Failed to get/create banned users issue:', error);
       throw error;
     } finally {
-      // Remove from in-flight requests
-      pendingBanIssueRequests.delete(cacheKey);
+      // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+      setTimeout(() => {
+        pendingBanIssueRequests.delete(cacheKey);
+      }, 5000);
     }
   })();
 

@@ -9,6 +9,12 @@ import { createPageLabel, createBranchLabel } from '../../utils/githubLabelUtils
  */
 
 /**
+ * In-flight request tracking to prevent race conditions
+ * Prevents multiple concurrent calls from creating duplicate comment issues for the same page
+ */
+const pendingPageIssueRequests = new Map();
+
+/**
  * Search for an existing issue for a specific wiki page (read-only, no auth required for public repos)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
@@ -62,42 +68,61 @@ export const findPageIssue = async (owner, repo, sectionId, pageId, branch) => {
  * @returns {Promise<Object>} Issue object
  */
 export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageTitle, pageUrl, branch) => {
-  // First try to find existing issue by page ID
-  const existingIssue = await findPageIssue(owner, repo, sectionId, pageId, branch);
-  if (existingIssue) {
-    return existingIssue;
-  }
-
-  // Create new issue for this page using bot (server-side via Netlify Function)
-  // This keeps the bot token secure and prevents users from closing comment issues
   const pageLabel = createPageLabel(sectionId, pageId);
   const branchLabel = createBranchLabel(branch);
+  const cacheKey = `${owner}/${repo}/${pageLabel}/${branch}`;
 
-  console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot (server-side)`);
-
-  try {
-    // Call secure Netlify Function to create issue with bot token
-    const newIssue = await createCommentIssueWithBot(
-      owner,
-      repo,
-      `[Comments] ${pageTitle}`,
-      `💬 **Comments for:** ${pageTitle}\n📄 **Page ID:** \`${sectionId}/${pageId}\`\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
-      ['wiki-comments', pageLabel, branchLabel]
-    );
-
-    console.log(`[Comments] ✓ Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
-
-    return newIssue;
-  } catch (error) {
-    console.error('[Comments] Failed to create page issue with bot:', error);
-
-    // If bot service fails, throw a helpful error
-    if (error.message?.includes('Bot token not configured')) {
-      throw new Error('Comment system requires bot token configuration. Please contact the wiki administrator.');
-    }
-
-    throw error;
+  // Check if there's already a request in-flight for this page
+  if (pendingPageIssueRequests.has(cacheKey)) {
+    console.log('[Comments] Waiting for in-flight page issue request...');
+    return pendingPageIssueRequests.get(cacheKey);
   }
+
+  // Start a new request and track it
+  const requestPromise = (async () => {
+    try {
+      // First try to find existing issue by page ID
+      const existingIssue = await findPageIssue(owner, repo, sectionId, pageId, branch);
+      if (existingIssue) {
+        return existingIssue;
+      }
+
+      // Create new issue for this page using bot (server-side via Netlify Function)
+      // This keeps the bot token secure and prevents users from closing comment issues
+      console.log(`[Comments] Creating page issue for ${sectionId}/${pageId} with bot (server-side)`);
+
+      // Call secure Netlify Function to create issue with bot token
+      const newIssue = await createCommentIssueWithBot(
+        owner,
+        repo,
+        `[Comments] ${pageTitle}`,
+        `💬 **Comments for:** ${pageTitle}\n📄 **Page ID:** \`${sectionId}/${pageId}\`\n🔗 **Page URL:** ${pageUrl}\n🔀 **Branch:** ${branch}\n\n---\n\nThis issue is used to collect comments for the wiki page. Feel free to leave your thoughts, questions, or feedback below!\n\n🤖 *This issue is managed by the wiki bot.*`,
+        ['wiki-comments', pageLabel, branchLabel]
+      );
+
+      console.log(`[Comments] ✓ Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
+
+      return newIssue;
+    } catch (error) {
+      console.error('[Comments] Failed to create page issue with bot:', error);
+
+      // If bot service fails, throw a helpful error
+      if (error.message?.includes('Bot token not configured')) {
+        throw new Error('Comment system requires bot token configuration. Please contact the wiki administrator.');
+      }
+
+      throw error;
+    } finally {
+      // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+      setTimeout(() => {
+        pendingPageIssueRequests.delete(cacheKey);
+      }, 5000);
+    }
+  })();
+
+  // Track this request
+  pendingPageIssueRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 };
 
 /**

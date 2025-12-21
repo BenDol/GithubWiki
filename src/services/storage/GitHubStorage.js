@@ -46,6 +46,9 @@ class GitHubStorage extends StorageAdapter {
     this.owner = config.owner;
     this.repo = config.repo;
     this.dataVersion = config.version || 'v1';
+
+    // In-flight request tracking to prevent race conditions
+    this._pendingVerificationIssueRequest = null;
   }
 
   /**
@@ -430,13 +433,22 @@ class GitHubStorage extends StorageAdapter {
    * @private
    */
   async _getOrCreateVerificationIssue() {
-    const issueTitle = '[Email Verification]';
-    const issues = await this._findIssuesByLabels(['email-verification']);
-    let verificationIssue = issues.find(issue => issue.title === issueTitle);
+    // Check if there's already a request in-flight
+    if (this._pendingVerificationIssueRequest) {
+      console.log('[GitHubStorage] Waiting for in-flight verification issue request...');
+      return this._pendingVerificationIssueRequest;
+    }
 
-    if (!verificationIssue) {
-      console.log('[GitHubStorage] Creating email verification issue...');
-      const initialBody = `# Email Verification Codes
+    // Start a new request and track it
+    this._pendingVerificationIssueRequest = (async () => {
+      try {
+        const issueTitle = '[Email Verification]';
+        const issues = await this._findIssuesByLabels(['email-verification']);
+        let verificationIssue = issues.find(issue => issue.title === issueTitle);
+
+        if (!verificationIssue) {
+          console.log('[GitHubStorage] Creating email verification issue...');
+          const initialBody = `# Email Verification Codes
 
 This issue stores email verification codes as comments. Each comment is automatically purged after expiration.
 
@@ -449,30 +461,42 @@ This issue stores email verification codes as comments. Each comment is automati
 
 🤖 *Automated verification system*`;
 
-      const { data: newIssue } = await this.octokit.rest.issues.create({
-        owner: this.owner,
-        repo: this.repo,
-        title: issueTitle,
-        body: initialBody,
-        labels: ['email-verification', 'automated'],
-      });
+          const { data: newIssue } = await this.octokit.rest.issues.create({
+            owner: this.owner,
+            repo: this.repo,
+            title: issueTitle,
+            body: initialBody,
+            labels: ['email-verification', 'automated'],
+          });
 
-      // Lock the issue
-      try {
-        await this.octokit.rest.issues.lock({
-          owner: this.owner,
-          repo: this.repo,
-          issue_number: newIssue.number,
-          lock_reason: 'off-topic',
-        });
-      } catch (lockError) {
-        console.warn('[GitHubStorage] Failed to lock verification issue:', lockError.message);
+          // Lock the issue
+          try {
+            await this.octokit.rest.issues.lock({
+              owner: this.owner,
+              repo: this.repo,
+              issue_number: newIssue.number,
+              lock_reason: 'off-topic',
+            });
+          } catch (lockError) {
+            console.warn('[GitHubStorage] Failed to lock verification issue:', lockError.message);
+          }
+
+          verificationIssue = newIssue;
+        }
+
+        return verificationIssue;
+      } catch (error) {
+        console.error('[GitHubStorage] Error getting/creating verification issue:', error);
+        throw error;
+      } finally {
+        // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+        setTimeout(() => {
+          this._pendingVerificationIssueRequest = null;
+        }, 5000);
       }
+    })();
 
-      verificationIssue = newIssue;
-    }
-
-    return verificationIssue;
+    return this._pendingVerificationIssueRequest;
   }
 
   /**
