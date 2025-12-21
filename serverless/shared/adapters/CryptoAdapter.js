@@ -25,7 +25,7 @@ export class CryptoAdapter {
     if (this.platform === 'netlify') {
       // Node.js environment - use webcrypto from crypto module
       // Dynamic import to avoid bundling issues
-      const { webcrypto } = require('crypto');
+      const { webcrypto } = require('node:crypto');
       return webcrypto;
     } else {
       // Cloudflare Workers - use global crypto
