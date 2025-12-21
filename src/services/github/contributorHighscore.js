@@ -241,6 +241,18 @@ async function applyContributorFilters(contributors, owner, repo, config = {}) {
     console.log(`[Highscore] Filtered out ${beforeCount - filteredContributors.length} total users`);
   }
 
+  // Filter out contributors with zero score (no contributions after release date)
+  const beforeZeroFilter = filteredContributors.length;
+  filteredContributors = filteredContributors.filter(c => {
+    // Calculate score if missing
+    const score = c.score !== undefined ? c.score : calculateContributorScore(c);
+    return score > 0;
+  });
+  const zeroScoreCount = beforeZeroFilter - filteredContributors.length;
+  if (zeroScoreCount > 0) {
+    console.log(`[Highscore] Filtered out ${zeroScoreCount} contributor(s) with zero score`);
+  }
+
   // Ensure all contributors have scores (should already be present from cache)
   // If missing, calculate score (fallback for legacy data)
   filteredContributors = filteredContributors.map(contributor => {
