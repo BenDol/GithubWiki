@@ -7,6 +7,11 @@ import { getGithubBotEndpoint } from '../../utils/apiEndpoints.js';
  * Build Share Service
  * URL shortening system for sharing builds using GitHub Issues as storage
  *
+ * This service is fully generic and works with any build types registered via buildTypeRegistry.
+ * Parent projects must register their build types before using this service.
+ *
+ * @see buildTypeRegistry.js for build type registration
+ *
  * Architecture:
  * - Single issue per repository with label "build-share-index"
  * - Issue body contains a checksum-to-comment-ID map

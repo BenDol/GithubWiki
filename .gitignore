@@ -38,3 +38,5 @@ public/search-index.json
 
 # OS files
 Thumbs.db
+coverage/
+*.log

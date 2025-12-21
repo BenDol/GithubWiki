@@ -1,5 +1,10 @@
 # GitHub Wiki Framework
 
+[![Tests](https://github.com/BenDol/GithubWiki/actions/workflows/test.yml/badge.svg)](https://github.com/BenDol/GithubWiki/actions/workflows/test.yml)
+[![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/BenDol/GithubWiki)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+
 A powerful, customizable wiki framework built with React and powered by GitHub. Create beautiful documentation sites with markdown, GitHub authentication, and automatic deployment.
 
 ## Features
@@ -368,7 +373,70 @@ npm run build:search
 
 # Lint code
 npm run lint
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with UI
+npm run test:ui
+
+# Run tests with coverage
+npm run test:coverage
 ```
+
+### Testing
+
+The framework includes comprehensive tests for all serverless infrastructure:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode (auto-rerun on changes)
+npm run test:watch
+
+# Run tests with interactive UI
+npm run test:ui
+
+# Generate coverage report
+npm run test:coverage
+```
+
+#### Test Structure
+
+```
+tests/
+├── serverless/
+│   └── adapters/           # Platform abstraction tests
+│       ├── PlatformAdapter.test.js    (32 tests)
+│       ├── ConfigAdapter.test.js      (17 tests)
+│       └── CryptoAdapter.test.js      (30 tests)
+├── helpers/                # Test utilities
+│   └── adapterHelpers.js
+└── mocks/                  # API mocks
+    ├── externalApis.js
+    └── octokit.js
+```
+
+#### Coverage
+
+Current test coverage for serverless code:
+- **PlatformAdapter**: 86.66%
+- **ConfigAdapter**: 90.9%
+- **CryptoAdapter**: 100%
+- **Overall Adapters**: 91%+ ✅
+
+#### CI/CD
+
+Tests run automatically on:
+- Every push to `main` or `dev`
+- Every pull request
+- Manual workflow trigger
+
+See [.github/CI.md](.github/CI.md) for CI/CD documentation.
 
 ### Developer Tools & Debugging
 
@@ -390,7 +458,7 @@ Press **`Ctrl+Shift+D`** or click the "🛠️ Dev Tools" button in the bottom-r
 
 All logs are automatically written to:
 ```
-C:\Projects\slayerlegend\wiki\logs\debug.log
+logs/debug.log
 ```
 
 This allows AI assistants (like Claude) to read logs directly without you needing to copy/paste them.

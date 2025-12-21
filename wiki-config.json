@@ -1,11 +1,14 @@
 {
+  "_comment": "Framework Test Configuration - DO NOT use in production!",
+  "_note": "This config is used ONLY for framework tests. For production config, see ../wiki-config.json in the parent project.",
+  "_parentConfig": "../wiki-config.json",
+
   "wiki": {
-    "title": "My Wiki",
-    "description": "A custom wiki powered by GitHub",
-    "logo": "/logo.svg",
+    "title": "Framework Test Wiki",
+    "description": "Test configuration for GitHub Wiki Framework",
     "repository": {
-      "owner": "BenDol",
-      "repo": "SlayerLegendWiki",
+      "owner": "test-owner",
+      "repo": "test-repo",
       "branch": "main",
       "contentPath": "public/content"
     }
@@ -16,7 +19,6 @@
       "title": "Getting Started",
       "path": "getting-started",
       "icon": "🚀",
-      "showInHeader": true,
       "allowContributions": true,
       "order": 1
     },
@@ -25,18 +27,8 @@
       "title": "Guides",
       "path": "guides",
       "icon": "📚",
-      "showInHeader": true,
       "allowContributions": true,
       "order": 2
-    },
-    {
-      "id": "reference",
-      "title": "Reference",
-      "path": "reference",
-      "icon": "📖",
-      "showInHeader": true,
-      "allowContributions": true,
-      "order": 3
     }
   ],
   "features": {
@@ -49,5 +41,13 @@
   },
   "theme": {
     "primaryColor": "#3b82f6"
+  },
+  "storage": {
+    "backend": "github",
+    "version": "v1",
+    "github": {
+      "owner": "test-owner",
+      "repo": "test-repo"
+    }
   }
 }

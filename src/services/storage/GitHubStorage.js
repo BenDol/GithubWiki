@@ -129,36 +129,14 @@ class GitHubStorage extends StorageAdapter {
         return Array.isArray(data) ? data : [];
       }
 
-      // Fallback: Try without version label (backward compatibility)
+      // Fallback: Try without version label (for version migration)
       const legacyIssues = await this._findIssuesByLabels([typeLabel]);
       const legacyIssue = this._findIssueByLabel(legacyIssues, userLabel);
 
       if (legacyIssue) {
-        console.log(`[GitHubStorage] Found legacy issue (no version label) for user ${userId}`);
+        console.log(`[GitHubStorage] Found issue without version label for user ${userId}`);
         const data = this._parseJSON(legacyIssue.body);
         return Array.isArray(data) ? data : [];
-      }
-
-      // Fallback: Try with old singular type labels (backward compatibility for type name changes)
-      // Map plural types to old singular types
-      const oldTypeMap = {
-        'skill-builds': 'skill-build',
-        'battle-loadouts': 'battle-loadout',
-        'my-spirits': 'my-spirit',
-        'spirit-builds': 'spirit-build'
-      };
-
-      const oldTypeLabel = oldTypeMap[type];
-      if (oldTypeLabel) {
-        console.log(`[GitHubStorage] Trying old singular label: ${oldTypeLabel} for type ${type}`);
-        const oldIssues = await this._findIssuesByLabels([oldTypeLabel]);
-        const oldIssue = this._findIssueByLabel(oldIssues, userLabel);
-
-        if (oldIssue) {
-          console.log(`[GitHubStorage] Found issue with old singular label ${oldTypeLabel} for user ${userId}`);
-          const data = this._parseJSON(oldIssue.body);
-          return Array.isArray(data) ? data : [];
-        }
       }
 
       return [];
