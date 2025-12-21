@@ -64,23 +64,34 @@ const updateSnapshotInBackground = async (username) => {
   }
 };
 
+// Expose auth store globally for Octokit reinit check
+if (typeof window !== 'undefined') {
+  window.__authStore__ = null;
+}
+
 /**
  * Authentication store using Zustand
  * Manages user authentication state and GitHub OAuth
  */
 export const useAuthStore = create(
   persist(
-    (set, get) => ({
-      // State
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-      deviceFlow: null, // Stores device flow data during login
+    (set, get) => {
+      // Expose store globally for Octokit to check auth state
+      if (typeof window !== 'undefined') {
+        window.__authStore__ = { getState: get };
+      }
 
-      // Actions
-      setUser: (user) => set({ user, isAuthenticated: !!user }),
+      return {
+        // State
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+        deviceFlow: null, // Stores device flow data during login
+
+        // Actions
+        setUser: (user) => set({ user, isAuthenticated: !!user }),
 
       setToken: (token) => {
         const encrypted = token ? encryptToken(token) : null;
@@ -280,7 +291,8 @@ export const useAuthStore = create(
         const { token: encryptedToken } = get();
         return encryptedToken ? decryptToken(encryptedToken) : null;
       },
-    }),
+    };
+  },
     {
       name: configName('wiki_auth'),
       partialize: (state) => ({

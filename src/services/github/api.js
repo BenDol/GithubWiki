@@ -53,12 +53,38 @@ export const initializeOctokit = (token) => {
  * Automatically includes retry plugin for rate limit handling
  */
 export const getOctokit = () => {
-  if (!octokitInstance) {
+  // Check if user is authenticated via global auth store
+  let userToken = null;
+  if (typeof window !== 'undefined' && window.__authStore__?.getState) {
+    try {
+      const authState = window.__authStore__.getState();
+      if (authState?.token && authState?.isAuthenticated) {
+        // Token is stored encrypted - decrypt it
+        const { decryptToken } = require('./auth');
+        userToken = decryptToken(authState.token);
+      }
+    } catch (error) {
+      // Ignore - auth store might not be ready yet
+    }
+  }
+
+  // If we have a token but no instance OR instance is unauthenticated, reinitialize
+  const instanceHasAuth = octokitInstance?.auth !== undefined;
+  if (userToken && !instanceHasAuth) {
+    console.log('[GitHub API] ⚠️ User authenticated but Octokit unauthenticated - reinitializing');
+    octokitInstance = new OctokitWithRetry({
+      auth: userToken,
+      userAgent: 'GitHub-Wiki-Framework/1.0',
+      throttle: {
+        enabled: false,
+      },
+    });
+    console.log('[GitHub API] ✓ Authenticated Octokit reinitialized');
+  } else if (!octokitInstance) {
     // Create unauthenticated instance for public repo read-only access
     octokitInstance = new OctokitWithRetry({
       userAgent: 'GitHub-Wiki-Framework/1.0',
       throttle: {
-        // Disable built-in throttling - we use our own retry plugin
         enabled: false,
       },
     });
