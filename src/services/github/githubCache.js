@@ -20,22 +20,23 @@
  */
 
 import { getOctokit } from './api';
+import { cacheName } from '../../utils/storageManager';
 
 // Cache configuration
 const CACHE_CONFIG = {
   userProfile: {
     ttl: 24 * 60 * 60 * 1000, // 24 hours
-    storageKey: 'github_cache_users',
+    storageKey: cacheName('github_users'),
     maxSize: 200, // Max 200 user profiles cached
   },
   collaborators: {
     ttl: 24 * 60 * 60 * 1000, // 24 hours
-    storageKey: 'github_cache_collaborators',
+    storageKey: cacheName('github_collaborators'),
     maxSize: 50, // Max 50 repo collaborator lists
   },
   repository: {
     ttl: 6 * 60 * 60 * 1000, // 6 hours
-    storageKey: 'github_cache_repositories',
+    storageKey: cacheName('github_repositories'),
     maxSize: 10, // Max 10 repo info cached
   },
 };

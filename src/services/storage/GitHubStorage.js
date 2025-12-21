@@ -340,16 +340,29 @@ class GitHubStorage extends StorageAdapter {
 
   /**
    * Save item as a comment
+   *
+   * @param {string} username - Username
+   * @param {string|number} userId - User ID
+   * @param {string} entityId - Entity ID (e.g., weapon-id, character-id)
+   * @param {Object} item - Item to save
+   * @param {Object} config - Optional configuration for entity-specific storage
+   * @param {string} config.typeLabel - Type label (e.g., 'grid-submissions')
+   * @param {string} config.titlePrefix - Title prefix (e.g., '[Grid]')
+   * @param {string} config.entityType - Entity type name (e.g., 'weapon', 'character')
    */
-  async saveGridSubmission(username, userId, entityId, item) {
+  async saveGridSubmission(username, userId, entityId, item, config = {}) {
     if (!item.id) {
       throw new Error('Item must have an id field');
     }
 
     try {
+      // Use provided config or defaults
+      const typeLabel = config.typeLabel || 'grid-submissions';
+      const titlePrefix = config.titlePrefix || '[Grid]';
+      const entityType = config.entityType || 'entity';
+
       const entityLabel = this._createEntityLabel(entityId);
       const versionLabel = `data-version:${this.dataVersion}`;
-      const typeLabel = 'engraving-grid-submissions';
 
       // Find entity's issue
       const allIssues = await this._findIssuesByLabels([]);
@@ -360,8 +373,8 @@ class GitHubStorage extends StorageAdapter {
         const { data: newIssue } = await this.octokit.rest.issues.create({
           owner: this.owner,
           repo: this.repo,
-          title: `[Grid] soul-weapon-${entityId}`,
-          body: `Storage for soul weapon grid submissions: ${entityId}`,
+          title: `${titlePrefix} ${entityType}-${entityId}`,
+          body: `Storage for ${entityType} grid submissions: ${entityId}`,
           labels: [entityLabel, versionLabel, typeLabel],
         });
         entityIssue = newIssue;
