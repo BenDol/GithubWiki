@@ -2,6 +2,7 @@ import { getOctokit, getAuthenticatedUser, deduplicatedRequest } from './api';
 import { updateFileContent } from './content';
 import { useGitHubDataStore } from '../../store/githubDataStore';
 import { isBanned } from './admin';
+import { filterByReleaseDate } from '../../utils/releaseDate';
 
 /**
  * GitHub Pull Request operations
@@ -301,6 +302,10 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
     }
 
     console.log(`[PR Fetch] Total PRs found for ${username}: ${allUserPRs.length}`);
+
+    // Filter PRs by release date (respects VITE_RELEASE_DATE)
+    allUserPRs = filterByReleaseDate(allUserPRs, 'created_at');
+    console.log(`[PR Fetch] After release date filter: ${allUserPRs.length} PRs`);
 
     // Slice to get the requested page
     const paginatedPRs = allUserPRs.slice(skipCount, skipCount + perPage);

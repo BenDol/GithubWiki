@@ -1,5 +1,6 @@
 import { Octokit } from 'octokit';
 import { retryPlugin } from './octokitRetryPlugin.js';
+import { filterByReleaseDate } from '../../utils/releaseDate.js';
 
 /**
  * GitHub API client wrapper using Octokit
@@ -281,9 +282,11 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       per_page: perPage,
     });
 
-    const commits = data.map(commit => ({
+    // Map commits to our format with a flat date field for filtering
+    const allCommits = data.map(commit => ({
       sha: commit.sha,
       message: commit.commit.message,
+      date: commit.commit.author.date, // Flat date field for filtering
       author: {
         name: commit.commit.author.name,
         email: commit.commit.author.email,
@@ -298,6 +301,9 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       url: commit.html_url,
       parents: commit.parents,
     }));
+
+    // Filter commits by release date (respects VITE_RELEASE_DATE)
+    const commits = filterByReleaseDate(allCommits, 'date');
 
     // Check if there are more pages
     // GitHub returns fewer than perPage if it's the last page
