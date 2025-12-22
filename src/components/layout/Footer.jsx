@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 
 /**
@@ -9,6 +10,12 @@ const Footer = () => {
   if (!config) return null;
 
   const currentYear = new Date().getFullYear();
+
+  // Get enabled donation method
+  const donationEnabled = config.features?.donation?.enabled;
+  const donationMethods = config.features?.donation?.methods || {};
+  const enabledDonation = donationEnabled && Object.entries(donationMethods).find(([_, method]) => method.enabled);
+  const hasEnabledDonation = donationEnabled && enabledDonation;
 
   return (
     <footer className="border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
@@ -38,6 +45,19 @@ const Footer = () => {
                 </svg>
                 <span>GitHub</span>
               </a>
+            )}
+
+            {/* Donate button */}
+            {hasEnabledDonation && (
+              <Link
+                to="/donate"
+                className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white flex items-center space-x-1"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                </svg>
+                <span>Donate</span>
+              </Link>
             )}
 
             <span className="text-xs text-gray-500 dark:text-gray-500">

@@ -17,6 +17,7 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const DevToolsPage = lazy(() => import('./pages/DevToolsPage'));
 const ContributorHighscorePage = lazy(() => import('./pages/ContributorHighscorePage'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const DonatePage = lazy(() => import('./pages/DonatePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 // Suspense wrapper component for lazy-loaded pages
@@ -112,6 +113,14 @@ export const createWikiRouter = (config) => {
           element: (
             <SuspenseWrapper>
               <AdminPanel />
+            </SuspenseWrapper>
+          ),
+        },
+        {
+          path: 'donate',
+          element: (
+            <SuspenseWrapper>
+              <DonatePage />
             </SuspenseWrapper>
           ),
         },
