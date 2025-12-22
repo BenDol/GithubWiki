@@ -472,6 +472,48 @@ export const updateIssueWithBot = async (owner, repo, issueNumber, body) => {
 };
 
 /**
+ * Generic function to call bot service with any action
+ * @param {string} action - The action to perform
+ * @param {Object} body - Request body (will have action, owner, repo added)
+ * @param {string} [userToken] - Optional user auth token (for authenticated endpoints)
+ * @returns {Promise<Object>} Response data
+ */
+export const callBotService = async (action, body, userToken = null) => {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add Authorization header if user token provided
+    if (userToken) {
+      headers['Authorization'] = `Bearer ${userToken}`;
+    }
+
+    const response = await fetch(getGithubBotEndpoint(), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        action,
+        ...body,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(`[Bot Service] Failed to call ${action}:`, data);
+      throw new Error(data.message || data.error || `Failed to ${action}`);
+    }
+
+    console.log(`[Bot Service] ✓ ${action} completed:`, data);
+    return data;
+  } catch (error) {
+    console.error(`[Bot Service] Error calling ${action}:`, error);
+    throw error;
+  }
+};
+
+/**
  * Check if bot service is available
  * @returns {Promise<boolean>} True if bot is configured
  */

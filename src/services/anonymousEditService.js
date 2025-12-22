@@ -158,6 +158,7 @@ export const checkRateLimit = async (owner, repo) => {
  * @param {string} params.reason - Edit reason (optional)
  * @param {string} params.verificationToken - Email verification token
  * @param {string} params.captchaToken - reCAPTCHA token
+ * @param {boolean} params.consentToLinkEmail - Consent to link email for account linking (optional)
  * @returns {Promise<{success: boolean, pr?: Object, error?: string}>}
  */
 export const submitAnonymousEdit = async ({
@@ -172,6 +173,7 @@ export const submitAnonymousEdit = async ({
   reason = '',
   verificationToken,
   captchaToken,
+  consentToLinkEmail = false,
 }) => {
   try {
     const response = await fetch(getGithubBotEndpoint(), {
@@ -192,6 +194,7 @@ export const submitAnonymousEdit = async ({
         reason,
         verificationToken,
         captchaToken,
+        consentToLinkEmail,
       }),
     });
 
@@ -225,13 +228,29 @@ export const submitAnonymousEdit = async ({
 };
 
 /**
+ * Hash email for storage key (prevents email exposure in localStorage keys)
+ * @param {string} email - Email address
+ * @returns {Promise<string>} Truncated hash (16 chars for key brevity)
+ */
+async function hashEmailForStorage(email) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(email.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // Use first 16 chars for storage key (sufficient for uniqueness, keeps key shorter)
+  return hashHex.substring(0, 16);
+}
+
+/**
  * Get cached verification token from localStorage
  * @param {string} email - Email address
- * @returns {string|null} Verification token or null if not found/expired
+ * @returns {Promise<string|null>} Verification token or null if not found/expired
  */
-export const getCachedVerificationToken = (email) => {
+export const getCachedVerificationToken = async (email) => {
   try {
-    const key = cacheName('anon_edit_token', email);
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     const cached = localStorage.getItem(key);
 
     if (!cached) return null;
@@ -257,9 +276,10 @@ export const getCachedVerificationToken = (email) => {
  * @param {string} email - Email address
  * @param {string} token - Verification token
  */
-export const cacheVerificationToken = (email, token) => {
+export const cacheVerificationToken = async (email, token) => {
   try {
-    const key = cacheName('anon_edit_token', email);
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     localStorage.setItem(
       key,
       JSON.stringify({
@@ -276,9 +296,10 @@ export const cacheVerificationToken = (email, token) => {
  * Clear cached verification token
  * @param {string} email - Email address
  */
-export const clearCachedVerificationToken = (email) => {
+export const clearCachedVerificationToken = async (email) => {
   try {
-    const key = cacheName('anon_edit_token', email);
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     localStorage.removeItem(key);
   } catch (error) {
     logger.error('Failed to clear token', { error });

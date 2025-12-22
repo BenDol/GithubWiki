@@ -1,6 +1,7 @@
 import { getOctokit } from './api';
 import { getCachedUserProfile } from './githubCache';
 import { saveUserSnapshotWithBot } from './botService';
+import { filterByReleaseDate } from '../../utils/releaseDate';
 
 /**
  * User Profile Snapshot System
@@ -181,7 +182,7 @@ export async function buildUserSnapshot(owner, repo, username) {
     // Fetch user data (with caching to prevent rate limiting)
     const userData = await getCachedUserProfile(username);
 
-    // Fetch all PRs by this user
+    // Fetch all PRs by this user (including linked anonymous edits)
     const allPRs = [];
     let page = 1;
     let hasMore = true;
@@ -195,28 +196,84 @@ export async function buildUserSnapshot(owner, repo, username) {
         page,
       });
 
-      // Filter PRs by this user
-      const userPRs = prs.filter(pr => pr.user.login === username);
+      // Filter PRs by this user (direct PRs + linked anonymous edits)
+      const userPRs = prs.filter(pr => {
+        // Direct PR from user
+        const isDirectPR = pr.user.login === username;
+
+        // Linked anonymous PR (has user-id label)
+        const isLinkedPR = pr.labels.some(label => {
+          const labelName = typeof label === 'string' ? label : label.name;
+          return labelName === `user-id:${userData.id}`;
+        });
+
+        return isDirectPR || isLinkedPR;
+      });
       allPRs.push(...userPRs);
 
       hasMore = prs.length === 100;
       page++;
     }
 
-    console.log(`[UserSnapshot] Found ${allPRs.length} PRs for ${username}`);
+    console.log(`[UserSnapshot] Found ${allPRs.length} PRs for ${username} (including linked anonymous edits)`);
+
+    // Filter PRs by release date (respects VITE_RELEASE_DATE)
+    const filteredPRs = filterByReleaseDate(allPRs, 'created_at');
+    console.log(`[UserSnapshot] After release date filter: ${filteredPRs.length} PRs`);
 
     // Fetch detailed data for each PR (additions, deletions, changed_files)
-    // pulls.list() doesn't include these fields, need pulls.get() for each PR
+    // For bot-created PRs, we need to get stats from commits, not just PR summary
     console.log(`[UserSnapshot] Fetching detailed PR data (additions, deletions, files)...`);
     const detailedPRs = [];
 
-    for (const pr of allPRs) {
+    for (const pr of filteredPRs) {
       try {
         const { data: detailedPR } = await octokit.rest.pulls.get({
           owner,
           repo,
           pull_number: pr.number,
         });
+
+        // If additions/deletions are missing or zero (can happen with bot PRs),
+        // fetch from commits within the PR
+        if (!detailedPR.additions && !detailedPR.deletions) {
+          console.log(`[UserSnapshot] PR #${pr.number} missing stats, fetching from commits...`);
+          try {
+            const { data: commits } = await octokit.rest.pulls.listCommits({
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            // Sum up additions/deletions from all commits
+            let totalAdditions = 0;
+            let totalDeletions = 0;
+            let totalFiles = 0;
+
+            for (const commit of commits) {
+              // Fetch detailed commit data to get stats
+              const { data: commitData } = await octokit.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: commit.sha,
+              });
+
+              totalAdditions += commitData.stats?.additions || 0;
+              totalDeletions += commitData.stats?.deletions || 0;
+              totalFiles += commitData.files?.length || 0;
+            }
+
+            // Update PR with calculated stats
+            detailedPR.additions = totalAdditions;
+            detailedPR.deletions = totalDeletions;
+            detailedPR.changed_files = totalFiles;
+
+            console.log(`[UserSnapshot] PR #${pr.number} stats from commits: +${totalAdditions}/-${totalDeletions}, ${totalFiles} files`);
+          } catch (commitError) {
+            console.warn(`[UserSnapshot] Failed to fetch commits for PR #${pr.number}:`, commitError.message);
+          }
+        }
 
         detailedPRs.push(detailedPR);
       } catch (error) {

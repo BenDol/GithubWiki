@@ -18,7 +18,7 @@ import {
   getCachedVerificationToken,
   cacheVerificationToken,
   clearCachedVerificationToken,
-} from '../../services/github/anonymousEditService';
+} from '../../services/anonymousEditService';
 
 export default function AnonymousEditForm({
   owner,
@@ -36,6 +36,7 @@ export default function AnonymousEditForm({
   const [displayName, setDisplayName] = useState('');
   const [reason, setReason] = useState(editSummary || ''); // Initialize with editSummary if provided
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [consentToLinkEmail, setConsentToLinkEmail] = useState(false);
 
   const [emailError, setEmailError] = useState('');
   const [displayNameError, setDisplayNameError] = useState('');
@@ -66,13 +67,14 @@ export default function AnonymousEditForm({
   // Check for cached verification token
   useEffect(() => {
     if (email) {
-      const cached = getCachedVerificationToken(email);
-      if (cached) {
-        console.log('[AnonymousEdit] Found cached verification token for:', email);
-        setVerificationToken(cached);
-      } else {
-        console.log('[AnonymousEdit] No cached token found for:', email);
-      }
+      getCachedVerificationToken(email).then(cached => {
+        if (cached) {
+          console.log('[AnonymousEdit] Found cached verification token');
+          setVerificationToken(cached);
+        } else {
+          console.log('[AnonymousEdit] No cached token found');
+        }
+      });
     }
   }, [email]);
 
@@ -156,7 +158,7 @@ export default function AnonymousEditForm({
 
       if (result.success) {
         setVerificationToken(result.token);
-        cacheVerificationToken(email, result.token);
+        await cacheVerificationToken(email, result.token);
         setShowVerificationModal(false);
         setVerificationError('');
 
@@ -212,6 +214,7 @@ export default function AnonymousEditForm({
         reason,
         verificationToken: token,
         captchaToken,
+        consentToLinkEmail,
       });
 
       if (result.success) {
@@ -359,6 +362,25 @@ export default function AnonymousEditForm({
             <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
               I agree that my contribution will be licensed under the same terms as the wiki content,
               and I understand that it will be reviewed before being published.
+            </span>
+          </label>
+        </div>
+
+        {/* Email linking consent - OPTIONAL */}
+        <div className="mb-6">
+          <label className="flex items-start">
+            <input
+              type="checkbox"
+              checked={consentToLinkEmail}
+              onChange={(e) => setConsentToLinkEmail(e.target.checked)}
+              disabled={isSubmitting || verifying}
+              className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            />
+            <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+              <strong>(Optional)</strong> Store my email securely to link these edits if I register later
+              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Your email will never be publicly visible. Only a secure hash will be stored to enable account linking.
+              </span>
             </span>
           </label>
         </div>

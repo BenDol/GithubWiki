@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { Loader } from 'lucide-react';
 
 /**
@@ -13,6 +14,55 @@ const LoginModal = ({
   onCopyCode,
   onOpenGitHub,
 }) => {
+  const [hasCodeBeenCopied, setHasCodeBeenCopied] = useState(false);
+  const codeElementRef = useRef(null);
+
+  // Reset copied state when modal opens/closes or device flow changes
+  useEffect(() => {
+    if (showModal && deviceFlow) {
+      setHasCodeBeenCopied(false);
+    }
+  }, [showModal, deviceFlow?.userCode]);
+
+  // Listen for copy/cut events
+  useEffect(() => {
+    const handleCopy = (e) => {
+      // Check if the selection includes the user code
+      const selection = window.getSelection().toString();
+      if (selection && deviceFlow?.userCode && selection.includes(deviceFlow.userCode)) {
+        setHasCodeBeenCopied(true);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      // Check for Ctrl+C or Ctrl+X (Cmd+C/X on Mac)
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'x')) {
+        const selection = window.getSelection().toString();
+        if (selection && deviceFlow?.userCode && selection.includes(deviceFlow.userCode)) {
+          setHasCodeBeenCopied(true);
+        }
+      }
+    };
+
+    if (showModal && deviceFlow) {
+      document.addEventListener('copy', handleCopy);
+      document.addEventListener('cut', handleCopy);
+      document.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.removeEventListener('copy', handleCopy);
+        document.removeEventListener('cut', handleCopy);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [showModal, deviceFlow?.userCode]);
+
+  // Handle copy button click
+  const handleCopyClick = () => {
+    setHasCodeBeenCopied(true);
+    onCopyCode();
+  };
+
   if (!showModal || !deviceFlow) return null;
 
   return (
@@ -61,11 +111,14 @@ const LoginModal = ({
               </p>
 
               <div className="flex items-center justify-center space-x-2 mb-3">
-                <code className="px-4 py-3 text-2xl font-bold bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg text-blue-600 dark:text-blue-400 tracking-widest">
+                <code
+                  ref={codeElementRef}
+                  className="px-4 py-3 text-2xl font-bold bg-white dark:bg-gray-800 border-2 border-blue-500 rounded-lg text-blue-600 dark:text-blue-400 tracking-widest select-all"
+                >
                   {deviceFlow.userCode}
                 </code>
                 <button
-                  onClick={onCopyCode}
+                  onClick={handleCopyClick}
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
                   title="Copy code"
                 >
@@ -75,9 +128,20 @@ const LoginModal = ({
                 </button>
               </div>
 
+              {!hasCodeBeenCopied && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2 text-center">
+                  Please copy the code above before opening GitHub
+                </p>
+              )}
+
               <button
                 onClick={onOpenGitHub}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                disabled={!hasCodeBeenCopied}
+                className={`w-full px-4 py-2 rounded-lg transition-colors font-medium ${
+                  hasCodeBeenCopied
+                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                    : 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-500 cursor-not-allowed'
+                }`}
               >
                 Open GitHub to Authorize
               </button>

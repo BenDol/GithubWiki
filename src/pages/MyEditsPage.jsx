@@ -56,7 +56,7 @@ const MyEditsPage = () => {
         let hasMorePages = true;
 
         while (hasMorePages) {
-          const result = await getUserPullRequests(owner, repo, user.login, branch, currentPage, 100);
+          const result = await getUserPullRequests(owner, repo, user.login, user.id, branch, currentPage, 100);
           allPRs = [...allPRs, ...result.prs];
           hasMorePages = result.hasMore;
           currentPage++;

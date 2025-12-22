@@ -90,14 +90,14 @@ export function createWeaponIdLabel(weaponId) {
 }
 
 /**
- * Create an email hash label
- * @param {string} emailHash - Email hash
+ * Create a reference hash label (for anonymous edit linking)
+ * @param {string} refHash - Reference hash (e.g., email hash)
  * @param {number} maxHashLength - Maximum hash length to include (default: 16)
- * @returns {string} Truncated email label
+ * @returns {string} Truncated ref label
  */
-export function createEmailLabel(emailHash, maxHashLength = 16) {
-  const truncatedHash = emailHash.substring(0, maxHashLength);
-  return createLabel('email:', truncatedHash);
+export function createEmailLabel(refHash, maxHashLength = 16) {
+  const truncatedHash = refHash.substring(0, maxHashLength);
+  return createLabel('ref:', truncatedHash);
 }
 
 /**

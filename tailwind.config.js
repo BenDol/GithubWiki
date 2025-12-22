@@ -39,6 +39,14 @@ export default {
           '10%, 30%, 50%, 70%, 90%': { transform: 'translateX(-4px)' },
           '20%, 40%, 60%, 80%': { transform: 'translateX(4px)' },
         },
+        'slide-up-fade': {
+          '0%': { transform: 'translateY(20px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        'bounce-once': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
       },
       animation: {
         'pop-in': 'pop-in 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55)',
@@ -49,6 +57,8 @@ export default {
         'sparkle-3': 'sparkle 1.6s ease-in-out 0.4s infinite',
         'sparkle-4': 'sparkle 1.7s ease-in-out 0.6s infinite',
         'shake': 'shake 0.5s ease-in-out',
+        'slide-up-fade': 'slide-up-fade 0.4s ease-out',
+        'bounce-once': 'bounce-once 0.6s ease-out',
       },
       typography: {
         DEFAULT: {

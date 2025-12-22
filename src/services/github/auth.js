@@ -187,6 +187,8 @@ export const waitForAuthorization = async (deviceCode, expiresIn, interval = 5) 
 
 /**
  * Fetch user information from GitHub
+ * Also fetches email from /user/emails if not available in user object
+ * (needed when user has email set to private in GitHub settings)
  */
 export const fetchGitHubUser = async (token) => {
   const response = await fetch(USER_URL, {
@@ -200,7 +202,33 @@ export const fetchGitHubUser = async (token) => {
     throw new Error('Failed to fetch user information');
   }
 
-  return await response.json();
+  const user = await response.json();
+
+  // If email is null (private email setting), fetch from /user/emails
+  if (!user.email) {
+    try {
+      const emailsResponse = await fetch('https://api.github.com/user/emails', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
+
+      if (emailsResponse.ok) {
+        const emails = await emailsResponse.json();
+        // Find primary verified email
+        const primaryEmail = emails.find(e => e.primary && e.verified);
+        if (primaryEmail) {
+          user.email = primaryEmail.email;
+          console.log('[Auth] Fetched primary email from /user/emails (private email setting detected)');
+        }
+      }
+    } catch (error) {
+      console.warn('[Auth] Failed to fetch user emails:', error.message);
+    }
+  }
+
+  return user;
 };
 
 /**

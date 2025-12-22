@@ -12,6 +12,8 @@ import { getOctokit } from '../services/github/api';
 import { getUserContributionStats } from '../services/github/contributorHighscore';
 import { addAdmin, isBanned } from '../services/github/admin';
 import { getUserSnapshot } from '../services/github/userSnapshots';
+import AchievementsSection from '../components/achievements/AchievementsSection';
+import { manualLinkAnonymousEdits } from '../services/github/anonymousEditLinking';
 
 /**
  * ProfilePage - Display user's profile and pull requests
@@ -33,6 +35,7 @@ const ProfilePage = () => {
   const [expandedPRs, setExpandedPRs] = useState(new Set());
   const [showClosed, setShowClosed] = useState(false);
   const [userIsBanned, setUserIsBanned] = useState(false);
+  const [activeTab, setActiveTab] = useState('edits'); // 'edits', 'statistics', 'achievements'
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -47,6 +50,10 @@ const ProfilePage = () => {
 
   // Ref for Edit Requests section
   const editRequestsRef = useRef(null);
+
+  // Anonymous edit linking state
+  const [linkingEdits, setLinkingEdits] = useState(false);
+  const [linkingResult, setLinkingResult] = useState(null);
 
   // Handle avatar click
   const handleAvatarClick = (e, username) => {
@@ -105,30 +112,33 @@ const ProfilePage = () => {
 
         const { owner, repo } = config.wiki.repository;
 
-        // If viewing someone else's profile, try to load from snapshot first
-        if (!isOwnProfile && urlUsername) {
-          console.log(`[Profile] Loading profile for other user: ${urlUsername}`);
+        // Try to load from snapshot first (works for both own profile and other users)
+        console.log(`[Profile] Loading profile for: ${targetUsername}`);
 
-          // Try to load snapshot data
-          try {
-            console.log(`[Profile] Fetching snapshot for: ${urlUsername}`);
-            const snapshot = await getUserSnapshot(owner, repo, urlUsername);
+        // Try to load snapshot data
+        try {
+          console.log(`[Profile] Fetching snapshot for: ${targetUsername}`);
+          const snapshot = await getUserSnapshot(owner, repo, targetUsername, currentUser?.id);
 
-            if (snapshot) {
-              console.log(`[Profile] Snapshot loaded for ${urlUsername}:`, {
-                lastUpdated: snapshot.lastUpdated,
-                totalPRs: snapshot.stats.totalPRs,
-                additions: snapshot.stats.totalAdditions,
-              });
+          if (snapshot) {
+            console.log(`[Profile] Snapshot loaded for ${targetUsername}:`, {
+              lastUpdated: snapshot.lastUpdated,
+              totalPRs: snapshot.stats.totalPRs,
+              additions: snapshot.stats.totalAdditions,
+            });
 
-              // Set snapshot data
-              setSnapshotData(snapshot);
-              setProfileUser(snapshot.user);
-              setPullRequests(snapshot.pullRequests);
-              setHighscoreStats(snapshot.stats);
-            } else {
-              // No snapshot available - fetch user data and show basic profile
-              console.log(`[Profile] No snapshot found for ${urlUsername}, fetching basic user data`);
+            // Set snapshot data
+            setSnapshotData(snapshot);
+            // For own profile, use currentUser (has all fields); for others, use snapshot.user
+            setProfileUser(isOwnProfile ? currentUser : snapshot.user);
+            setPullRequests(snapshot.pullRequests);
+            setHighscoreStats(snapshot.stats);
+          } else {
+            // No snapshot available - fall back to live data
+            console.log(`[Profile] No snapshot found for ${targetUsername}, falling back to live data`);
+
+            if (!isOwnProfile) {
+              // For other users without snapshot, fetch basic user data
               try {
                 const octokit = getOctokit();
                 const { data: userData } = await octokit.rest.users.getByUsername({
@@ -144,10 +154,39 @@ const ProfilePage = () => {
                 setLoading(false);
                 return;
               }
+            } else {
+              // For own profile without snapshot, fetch live data
+              console.log(`[Profile] Loading own profile with live data`);
+              setProfileUser(currentUser);
+
+              // Fetch pull requests for own profile (page 1)
+              console.log(`[Profile] Loading PRs for user: ${targetUsername}, branch: ${branch}, page 1`);
+              const result = await getUserPullRequests(owner, repo, targetUsername, currentUser.id, branch, 1, itemsPerPage);
+              setPullRequests(result.prs);
+              setHasMore(result.hasMore);
+              setCurrentPage(1);
+
+              // Fetch highscore stats (for prestige calculation)
+              if (config?.features?.contributorHighscore?.enabled) {
+                try {
+                  console.log(`[Profile] Fetching highscore stats for: ${targetUsername}`);
+                  const stats = await getUserContributionStats(owner, repo, targetUsername, config, 'allTime');
+                  setHighscoreStats(stats);
+                  if (stats) {
+                    console.log(`[Profile] Highscore stats loaded for ${targetUsername}:`, stats);
+                  }
+                } catch (err) {
+                  console.warn('[Profile] Failed to fetch highscore stats:', err);
+                  // Don't fail the whole page if highscore fetch fails
+                  setHighscoreStats(null);
+                }
+              }
             }
-          } catch (err) {
-            console.error('[Profile] Failed to load snapshot:', err);
-            // Fallback to fetching basic user data
+          }
+        } catch (err) {
+          console.error('[Profile] Failed to load snapshot:', err);
+          // Fallback to fetching user data
+          if (!isOwnProfile && urlUsername) {
             try {
               const octokit = getOctokit();
               const { data: userData } = await octokit.rest.users.getByUsername({
@@ -163,32 +202,18 @@ const ProfilePage = () => {
               setLoading(false);
               return;
             }
-          }
-        } else {
-          // Viewing own profile - use live data
-          console.log(`[Profile] Loading own profile with live data`);
-          setProfileUser(currentUser);
-
-          // Fetch pull requests for own profile (page 1)
-          console.log(`[Profile] Loading PRs for user: ${targetUsername}, branch: ${branch}, page 1`);
-          const result = await getUserPullRequests(owner, repo, targetUsername, branch, 1, itemsPerPage);
-          setPullRequests(result.prs);
-          setHasMore(result.hasMore);
-          setCurrentPage(1);
-
-          // Fetch highscore stats (for prestige calculation)
-          if (config?.features?.contributorHighscore?.enabled) {
+          } else if (isOwnProfile) {
+            // For own profile, use current user and fetch live data
+            setProfileUser(currentUser);
             try {
-              console.log(`[Profile] Fetching highscore stats for: ${targetUsername}`);
-              const stats = await getUserContributionStats(owner, repo, targetUsername, config, 'allTime');
-              setHighscoreStats(stats);
-              if (stats) {
-                console.log(`[Profile] Highscore stats loaded for ${targetUsername}:`, stats);
-              }
-            } catch (err) {
-              console.warn('[Profile] Failed to fetch highscore stats:', err);
-              // Don't fail the whole page if highscore fetch fails
-              setHighscoreStats(null);
+              const result = await getUserPullRequests(owner, repo, targetUsername, currentUser.id, branch, 1, itemsPerPage);
+              setPullRequests(result.prs);
+              setHasMore(result.hasMore);
+              setCurrentPage(1);
+            } catch (prErr) {
+              console.error('Failed to fetch PRs:', prErr);
+              setPullRequests([]);
+              setHasMore(false);
             }
           }
         }
@@ -234,13 +259,16 @@ const ProfilePage = () => {
   }, [showClosed]);
 
   const handleRefresh = () => {
+    // Clear snapshot data to force fresh fetch
+    setSnapshotData(null);
     setRefreshKey(prev => prev + 1);
     setCurrentPage(1);
     setHasMore(false);
   };
 
   const handleLoadMore = async () => {
-    if (!config || !targetUsername || !branch || loadingMore || !hasMore) return;
+    // Don't allow loading more if viewing snapshot data (snapshot already has all PRs it will show)
+    if (snapshotData || !config || !targetUsername || !branch || loadingMore || !hasMore) return;
 
     try {
       setLoadingMore(true);
@@ -248,7 +276,7 @@ const ProfilePage = () => {
       const nextPage = currentPage + 1;
 
       console.log(`[Profile] Loading more PRs, page ${nextPage}`);
-      const result = await getUserPullRequests(owner, repo, targetUsername, branch, nextPage, itemsPerPage);
+      const result = await getUserPullRequests(owner, repo, targetUsername, profileUser?.id, branch, nextPage, itemsPerPage);
 
       // Append new PRs to existing list
       setPullRequests(prev => [...prev, ...result.prs]);
@@ -299,6 +327,45 @@ const ProfilePage = () => {
       alert('Failed to cancel the edit. Please try again or close it manually on GitHub.');
     } finally {
       setClosingPR(null);
+    }
+  };
+
+  const handleLinkAnonymousEdits = async () => {
+    if (!isAuthenticated || !currentUser || !config) return;
+
+    // Clear previous result
+    setLinkingResult(null);
+    setLinkingEdits(true);
+
+    try {
+      const { owner, repo } = config.wiki.repository;
+      const token = useAuthStore.getState().getToken();
+
+      const result = await manualLinkAnonymousEdits(currentUser, owner, repo, token);
+
+      setLinkingResult(result);
+
+      if (result.success && result.linkedCount > 0) {
+        // Refresh profile data to show newly linked edits
+        setTimeout(() => {
+          handleRefresh();
+        }, 1500);
+      }
+
+      // Clear success message after 5 seconds
+      if (result.success) {
+        setTimeout(() => {
+          setLinkingResult(null);
+        }, 5000);
+      }
+    } catch (error) {
+      console.error('Failed to link anonymous edits:', error);
+      setLinkingResult({
+        success: false,
+        error: 'An unexpected error occurred. Please try again.'
+      });
+    } finally {
+      setLinkingEdits(false);
     }
   };
 
@@ -380,21 +447,32 @@ const ProfilePage = () => {
     ? pullRequests
     : pullRequests.filter(pr => pr.state === 'open');
 
-  // Calculate contribution statistics from PRs
-  // ONLY count additions/deletions/files from MERGED PRs (not closed without merging)
-  const mergedPRsList = pullRequests.filter(pr => pr.merged_at || pr.state === 'merged');
-  const stats = {
-    totalPRs: pullRequests.length,
-    openPRs: pullRequests.filter(pr => pr.state === 'open').length,
-    mergedPRs: mergedPRsList.length,
-    closedPRs: pullRequests.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
-    totalAdditions: mergedPRsList.reduce((sum, pr) => sum + (pr.additions || 0), 0),
-    totalDeletions: mergedPRsList.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
-    totalFiles: mergedPRsList.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
-    mostRecentEdit: pullRequests.length > 0
-      ? new Date(Math.max(...pullRequests.map(pr => new Date(pr.created_at).getTime())))
-      : null,
-  };
+  // Use snapshot stats if available, otherwise calculate from PRs
+  const stats = snapshotData
+    ? {
+        ...snapshotData.stats,
+        // Convert ISO string to Date object for consistency
+        mostRecentEdit: snapshotData.stats.mostRecentEdit
+          ? new Date(snapshotData.stats.mostRecentEdit)
+          : null,
+      }
+    : (() => {
+        // Calculate contribution statistics from PRs
+        // ONLY count additions/deletions/files from MERGED PRs (not closed without merging)
+        const mergedPRsList = pullRequests.filter(pr => pr.merged_at || pr.state === 'merged');
+        return {
+          totalPRs: pullRequests.length,
+          openPRs: pullRequests.filter(pr => pr.state === 'open').length,
+          mergedPRs: mergedPRsList.length,
+          closedPRs: pullRequests.filter(pr => (pr.state === 'closed' || pr.state === 'merged') && !pr.merged_at).length,
+          totalAdditions: mergedPRsList.reduce((sum, pr) => sum + (pr.additions || 0), 0),
+          totalDeletions: mergedPRsList.reduce((sum, pr) => sum + (pr.deletions || 0), 0),
+          totalFiles: mergedPRsList.reduce((sum, pr) => sum + (pr.changed_files || 0), 0),
+          mostRecentEdit: pullRequests.length > 0
+            ? new Date(Math.max(...pullRequests.map(pr => new Date(pr.created_at).getTime())))
+            : null,
+        };
+      })();
 
   // For prestige calculation, use PR stats (accurate breakdown of merged/open/closed)
   // Highscore data treats all contributions as "merged" which inflates the score by 3x
@@ -662,7 +740,7 @@ const ProfilePage = () => {
         )}
       </div>
 
-      {/* Statistics Section */}
+      {/* Contribution Statistics Section */}
       {pullRequests.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -768,7 +846,7 @@ const ProfilePage = () => {
           </div>
 
           {/* Net Changes Bar */}
-          {(stats.totalAdditions > 0 || stats.totalDeletions > 0) && (
+          {config?.features?.profileNetChanges?.enabled && (stats.totalAdditions > 0 || stats.totalDeletions > 0) && (
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
               <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-3">
                 Net Changes
@@ -796,7 +874,7 @@ const ProfilePage = () => {
                     />
                   </div>
                 </div>
-                <div className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                <div className="text-sm font-medium text-gray-900 dark:text-white">
                   {stats.totalAdditions > stats.totalDeletions ? '+' : ''}
                   {(stats.totalAdditions - stats.totalDeletions).toLocaleString()} lines
                 </div>
@@ -806,13 +884,60 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* Filter controls */}
+      {/* Tab Navigation */}
       {pullRequests.length > 0 && (
-        <div ref={editRequestsRef} className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {isOwnProfile ? 'My Edit Requests' : 'Edit Requests'}
-            </h2>
+        <div className="mb-6">
+          <div className="border-b border-gray-200 dark:border-gray-700">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('edits')}
+                className={`
+                  whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                  ${activeTab === 'edits'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+                `}
+              >
+                Edit Requests
+              </button>
+              {config?.wiki?.repository && (
+                <button
+                  onClick={() => setActiveTab('achievements')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    ${activeTab === 'achievements'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+                  `}
+                >
+                  Achievements
+                </button>
+              )}
+            </nav>
+          </div>
+        </div>
+      )}
+
+      {/* Achievements Tab */}
+      {activeTab === 'achievements' && config?.wiki?.repository && (
+        <AchievementsSection
+          owner={config.wiki.repository.owner}
+          repo={config.wiki.repository.repo}
+          userId={profileUser?.id}
+          username={targetUsername}
+        />
+      )}
+
+      {/* Edit Requests Tab */}
+      {activeTab === 'edits' && (
+        <>
+          {/* Filter controls */}
+          {pullRequests.length > 0 && (
+            <div ref={editRequestsRef} className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {isOwnProfile ? 'My Edit Requests' : 'Edit Requests'}
+                </h2>
             {filteredPullRequests.length > 0 && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Showing {filteredPullRequests.length} edit request{filteredPullRequests.length !== 1 ? 's' : ''}
@@ -823,24 +948,70 @@ const ProfilePage = () => {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              Show closed:
-            </span>
-            <button
-              onClick={() => setShowClosed(!showClosed)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                showClosed
-                  ? 'bg-blue-600'
-                  : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  showClosed ? 'translate-x-6' : 'translate-x-1'
+          <div className="flex items-center gap-4">
+            {/* Link Anonymous Edits button (only for own profile) */}
+            {isOwnProfile && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLinkAnonymousEdits}
+                  disabled={linkingEdits}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Link your anonymous edits to your account"
+                >
+                  {linkingEdits ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Linking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      <span>Link Edits</span>
+                    </>
+                  )}
+                </button>
+                {/* Result message */}
+                {linkingResult && (
+                  <div className={`text-sm ${linkingResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {linkingResult.success ? (
+                      linkingResult.message
+                    ) : (
+                      linkingResult.cooldownMinutes ? (
+                        `Wait ${linkingResult.cooldownMinutes} min${linkingResult.cooldownMinutes !== 1 ? 's' : ''}`
+                      ) : (
+                        linkingResult.error
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Show closed toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Show closed:
+              </span>
+              <button
+                onClick={() => setShowClosed(!showClosed)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  showClosed
+                    ? 'bg-blue-600'
+                    : 'bg-gray-300 dark:bg-gray-600'
                 }`}
-              />
-            </button>
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    showClosed ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1069,8 +1240,8 @@ const ProfilePage = () => {
           })}
         </div>
 
-        {/* Load More Button */}
-        {hasMore && (
+        {/* Load More Button - Only show when NOT viewing snapshot data */}
+        {hasMore && !snapshotData && (
           <div className="mt-8 flex items-center justify-center">
             <button
               onClick={handleLoadMore}
@@ -1101,9 +1272,11 @@ const ProfilePage = () => {
         {!loading && filteredPullRequests.length > 0 && (
           <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
             Showing {filteredPullRequests.length} edit request{filteredPullRequests.length !== 1 ? 's' : ''}
-            {!hasMore && ' (all loaded)'}
+            {snapshotData ? ' (from snapshot)' : !hasMore && ' (all loaded)'}
           </div>
         )}
+        </>
+      )}
         </>
       )}
 

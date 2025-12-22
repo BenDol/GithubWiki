@@ -11,11 +11,111 @@ import {
 import { initializeOctokit, clearOctokit } from '../services/github/api';
 import { configName } from '../utils/storageManager';
 import { updateUserSnapshot, getUserSnapshot } from '../services/github/userSnapshots';
+import { eventBus, EventNames } from '../services/eventBus';
 
 /**
  * Track in-progress snapshot updates to prevent concurrent duplicates
  */
 const snapshotUpdateInProgress = new Set();
+
+/**
+ * Track users who have been checked for anonymous edit linking
+ */
+const linkingCheckInProgress = new Set();
+
+/**
+ * Link anonymous edits to user account in background after login
+ * Non-blocking - doesn't affect login flow
+ * Only runs once per user (tracked in localStorage)
+ * Locked: prevents concurrent linking for the same user
+ */
+const linkAnonymousEditsInBackground = async (user) => {
+  // Check if linking is already in progress for this user
+  if (linkingCheckInProgress.has(user.id)) {
+    console.log(`[AuthStore] Linking check already in progress for ${user.login}, skipping`);
+    return;
+  }
+
+  try {
+    // Mark as in progress
+    linkingCheckInProgress.add(user.id);
+
+    // Import linking service dynamically to avoid circular dependency
+    const { linkAnonymousEditsOnLogin, hasBeenCheckedForLinking, markAsCheckedForLinking } =
+      await import('../services/github/anonymousEditLinking');
+
+    // Check if already checked before
+    if (hasBeenCheckedForLinking(user.id)) {
+      console.log(`[AuthStore] User ${user.login} already checked for linking, skipping`);
+      return;
+    }
+
+    // Import config store dynamically to avoid circular dependency
+    const { useConfigStore } = await import('./configStore');
+    const config = useConfigStore.getState().config;
+
+    if (!config?.wiki?.repository) {
+      console.log('[AuthStore] Skipping anonymous edit linking: no repository config');
+      return;
+    }
+
+    const { owner, repo } = config.wiki.repository;
+
+    // Get user's OAuth token for backend authentication
+    const { useAuthStore } = await import('./authStore');
+    const token = useAuthStore.getState().getToken();
+
+    if (!token) {
+      console.log('[AuthStore] No token available for linking, skipping');
+      return;
+    }
+
+    console.log(`[AuthStore] Checking for linkable anonymous edits for ${user.login}...`);
+    const result = await linkAnonymousEditsOnLogin(user, owner, repo, token);
+
+    if (result.linked && result.linkedCount > 0) {
+      console.log(`[AuthStore] ✓ Linked ${result.linkedCount} anonymous edit(s) for ${user.login}`);
+
+      // Rebuild snapshot to include newly-linked PRs
+      // Wait for GitHub API to propagate label changes (eventual consistency)
+      console.log(`[AuthStore] Waiting for GitHub API to propagate label changes...`);
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+
+      console.log(`[AuthStore] Rebuilding snapshot to include linked PRs...`);
+      try {
+        // Security: Only rebuild the authenticated user's own snapshot
+        // Get current auth state to confirm user identity
+        const { useAuthStore } = await import('./authStore');
+        const currentUser = useAuthStore.getState().user;
+
+        if (!currentUser || currentUser.id !== user.id) {
+          console.warn(`[AuthStore] Snapshot rebuild skipped: user mismatch (current: ${currentUser?.id}, requested: ${user.id})`);
+          return;
+        }
+
+        const { updateUserSnapshot } = await import('../services/github/userSnapshots');
+        await updateUserSnapshot(owner, repo, user.login);
+        console.log(`[AuthStore] ✓ Snapshot rebuilt with linked PRs`);
+      } catch (snapshotError) {
+        console.warn(`[AuthStore] Failed to rebuild snapshot after linking:`, snapshotError.message);
+        // Non-critical - snapshot will be updated eventually
+      }
+    } else if (result.linked && result.linkedCount === 0) {
+      console.log(`[AuthStore] No linkable anonymous edits found for ${user.login}`);
+    } else {
+      console.log(`[AuthStore] Could not link anonymous edits for ${user.login}:`, result.reason || result.error);
+    }
+
+    // Mark as checked (even if failed, to avoid repeated attempts)
+    markAsCheckedForLinking(user.id);
+  } catch (error) {
+    // Silent failure - don't disrupt user experience
+    console.warn(`[AuthStore] Failed to link anonymous edits for ${user.login}:`, error.message);
+  } finally {
+    // Always remove from in-progress set
+    linkingCheckInProgress.delete(user.id);
+  }
+};
 
 /**
  * Update user snapshot in background after login
@@ -159,9 +259,17 @@ export const useAuthStore = create(
 
           console.log('[AuthStore] ✓ Login completed successfully for user:', user.login);
 
+          // Emit user login event for achievement system
+          eventBus.emit(EventNames.USER_LOGIN, { user });
+
           // Update user snapshot in background (non-blocking)
           updateSnapshotInBackground(user.login).catch(err => {
             console.warn('[AuthStore] Snapshot update failed (non-critical):', err);
+          });
+
+          // Link anonymous edits in background (non-blocking)
+          linkAnonymousEditsInBackground(user).catch(err => {
+            console.warn('[AuthStore] Anonymous edit linking failed (non-critical):', err);
           });
 
           return { user, token };
@@ -191,6 +299,8 @@ export const useAuthStore = create(
        * Logout user
        */
       logout: () => {
+        const { user } = get();
+
         clearOctokit();
         set({
           user: null,
@@ -199,6 +309,11 @@ export const useAuthStore = create(
           error: null,
           deviceFlow: null,
         });
+
+        // Emit user logout event
+        if (user) {
+          eventBus.emit(EventNames.USER_LOGOUT, { user });
+        }
       },
 
       /**

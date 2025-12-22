@@ -7,7 +7,9 @@ import { createWikiRouter } from './router';
 import { BranchProvider } from './hooks/useBranchNamespace';
 import RateLimitNotification from './components/common/RateLimitNotification';
 import DevelopmentBanner from './components/common/DevelopmentBanner';
+import AchievementUnlockedToast from './components/achievements/AchievementUnlockedToast';
 import { initializeVersionSystem } from './utils/versionManager';
+import { initializeAchievementChecker } from './services/achievements/achievementChecker';
 
 function App() {
   const { config, loading, error } = useWikiConfig();
@@ -56,12 +58,51 @@ function App() {
     }
   }, [config, addToast]);
 
+  // Initialize achievement checker (calls server-side endpoint)
+  useEffect(() => {
+    if (config?.wiki?.repository) {
+      const { owner, repo } = config.wiki.repository;
+      console.log('[App] Initializing server-side achievement checker', { owner, repo });
+      initializeAchievementChecker(owner, repo);
+    }
+  }, [config]);
+
   // Expose config globally for utilities that need it (e.g., devStore)
   useEffect(() => {
     if (config) {
       window.__WIKI_CONFIG__ = config;
     }
   }, [config]);
+
+  // Expose debug function to test achievement toasts (development only)
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      window.testAchievementToast = (achievementIds) => {
+        const ids = Array.isArray(achievementIds) ? achievementIds : [achievementIds || 'first-login'];
+        const achievements = ids.map((id, index) => ({
+          id,
+          unlockedAt: new Date().toISOString(),
+          progress: 100,
+        }));
+
+        console.log('[DEBUG] Triggering test achievement toast:', achievements);
+
+        // Import eventBus dynamically to trigger the event
+        import('./services/eventBus.js').then(({ eventBus, EventNames }) => {
+          eventBus.emit(EventNames.ACHIEVEMENTS_UNLOCKED, { achievements });
+        });
+      };
+
+      console.log('[DEBUG] Test achievement toast available: window.testAchievementToast()');
+      console.log('[DEBUG] Usage: testAchievementToast("first-login") or testAchievementToast(["first-login", "first-pr"])');
+    }
+
+    return () => {
+      if (import.meta.env.DEV) {
+        delete window.testAchievementToast;
+      }
+    };
+  }, []);
 
   // Set document title from config
   useEffect(() => {
@@ -184,6 +225,7 @@ function App() {
       <RouterProvider router={router} />
       <RateLimitNotification />
       <DevelopmentBanner />
+      <AchievementUnlockedToast />
     </BranchProvider>
   );
 }

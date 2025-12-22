@@ -5,6 +5,7 @@
  */
 
 import { getGithubBotEndpoint } from '../../utils/apiEndpoints';
+import { cacheName } from '../../utils/storageManager';
 
 /**
  * Send verification code to email
@@ -220,13 +221,29 @@ export const submitAnonymousEdit = async ({
 };
 
 /**
+ * Hash email for storage key (prevents email exposure in localStorage keys)
+ * @param {string} email - Email address
+ * @returns {Promise<string>} Truncated hash (16 chars for key brevity)
+ */
+async function hashEmailForStorage(email) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(email.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  // Use first 16 chars for storage key (sufficient for uniqueness, keeps key shorter)
+  return hashHex.substring(0, 16);
+}
+
+/**
  * Get cached verification token from localStorage
  * @param {string} email - Email address
- * @returns {string|null} Verification token or null if not found/expired
+ * @returns {Promise<string|null>} Verification token or null if not found/expired
  */
-export const getCachedVerificationToken = (email) => {
+export const getCachedVerificationToken = async (email) => {
   try {
-    const key = `anon-edit-token-${email}`;
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     const cached = localStorage.getItem(key);
 
     if (!cached) return null;
@@ -252,15 +269,16 @@ export const getCachedVerificationToken = (email) => {
  * @param {string} email - Email address
  * @param {string} token - Verification token
  */
-export const cacheVerificationToken = (email, token) => {
+export const cacheVerificationToken = async (email, token) => {
   try {
-    const key = `anon-edit-token-${email}`;
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     const data = {
       token,
       timestamp: Date.now(),
     };
     localStorage.setItem(key, JSON.stringify(data));
-    console.log('[AnonymousEdit] Cached verification token for:', email, 'expires:', new Date(data.timestamp + 24 * 60 * 60 * 1000).toISOString());
+    console.log('[AnonymousEdit] Cached verification token, expires:', new Date(data.timestamp + 24 * 60 * 60 * 1000).toISOString());
   } catch (error) {
     console.error('[AnonymousEdit] Failed to cache token:', error);
   }
@@ -270,9 +288,10 @@ export const cacheVerificationToken = (email, token) => {
  * Clear cached verification token
  * @param {string} email - Email address
  */
-export const clearCachedVerificationToken = (email) => {
+export const clearCachedVerificationToken = async (email) => {
   try {
-    const key = `anon-edit-token-${email}`;
+    const emailHash = await hashEmailForStorage(email);
+    const key = cacheName(`anon_edit_token_${emailHash}`);
     localStorage.removeItem(key);
   } catch (error) {
     console.error('[AnonymousEdit] Failed to clear token:', error);

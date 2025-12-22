@@ -212,18 +212,40 @@ export const getPRBranchContent = async (owner, repo, branch, filePath, sha = nu
 };
 
 /**
+ * CENTRALIZED: Check if a PR belongs to a user (direct or linked anonymous)
+ * @param {Object} pr - PR object from GitHub API
+ * @param {string} username - GitHub username
+ * @param {number} userId - GitHub user ID
+ * @returns {boolean} True if PR belongs to user
+ */
+export const isPRForUser = (pr, username, userId) => {
+  // Direct PR from user
+  const isDirectPR = pr.user.login === username;
+
+  // Linked anonymous PR (has user-id label)
+  const isLinkedPR = pr.labels && pr.labels.some(label => {
+    const labelName = typeof label === 'string' ? label : label?.name;
+    return labelName === `user-id:${userId}`;
+  });
+
+  return Boolean(isDirectPR || isLinkedPR);
+};
+
+/**
  * Get pull requests for a user in a repository with pagination support
  * OPTIMIZED: Uses cache, eliminates N+1 query pattern, and de-duplicates concurrent requests
+ * INCLUDES: Direct PRs + Linked Anonymous PRs (via user-id label)
  *
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - Username to filter PRs by
+ * @param {number} userId - User ID to filter linked anonymous PRs
  * @param {string} baseBranch - Base branch to filter by (optional)
  * @param {number} page - Page number (1-indexed, default: 1)
  * @param {number} perPage - Items per page (default: 10)
  * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
-export const getUserPullRequests = async (owner, repo, username, baseBranch = null, page = 1, perPage = 10) => {
+export const getUserPullRequests = async (owner, repo, username, userId, baseBranch = null, page = 1, perPage = 10) => {
   const store = useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
@@ -287,8 +309,8 @@ export const getUserPullRequests = async (owner, repo, username, baseBranch = nu
         break;
       }
 
-      // Filter to only PRs created by the current user
-      const userPRsFromPage = data.filter(pr => pr.user.login === username);
+      // Filter to only PRs created by the current user (direct + linked anonymous)
+      const userPRsFromPage = data.filter(pr => isPRForUser(pr, username, userId));
       allUserPRs = [...allUserPRs, ...userPRsFromPage];
 
       console.log(`[PR Fetch] API page ${currentFetchPage}: Found ${userPRsFromPage.length}/${data.length} PRs by ${username}`);
@@ -586,14 +608,17 @@ export const createWikiEditPR = async (
 /**
  * Find existing open PR for a page ID
  * Searches for PRs with branch name matching pattern: wiki-edit/<section>/<page-id>-*
+ * INCLUDES: Direct PRs + Linked Anonymous PRs (via user-id label)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} sectionId - Section ID
  * @param {string} pageIdFromMetadata - Page ID from metadata
  * @param {string} username - Current user's username
+ * @param {number} userId - Current user's ID
+ * @param {string} currentPageId - Current page ID (optional)
  * @returns {Promise<Object|null>} PR object if found, null otherwise
  */
-export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMetadata, username, currentPageId = null) => {
+export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMetadata, username, userId, currentPageId = null) => {
   const octokit = getOctokit();
 
   try {
@@ -609,9 +634,9 @@ export const findExistingPRForPage = async (owner, repo, sectionId, pageIdFromMe
     console.log(`[PR Search] Section: ${sectionId}, Page ID: ${pageIdFromMetadata}, Filename: ${currentPageId}`);
     console.log(`[PR Search] Found ${prs.length} total open PRs`);
 
-    // Filter to PRs created by current user
-    const userPRs = prs.filter(pr => pr.user.login === username);
-    console.log(`[PR Search] Found ${userPRs.length} PRs by user ${username}`);
+    // Filter to PRs created by current user (direct + linked anonymous)
+    const userPRs = prs.filter(pr => isPRForUser(pr, username, userId));
+    console.log(`[PR Search] Found ${userPRs.length} PRs by user ${username} (including linked anonymous edits)`);
 
     if (userPRs.length > 0) {
       console.log('[PR Search] User PRs:', userPRs.map(pr => ({ number: pr.number, branch: pr.head.ref })));

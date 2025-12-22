@@ -167,7 +167,7 @@ export const useUserPrestige = (username) => {
           let hasMorePages = true;
 
           while (hasMorePages) {
-            const result = await getUserPullRequests(owner, repo, username, null, currentPage, 100);
+            const result = await getUserPullRequests(owner, repo, username, user.id, null, currentPage, 100);
             allPRs = [...allPRs, ...result.prs];
             hasMorePages = result.hasMore;
             currentPage++;

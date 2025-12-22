@@ -196,12 +196,6 @@ const UserMenu = () => {
               </svg>
               View GitHub Profile
             </a>
-
-            {user.email && (
-              <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-                {user.email}
-              </div>
-            )}
           </div>
 
           {/* Logout */}

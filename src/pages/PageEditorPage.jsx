@@ -234,7 +234,7 @@ Include any supplementary details, notes, or related information.
                 if (ageInSeconds > 30) {
                   console.log(`[PageEditor] PR is ${ageInSeconds.toFixed(0)}s old, checking if it's in GitHub API now...`);
                   try {
-                    const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+                    const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, user.id, pageId);
                     if (foundPR && foundPR.number === recentPR.prNumber) {
                       console.log(`[PageEditor] ✓ PR #${recentPR.prNumber} is now in GitHub API! Using it directly.`);
                       existingPR = foundPR;
@@ -292,7 +292,7 @@ Include any supplementary details, notes, or related information.
           // If no recent PR found, check GitHub API
           if (!existingPR) {
             try {
-              existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+              existingPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, user.id, pageId);
               if (existingPR) {
                 console.log(`[PageEditor] Found existing PR #${existingPR.number}: ${existingPR.title}`);
                 console.log(`[PageEditor] Branch: ${existingPR.head.ref}`);
@@ -471,7 +471,7 @@ Include any supplementary details, notes, or related information.
         console.log(`[PageEditor] Checking if PR #${editingPR.number} is now in GitHub API (attempt ${prCheckAttempts + 1}/${maxAttempts})`);
 
         const { owner, repo } = config.wiki.repository;
-        const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, pageId);
+        const foundPR = await findExistingPRForPage(owner, repo, sectionId, pageId, user.login, user.id, pageId);
 
         if (foundPR && foundPR.number === editingPR.number) {
           console.log(`[PageEditor] ✓ PR #${editingPR.number} is now available in GitHub API!`);
@@ -664,7 +664,7 @@ Include any supplementary details, notes, or related information.
       }
 
       // Check if this is the user's first contribution
-      const userPRsResult = await getUserPullRequests(owner, repo, user.login, null, 1, 1);
+      const userPRsResult = await getUserPullRequests(owner, repo, user.login, user.id, null, 1, 1);
       const isFirstEver = userPRsResult.prs.length === 0;
 
       if (isFirstEver) {
@@ -816,7 +816,7 @@ Include any supplementary details, notes, or related information.
       // Check if user already has an open PR for this page ID
       console.log(`[PageEditor] Checking for existing PR for page ID: ${pageIdFromMetadata}, filename: ${currentPageId}`);
       setSavingStatus('Checking for existing edit requests...');
-      const existingPR = await findExistingPRForPage(owner, repo, sectionId, pageIdFromMetadata, user.login, currentPageId);
+      const existingPR = await findExistingPRForPage(owner, repo, sectionId, pageIdFromMetadata, user.login, user.id, currentPageId);
 
       let pr;
       const action = isNewPage ? 'Create' : 'Update';
