@@ -71,6 +71,10 @@ const Header = ({ onOpenDataBrowser }) => {
                   src={config.wiki.logo}
                   alt={config.wiki.title}
                   className="h-8 w-8 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] dark:group-hover:drop-shadow-[0_0_12px_rgba(96,165,250,0.6)]"
+                  style={{
+                    maskImage: 'radial-gradient(circle, black 60%, transparent 100%)',
+                    WebkitMaskImage: 'radial-gradient(circle, black 60%, transparent 100%)'
+                  }}
                 />
               ) : (
                 <div className="h-8 w-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:shadow-[0_0_12px_rgba(59,130,246,0.6)]">

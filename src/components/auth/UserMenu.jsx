@@ -227,10 +227,10 @@ const UserMenu = () => {
 
           {/* Logout */}
           <div className="border-t border-gray-200 dark:border-gray-700 py-1">
-            <div className="flex items-center">
+            <div className="relative">
               <button
                 onClick={handleLogout}
-                className="flex items-center flex-1 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
                 <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -239,7 +239,7 @@ const UserMenu = () => {
               </button>
               <button
                 onClick={handleClearCacheAndLogout}
-                className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 title="Clear cache & sign out"
               >
                 <Trash2 className="w-3.5 h-3.5" />
