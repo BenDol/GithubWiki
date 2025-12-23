@@ -58,7 +58,9 @@
         "platforms": ["twitch", "youtube"],
         "rateLimit": {
           "maxSubmissionsPerHour": 5
-        }
+        },
+        "showOnHomePage": true,
+        "homePageLimit": 3
       },
       "videoGuides": {
         "enabled": true,
@@ -68,7 +70,9 @@
         "dataFile": "public/data/video-guides.json",
         "categories": ["beginner", "intermediate", "advanced"],
         "difficulties": ["beginner", "intermediate", "advanced", "expert"],
-        "tags": ["tutorial", "guide", "tips", "strategy"]
+        "tags": ["tutorial", "guide", "tips", "strategy"],
+        "showOnHomePage": true,
+        "homePageLimit": 6
       },
       "showInSidebar": true,
       "sidebarPosition": "top"

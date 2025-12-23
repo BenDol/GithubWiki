@@ -5,6 +5,10 @@ import { useWikiConfig } from '../hooks/useWikiConfig';
 import PageViewer from '../components/wiki/PageViewer';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { getContentProcessor, getCustomComponents } from '../utils/contentRendererRegistry';
+import { getApprovedCreators, isContentCreatorsEnabled } from '../services/contentCreators/contentCreatorService';
+import { loadVideoGuides, areVideoGuidesEnabled } from '../services/contentCreators/videoGuideService';
+import StreamEmbed from '../components/contentCreators/StreamEmbed';
+import VideoGuideCard from '../components/contentCreators/VideoGuideCard';
 
 /**
  * Home page component
@@ -16,6 +20,9 @@ const HomePage = () => {
   const [content, setContent] = useState('');
   const [metadata, setMetadata] = useState(null);
   const [error, setError] = useState(null);
+  const [streamers, setStreamers] = useState([]);
+  const [videoGuides, setVideoGuides] = useState([]);
+  const [loadingCreators, setLoadingCreators] = useState(true);
 
   const customHomePageEnabled = config?.features?.customHomePage?.enabled ?? false;
   const customHomePagePath = config?.features?.customHomePage?.path ?? 'home.md';
@@ -53,6 +60,44 @@ const HomePage = () => {
 
     loadCustomHomePage();
   }, [customHomePageEnabled, customHomePagePath, config]);
+
+  // Load content creators data for homepage
+  useEffect(() => {
+    const loadContentCreators = async () => {
+      if (!config) return;
+
+      try {
+        setLoadingCreators(true);
+
+        const owner = config.wiki?.repository?.owner;
+        const repo = config.wiki?.repository?.repo;
+
+        // Load streamers if enabled
+        if (isContentCreatorsEnabled(config) &&
+            config.features?.contentCreators?.streamers?.enabled &&
+            config.features?.contentCreators?.streamers?.showOnHomePage &&
+            owner && repo) {
+          const approvedStreamers = await getApprovedCreators(owner, repo, config);
+          const limit = config.features?.contentCreators?.streamers?.homePageLimit || 3;
+          setStreamers(approvedStreamers.slice(0, limit));
+        }
+
+        // Load video guides if enabled
+        if (areVideoGuidesEnabled(config) &&
+            config.features?.contentCreators?.videoGuides?.showOnHomePage) {
+          const guides = await loadVideoGuides();
+          const limit = config.features?.contentCreators?.videoGuides?.homePageLimit || 6;
+          setVideoGuides(guides.slice(0, limit));
+        }
+      } catch (err) {
+        console.error('Error loading content creators for homepage:', err);
+      } finally {
+        setLoadingCreators(false);
+      }
+    };
+
+    loadContentCreators();
+  }, [config]);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -117,6 +162,70 @@ const HomePage = () => {
           {config.wiki.description}
         </p>
       </div>
+
+      {/* Featured Live Streams */}
+      {!loadingCreators && streamers.length > 0 && (
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                🎥 Live Streams
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Watch community streamers playing live
+              </p>
+            </div>
+            <Link
+              to="/creators"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-2 group"
+            >
+              View All
+              <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {streamers.map((creator) => (
+              <div key={creator.creatorId} className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all hover:shadow-xl">
+                <StreamEmbed creator={creator} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Featured Video Guides */}
+      {!loadingCreators && videoGuides.length > 0 && (
+        <div className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                📚 Video Guides
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Learn from community tutorials and guides
+              </p>
+            </div>
+            <Link
+              to="/creators"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium flex items-center gap-2 group"
+            >
+              View All
+              <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {videoGuides.map((guide) => (
+              <div key={guide.id} className="bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all hover:shadow-xl">
+                <VideoGuideCard guide={guide} mode="card" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sections grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
