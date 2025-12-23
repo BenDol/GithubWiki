@@ -67,15 +67,18 @@ const Header = ({ onOpenDataBrowser }) => {
             {/* Logo */}
             <Link to="/" className="flex items-center space-x-2 group">
               {config.wiki.logo ? (
-                <img
-                  src={config.wiki.logo}
-                  alt={config.wiki.title}
-                  className="h-8 w-8 transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] dark:group-hover:drop-shadow-[0_0_12px_rgba(96,165,250,0.6)]"
-                  style={{
-                    maskImage: 'radial-gradient(circle, black 60%, transparent 100%)',
-                    WebkitMaskImage: 'radial-gradient(circle, black 60%, transparent 100%)'
-                  }}
-                />
+                <div className="relative h-10 w-10">
+                  <img
+                    src={config.wiki.logo}
+                    alt={config.wiki.title}
+                    className="h-10 w-10 transition-all duration-300 ease-in-out group-hover:scale-110"
+                    style={{
+                      maskImage: 'radial-gradient(circle, black 60%, transparent 100%)',
+                      WebkitMaskImage: 'radial-gradient(circle, black 60%, transparent 100%)'
+                    }}
+                  />
+                  <div className="absolute inset-0 h-10 w-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-md bg-blue-500/50 dark:bg-blue-400/60 -z-10" />
+                </div>
               ) : (
                 <div className="h-8 w-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold transition-all duration-300 ease-in-out group-hover:scale-110 group-hover:shadow-[0_0_12px_rgba(59,130,246,0.6)]">
                   W

@@ -251,8 +251,9 @@ export const fetchGitHubUser = async (token) => {
     try {
       // Import timeCache utility
       const { getCacheValue, setCacheValue } = await import('../../utils/timeCache.js');
+      const { cacheName } = await import('../../utils/storageManager.js');
 
-      const cacheKey = `github_user_emails_${user.id}`;
+      const cacheKey = cacheName('github_user_emails', user.id);
 
       // Check cache first (30 day TTL since emails rarely change)
       const cachedEmail = getCacheValue(cacheKey);

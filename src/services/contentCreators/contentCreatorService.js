@@ -44,6 +44,7 @@
 
 import { createLogger } from '../../utils/logger';
 import { getGithubBotEndpoint } from '../../utils/apiEndpoints';
+import { cacheName } from '../../utils/storageManager';
 
 const logger = createLogger('ContentCreatorService');
 
@@ -121,7 +122,7 @@ export function getAllowedPlatforms(config) {
  */
 export function hasExceededRateLimit(username, config) {
   const rateLimit = getStreamerRateLimit(config);
-  const key = `creator_submissions_${username}`;
+  const key = cacheName('creator_submissions', username);
   const storedData = localStorage.getItem(key);
 
   if (!storedData) return false;
@@ -148,7 +149,7 @@ export function hasExceededRateLimit(username, config) {
  * @param {string} username - GitHub username
  */
 export function recordSubmission(username) {
-  const key = `creator_submissions_${username}`;
+  const key = cacheName('creator_submissions', username);
   const storedData = localStorage.getItem(key);
 
   try {
