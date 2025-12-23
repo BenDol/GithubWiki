@@ -73,8 +73,8 @@ const Header = ({ onOpenDataBrowser }) => {
                     alt={config.wiki.title}
                     className="h-10 w-10 transition-all duration-300 ease-in-out group-hover:scale-110"
                     style={{
-                      maskImage: 'radial-gradient(circle, black 60%, transparent 100%)',
-                      WebkitMaskImage: 'radial-gradient(circle, black 60%, transparent 100%)'
+                      maskImage: 'radial-gradient(circle, black 70%, transparent 100%)',
+                      WebkitMaskImage: 'radial-gradient(circle, black 70%, transparent 100%)'
                     }}
                   />
                   <div className="absolute inset-0 h-10 w-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-md bg-blue-500/50 dark:bg-blue-400/60 -z-10" />
