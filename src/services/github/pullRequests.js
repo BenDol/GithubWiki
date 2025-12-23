@@ -3,6 +3,10 @@ import { updateFileContent } from './content';
 import { useGitHubDataStore } from '../../store/githubDataStore';
 import { isBanned } from './admin';
 import { filterByReleaseDate } from '../../utils/releaseDate';
+import { queueAchievementCheck } from '../achievements/achievementQueue';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('PullRequests');
 
 /**
  * GitHub Pull Request operations
@@ -57,6 +61,34 @@ export const createPullRequest = async (
   // Invalidate PR cache for this user
   console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
   store.invalidatePRsForUser(data.user.login);
+
+  // Queue achievement checks for all PR-related achievements
+  if (data.user.id && data.user.login) {
+    const prAchievements = [
+      'first-pr',              // First PR created
+      'first-edit',            // Same as first-pr
+      'pr-novice',             // 10 PRs
+      'pr-expert',             // 50 PRs
+      'pr-master',             // 100 PRs
+      'pr-legend',             // 500 PRs
+    ];
+
+    logger.info('Queueing PR achievement checks', { userId: data.user.id, username: data.user.login, count: prAchievements.length });
+
+    prAchievements.forEach(achievementId => {
+      queueAchievementCheck(achievementId, {
+        owner,
+        repo,
+        userId: data.user.id,
+        username: data.user.login,
+        delay: 5000, // Wait 5 seconds for GitHub API to sync
+        retryDelay: 10000,
+        maxRetries: 3,
+      }).catch(error => {
+        logger.error(`Failed to queue ${achievementId} achievement check`, { error: error.message });
+      });
+    });
+  }
 
   return {
     number: data.number,

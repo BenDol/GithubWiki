@@ -98,6 +98,8 @@ export async function checkUserAchievements(owner, repo, userId, username) {
   }
 
   try {
+    console.log('[AchievementChecker] Starting achievement check', { userId, username });
+
     if (config.debug.logChecks) {
       logger.debug('Checking achievements server-side', { userId, username });
     }
@@ -111,24 +113,35 @@ export async function checkUserAchievements(owner, repo, userId, username) {
           // Token is stored encrypted - decrypt it
           const { decryptToken } = await import('../github/auth.js');
           userToken = decryptToken(authState.token);
+          console.log('[AchievementChecker] Got auth token', { tokenLength: userToken?.length });
         }
       } catch (error) {
+        console.error('[AchievementChecker] Failed to get auth token', error);
         logger.error('Failed to get auth token from store', { error });
       }
     }
 
     if (!userToken) {
+      console.warn('[AchievementChecker] No auth token available, skipping achievement check');
       logger.warn('No auth token available, skipping achievement check');
       return { checked: false, newlyUnlocked: [], totalAchievements: 0 };
     }
 
     // Call server-side endpoint
+    console.log('[AchievementChecker] Calling check-achievements endpoint', { owner, repo });
     const response = await callBotService('check-achievements', {
       owner,
       repo,
     }, userToken);
 
+    console.log('[AchievementChecker] Got response from server', {
+      checked: response.checked,
+      newlyUnlockedCount: response.newlyUnlocked?.length || 0,
+      totalAchievements: response.totalAchievements
+    });
+
     if (response.checked && response.newlyUnlocked?.length > 0) {
+      console.log('[AchievementChecker] Achievements unlocked!', response.newlyUnlocked);
       logger.info('Achievements unlocked', { count: response.newlyUnlocked.length });
 
       // Emit event for toast notification (if notifications enabled)
@@ -146,6 +159,7 @@ export async function checkUserAchievements(owner, repo, userId, username) {
 
     return response;
   } catch (error) {
+    console.error('[AchievementChecker] Failed to check achievements', error);
     logger.error('Failed to check achievements', { error: error.message });
     return { checked: false, newlyUnlocked: [], totalAchievements: 0 };
   }

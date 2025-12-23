@@ -45,9 +45,95 @@
     "pageHistory": true,
     "editPages": true,
     "darkMode": true,
-    "tags": true
+    "tags": true,
+    "buildSharing": false,
+    "calculators": false,
+    "progressTracking": false,
+    "contentCreators": {
+      "enabled": false,
+      "streamers": {
+        "enabled": true,
+        "allowSubmissions": true,
+        "requireApproval": true,
+        "platforms": ["twitch", "youtube"],
+        "rateLimit": {
+          "maxSubmissionsPerHour": 5
+        }
+      },
+      "videoGuides": {
+        "enabled": true,
+        "allowSubmissions": true,
+        "requireAuthentication": true,
+        "requireApproval": true,
+        "dataFile": "public/data/video-guides.json",
+        "categories": ["beginner", "intermediate", "advanced"],
+        "difficulties": ["beginner", "intermediate", "advanced", "expert"],
+        "tags": ["tutorial", "guide", "tips", "strategy"]
+      },
+      "showInSidebar": true,
+      "sidebarPosition": "top"
+    },
+    "comments": {
+      "enabled": false,
+      "label": "wiki-comments"
+    },
+    "achievements": {
+      "enabled": false,
+      "checking": {
+        "checkOnLogin": true,
+        "checkOnBuildSave": true,
+        "checkOnLoadoutSave": true,
+        "checkOnSnapshotUpdate": true
+      },
+      "limits": {
+        "maxChecksPerHour": 10
+      }
+    },
+    "contributorHighscore": {
+      "enabled": false,
+      "cacheMinutes": 30,
+      "displayLimit": 100,
+      "ignoreRepositoryOwner": true,
+      "ignoreMainContributors": false
+    },
+    "donation": {
+      "enabled": false,
+      "prompt": {
+        "minTimeOnSite": 60,
+        "minPagesViewed": 3,
+        "daysUntilNextPrompt": 7
+      },
+      "methods": {
+        "stripe": {
+          "enabled": false,
+          "url": ""
+        },
+        "paypal": {
+          "enabled": false,
+          "url": ""
+        },
+        "kofi": {
+          "enabled": false,
+          "url": ""
+        }
+      }
+    },
+    "maintenance": {
+      "enabled": false,
+      "title": "Maintenance in Progress",
+      "message": "We're currently performing scheduled maintenance.",
+      "allowAdminBypass": true
+    }
   },
   "theme": {
     "primaryColor": "#3b82f6"
+  },
+  "storage": {
+    "backend": "github",
+    "version": "v1",
+    "github": {
+      "owner": "yourusername",
+      "repo": "wiki"
+    }
   }
 }

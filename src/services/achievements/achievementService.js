@@ -8,13 +8,13 @@
 import { createLogger } from '../../utils/logger.js';
 import { getOctokit } from '../github/api.js';
 import { useConfigStore } from '../../store/configStore.js';
+import { getCacheValue, setCacheValue, clearCacheValue } from '../../utils/timeCache.js';
+import { cacheName } from '../../utils/storageManager.js';
 
 const logger = createLogger('AchievementService');
 
-// In-memory cache for achievement definitions
-let achievementDefinitionsCache = null;
-let achievementDefinitionsCacheTime = 0;
-const DEFINITIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Cache TTL for achievement definitions: 5 minutes
+const DEFINITIONS_CACHE_TTL = 5 * 60 * 1000;
 
 /**
  * Get achievement configuration from wiki-config
@@ -50,16 +50,14 @@ export const achievementService = {
    * @returns {Promise<Object>} Achievement definitions { version, categories, rarities, achievements }
    */
   async loadAchievementDefinitions() {
-    const now = Date.now();
     const config = getAchievementConfig();
+    const cacheKey = cacheName('achievement_definitions');
 
     // Return cached definitions if still valid
-    if (
-      achievementDefinitionsCache &&
-      now - achievementDefinitionsCacheTime < DEFINITIONS_CACHE_TTL
-    ) {
+    const cached = getCacheValue(cacheKey);
+    if (cached) {
       logger.trace('Using cached achievement definitions');
-      return achievementDefinitionsCache;
+      return cached;
     }
 
     try {
@@ -105,9 +103,8 @@ export const achievementService = {
         achievements: visibleAchievements,
       };
 
-      // Cache the filtered definitions
-      achievementDefinitionsCache = filteredDefinitions;
-      achievementDefinitionsCacheTime = now;
+      // Cache the filtered definitions (5 minute TTL)
+      setCacheValue(cacheKey, filteredDefinitions, DEFINITIONS_CACHE_TTL);
 
       logger.info('Loaded achievement definitions', {
         version: filteredDefinitions.version,
@@ -281,8 +278,8 @@ export const achievementService = {
    * Clear achievement definitions cache (for testing)
    */
   clearCache() {
-    achievementDefinitionsCache = null;
-    achievementDefinitionsCacheTime = 0;
+    const cacheKey = cacheName('achievement_definitions');
+    clearCacheValue(cacheKey);
     logger.trace('Achievement definitions cache cleared');
   },
 };

@@ -43,6 +43,10 @@ export default {
           '0%': { transform: 'translateY(20px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
+        'slide-down-fade': {
+          '0%': { transform: 'translateY(0)', opacity: '1' },
+          '100%': { transform: 'translateY(20px)', opacity: '0' },
+        },
         'bounce-once': {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-10px)' },
@@ -58,6 +62,7 @@ export default {
         'sparkle-4': 'sparkle 1.7s ease-in-out 0.6s infinite',
         'shake': 'shake 0.5s ease-in-out',
         'slide-up-fade': 'slide-up-fade 0.4s ease-out',
+        'slide-down-fade': 'slide-down-fade 0.3s ease-in',
         'bounce-once': 'bounce-once 0.6s ease-out',
       },
       typography: {

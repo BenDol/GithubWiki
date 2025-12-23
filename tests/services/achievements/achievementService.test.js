@@ -22,7 +22,41 @@ vi.mock('../../../src/services/github/api.js', () => ({
   getOctokit: vi.fn()
 }));
 
+vi.mock('../../../src/utils/storageManager.js', () => ({
+  cacheName: vi.fn((name, id) => id ? `cache:${id}:${name}` : `cache:${name}`)
+}));
+
+vi.mock('../../../src/utils/timeCache.js', () => ({
+  getCacheValue: vi.fn(),
+  setCacheValue: vi.fn(),
+  clearCacheValue: vi.fn()
+}));
+
+vi.mock('../../../src/store/configStore.js', () => ({
+  useConfigStore: {
+    getState: vi.fn(() => ({
+      config: {
+        features: {
+          achievements: {
+            enabled: true,
+            definitionsPath: '/achievements.json',
+            categories: {},
+            ui: {
+              showHiddenAchievements: false
+            },
+            storage: {
+              issueLabel: 'achievements',
+              statsLabel: 'achievement-stats'
+            }
+          }
+        }
+      }
+    }))
+  }
+}));
+
 import { getOctokit } from '../../../src/services/github/api.js';
+import { getCacheValue, setCacheValue, clearCacheValue } from '../../../src/utils/timeCache.js';
 
 describe('achievementService (client-side)', () => {
   let mockOctokit;
@@ -31,6 +65,11 @@ describe('achievementService (client-side)', () => {
   beforeEach(() => {
     // Clear achievement definitions cache
     achievementService.clearCache();
+
+    // Reset cache mocks
+    getCacheValue.mockReturnValue(null); // No cache by default
+    setCacheValue.mockImplementation(() => {}); // No-op
+    clearCacheValue.mockImplementation(() => {}); // No-op
 
     // Mock Octokit
     mockOctokit = {
@@ -90,7 +129,11 @@ describe('achievementService (client-side)', () => {
         json: async () => mockDefinitions
       });
 
+      // First call should miss cache and fetch
       const first = await achievementService.loadAchievementDefinitions();
+
+      // Simulate cache hit for second call
+      getCacheValue.mockReturnValueOnce(mockDefinitions);
 
       // Clear mock calls to verify caching
       mockFetch.mockClear();

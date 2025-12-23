@@ -1,0 +1,480 @@
+{
+  "version": "1.0",
+  "categories": {
+    "contribution": {
+      "label": "Contributions",
+      "icon": "📝",
+      "color": "blue"
+    },
+    "social": {
+      "label": "Social",
+      "icon": "👥",
+      "color": "green"
+    },
+    "milestone": {
+      "label": "Milestones",
+      "icon": "🏆",
+      "color": "gold"
+    }
+  },
+  "rarities": {
+    "common": {
+      "color": "gray",
+      "points": 10
+    },
+    "rare": {
+      "color": "blue",
+      "points": 25
+    },
+    "epic": {
+      "color": "purple",
+      "points": 50
+    },
+    "legendary": {
+      "color": "gold",
+      "points": 100
+    }
+  },
+  "achievements": [
+    {
+      "id": "first-login",
+      "title": "Welcome!",
+      "description": "Log in to the wiki for the first time",
+      "icon": "👋",
+      "category": "milestone",
+      "rarity": "common",
+      "deciderId": "first-login",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "first-edit",
+      "title": "Editor",
+      "description": "Make your first wiki edit",
+      "icon": "📄",
+      "category": "contribution",
+      "rarity": "common",
+      "deciderId": "first-edit",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "first-pr",
+      "title": "First Contribution",
+      "description": "Create your first edit request",
+      "icon": "✨",
+      "category": "contribution",
+      "rarity": "common",
+      "deciderId": "first-pr",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "first-merge",
+      "title": "Published",
+      "description": "Have your first edit request merged",
+      "icon": "✅",
+      "category": "contribution",
+      "rarity": "common",
+      "deciderId": "first-merge",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "first-pr-closed",
+      "title": "Learning Experience",
+      "description": "Have an edit request closed without merging",
+      "icon": "📚",
+      "category": "contribution",
+      "rarity": "common",
+      "deciderId": "first-pr-closed",
+      "hidden": false,
+      "points": 5
+    },
+    {
+      "id": "pr-novice",
+      "title": "Contributing Member",
+      "description": "Create 10 edit requests",
+      "icon": "📝",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "pr-novice",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "pr-expert",
+      "title": "Dedicated Editor",
+      "description": "Create 50 edit requests",
+      "icon": "⭐",
+      "category": "contribution",
+      "rarity": "epic",
+      "deciderId": "pr-expert",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "pr-master",
+      "title": "Master Contributor",
+      "description": "Create 100 edit requests",
+      "icon": "🌟",
+      "category": "contribution",
+      "rarity": "epic",
+      "deciderId": "pr-master",
+      "hidden": false,
+      "points": 75
+    },
+    {
+      "id": "pr-legend",
+      "title": "Legendary Contributor",
+      "description": "Create 500 edit requests",
+      "icon": "💎",
+      "category": "contribution",
+      "rarity": "legendary",
+      "deciderId": "pr-legend",
+      "hidden": false,
+      "points": 100
+    },
+    {
+      "id": "merge-novice",
+      "title": "Verified Editor",
+      "description": "Have 10 edit requests merged",
+      "icon": "✔️",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "merge-novice",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "merge-expert",
+      "title": "Trusted Contributor",
+      "description": "Have 50 edit requests merged",
+      "icon": "🎯",
+      "category": "contribution",
+      "rarity": "epic",
+      "deciderId": "merge-expert",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "merge-master",
+      "title": "Elite Contributor",
+      "description": "Have 100 edit requests merged",
+      "icon": "🏅",
+      "category": "contribution",
+      "rarity": "legendary",
+      "deciderId": "merge-master",
+      "hidden": false,
+      "points": 100
+    },
+    {
+      "id": "lines-apprentice",
+      "title": "Getting Started",
+      "description": "Add 100+ lines of content",
+      "icon": "📖",
+      "category": "contribution",
+      "rarity": "common",
+      "deciderId": "lines-apprentice",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "lines-journeyman",
+      "title": "Content Writer",
+      "description": "Add 1,000+ lines of content",
+      "icon": "📚",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "lines-journeyman",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "lines-master",
+      "title": "Prolific Writer",
+      "description": "Add 10,000+ lines of content",
+      "icon": "📜",
+      "category": "contribution",
+      "rarity": "epic",
+      "deciderId": "lines-master",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "lines-legend",
+      "title": "Content Architect",
+      "description": "Add 100,000+ lines of content",
+      "icon": "🏛️",
+      "category": "contribution",
+      "rarity": "legendary",
+      "deciderId": "lines-legend",
+      "hidden": false,
+      "points": 100
+    },
+    {
+      "id": "files-novice",
+      "title": "Multi-Page Editor",
+      "description": "Edit 10 different files",
+      "icon": "📁",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "files-novice",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "files-expert",
+      "title": "Wiki Explorer",
+      "description": "Edit 100 different files",
+      "icon": "🗂️",
+      "category": "contribution",
+      "rarity": "epic",
+      "deciderId": "files-expert",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "files-master",
+      "title": "Wiki Architect",
+      "description": "Edit 500 different files",
+      "icon": "🗄️",
+      "category": "contribution",
+      "rarity": "legendary",
+      "deciderId": "files-master",
+      "hidden": false,
+      "points": 100
+    },
+    {
+      "id": "anonymous-contributor",
+      "title": "Anonymous Hero",
+      "description": "Make an edit before creating an account",
+      "icon": "🎭",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "anonymous-contributor",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "prolific-editor",
+      "title": "Prolific Editor",
+      "description": "Edit 10 different pages",
+      "icon": "📄",
+      "category": "contribution",
+      "rarity": "rare",
+      "deciderId": "prolific-editor",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "veteran",
+      "title": "Veteran",
+      "description": "GitHub account is 1+ year old",
+      "icon": "🎖️",
+      "category": "milestone",
+      "rarity": "rare",
+      "deciderId": "veteran",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "early-adopter",
+      "title": "Early Adopter",
+      "description": "Join the wiki within the first month of launch",
+      "icon": "🚀",
+      "category": "milestone",
+      "rarity": "epic",
+      "deciderId": "early-adopter",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "one-week-streak",
+      "title": "Weekly Regular",
+      "description": "Contribute for 7 consecutive days",
+      "icon": "📅",
+      "category": "milestone",
+      "rarity": "rare",
+      "deciderId": "one-week-streak",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "one-month-streak",
+      "title": "Monthly Champion",
+      "description": "Contribute for 30 consecutive days",
+      "icon": "📆",
+      "category": "milestone",
+      "rarity": "epic",
+      "deciderId": "one-month-streak",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "persistent",
+      "title": "Persistent",
+      "description": "Contribute on 100 different days",
+      "icon": "🔥",
+      "category": "milestone",
+      "rarity": "epic",
+      "deciderId": "persistent",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "dedicated",
+      "title": "Dedicated",
+      "description": "Contribute on 365 different days",
+      "icon": "💪",
+      "category": "milestone",
+      "rarity": "legendary",
+      "deciderId": "dedicated",
+      "hidden": false,
+      "points": 100
+    },
+    {
+      "id": "weekend-warrior",
+      "title": "Weekend Warrior",
+      "description": "Make an edit on a weekend",
+      "icon": "🏖️",
+      "category": "milestone",
+      "rarity": "common",
+      "deciderId": "weekend-warrior",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "night-owl",
+      "title": "Night Owl",
+      "description": "Make an edit between midnight and 6am",
+      "icon": "🦉",
+      "category": "milestone",
+      "rarity": "common",
+      "deciderId": "night-owl",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "consistent",
+      "title": "Consistent Contributor",
+      "description": "Contribute for 7 consecutive days",
+      "icon": "📊",
+      "category": "milestone",
+      "rarity": "rare",
+      "deciderId": "consistent",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "first-comment",
+      "title": "First Comment",
+      "description": "Leave your first comment on an edit request",
+      "icon": "💬",
+      "category": "social",
+      "rarity": "common",
+      "deciderId": "first-comment",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "helpful",
+      "title": "Helpful",
+      "description": "Leave 10 comments on others' edit requests",
+      "icon": "🤝",
+      "category": "social",
+      "rarity": "rare",
+      "deciderId": "helpful",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "very-helpful",
+      "title": "Very Helpful",
+      "description": "Leave 50 comments on others' edit requests",
+      "icon": "💙",
+      "category": "social",
+      "rarity": "epic",
+      "deciderId": "very-helpful",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "reviewer",
+      "title": "Reviewer",
+      "description": "Review 10 edit requests",
+      "icon": "👁️",
+      "category": "social",
+      "rarity": "rare",
+      "deciderId": "reviewer",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "popular",
+      "title": "Popular",
+      "description": "Receive 10 reactions on your edits",
+      "icon": "⭐",
+      "category": "social",
+      "rarity": "rare",
+      "deciderId": "popular",
+      "hidden": false,
+      "points": 25
+    },
+    {
+      "id": "famous",
+      "title": "Famous",
+      "description": "Receive 100 reactions on your edits",
+      "icon": "🌟",
+      "category": "social",
+      "rarity": "epic",
+      "deciderId": "famous",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "discussion-starter",
+      "title": "Discussion Starter",
+      "description": "Create a discussion thread",
+      "icon": "🗨️",
+      "category": "social",
+      "rarity": "common",
+      "deciderId": "discussion-starter",
+      "hidden": false,
+      "points": 10
+    },
+    {
+      "id": "community-builder",
+      "title": "Community Builder",
+      "description": "Help 5 different users with feedback",
+      "icon": "🏗️",
+      "category": "social",
+      "rarity": "epic",
+      "deciderId": "community-builder",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "mentor",
+      "title": "Mentor",
+      "description": "Review 50 edit requests from other users",
+      "icon": "🎓",
+      "category": "social",
+      "rarity": "epic",
+      "deciderId": "mentor",
+      "hidden": false,
+      "points": 50
+    },
+    {
+      "id": "ambassador",
+      "title": "Ambassador",
+      "description": "Be active in wiki discussions and help newcomers",
+      "icon": "🌍",
+      "category": "social",
+      "rarity": "legendary",
+      "deciderId": "ambassador",
+      "hidden": false,
+      "points": 100
+    }
+  ]
+}

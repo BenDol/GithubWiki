@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { eventBus, EventNames } from '../../services/eventBus.js';
 import { achievementService } from '../../services/achievements/achievementService.js';
+import { useConfigStore } from '../../store/configStore.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger('AchievementUnlockedToast');
@@ -35,6 +36,7 @@ const RARITY_COLORS = {
 };
 
 export default function AchievementUnlockedToast() {
+  const { config } = useConfigStore();
   const [toasts, setToasts] = useState([]);
   const [definitions, setDefinitions] = useState(null);
 
@@ -51,10 +53,30 @@ export default function AchievementUnlockedToast() {
     loadDefinitions();
   }, []);
 
+  // Function to remove a toast with animation
+  const removeToast = (toastId) => {
+    // Mark as removing to trigger exit animation
+    setToasts(prev => prev.map(t =>
+      t.toastId === toastId ? { ...t, removing: true } : t
+    ));
+
+    // Actually remove after animation completes (300ms)
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.toastId !== toastId));
+    }, 300);
+  };
+
   // Listen for achievement unlock events
   useEffect(() => {
     const handleAchievementsUnlocked = ({ achievements }) => {
       if (!achievements || achievements.length === 0) return;
+
+      // Check if notifications are enabled
+      const notificationsEnabled = config?.features?.achievements?.notifications?.enabled ?? true;
+      if (!notificationsEnabled) {
+        logger.debug('Achievement notifications disabled, skipping toast');
+        return;
+      }
 
       logger.info('Achievements unlocked', { count: achievements.length });
 
@@ -64,11 +86,11 @@ export default function AchievementUnlockedToast() {
 
         // Stagger the appearance of multiple achievements
         setTimeout(() => {
-          setToasts(prev => [...prev, { ...achievement, toastId }]);
+          setToasts(prev => [...prev, { ...achievement, toastId, removing: false }]);
 
           // Auto-remove after 5 seconds
           setTimeout(() => {
-            setToasts(prev => prev.filter(t => t.toastId !== toastId));
+            removeToast(toastId);
           }, 5000);
         }, index * 300); // 300ms delay between each
       });
@@ -79,7 +101,7 @@ export default function AchievementUnlockedToast() {
     return () => {
       eventBus.off(EventNames.ACHIEVEMENTS_UNLOCKED, handleAchievementsUnlocked);
     };
-  }, []);
+  }, [config]);
 
   if (!definitions) return null;
 
@@ -102,8 +124,12 @@ export default function AchievementUnlockedToast() {
                 ${colors.bg} ${colors.border}
                 border-2 rounded-lg shadow-2xl ${colors.glow}
                 p-4
-                animate-slide-up-fade
                 backdrop-blur-sm
+                transition-all duration-300 ease-in-out
+                ${achievement.removing
+                  ? 'animate-slide-down-fade'
+                  : 'animate-slide-up-fade'
+                }
               `}
             >
               <div className="flex items-center gap-4">
@@ -140,7 +166,7 @@ export default function AchievementUnlockedToast() {
 
                 {/* Close button */}
                 <button
-                  onClick={() => setToasts(prev => prev.filter(t => t.toastId !== achievement.toastId))}
+                  onClick={() => removeToast(achievement.toastId)}
                   className="flex-shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                   aria-label="Dismiss"
                 >

@@ -29,6 +29,26 @@ function App() {
     restoreSession();
   }, [restoreSession]);
 
+  // Listen for session expiration events
+  useEffect(() => {
+    const handleSessionExpired = (event) => {
+      const { message, username } = event.detail;
+      console.warn('[App] Session expired event received', { username });
+
+      addToast(
+        message || 'Your session has expired. Please log in again.',
+        'warning',
+        10000 // Show for 10 seconds
+      );
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
+    return () => {
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
+  }, [addToast]);
+
   // Initialize version system (migration, cache purging)
   useEffect(() => {
     if (config) {

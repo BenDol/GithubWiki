@@ -14,6 +14,14 @@ import { addAdmin, isBanned } from '../services/github/admin';
 import { getUserSnapshot } from '../services/github/userSnapshots';
 import AchievementsSection from '../components/achievements/AchievementsSection';
 import { manualLinkAnonymousEdits } from '../services/github/anonymousEditLinking';
+import { checkUserAchievements } from '../services/achievements/achievementChecker';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('ProfilePage');
+
+// Cooldown for achievement checks (2 minutes)
+const ACHIEVEMENT_CHECK_COOLDOWN = 2 * 60 * 1000;
+const achievementCheckCooldowns = new Map(); // userId -> timestamp
 
 /**
  * ProfilePage - Display user's profile and pull requests
@@ -257,6 +265,63 @@ const ProfilePage = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [showClosed]);
+
+  // Check achievements when viewing achievements tab (with cooldown)
+  useEffect(() => {
+    const checkAchievementsOnView = async () => {
+      // Only check when achievements tab is active
+      if (activeTab !== 'achievements') return;
+
+      // Check if achievements are enabled
+      if (config?.features?.achievements?.enabled === false) {
+        logger.debug('Achievements disabled, skipping check on profile view');
+        return;
+      }
+
+      // Must have config, profile user, and repository info
+      if (!config?.wiki?.repository || !profileUser) return;
+
+      // Only check for authenticated users (viewing own profile)
+      // Other users' achievements are checked by GitHub Action
+      if (!isOwnProfile || !isAuthenticated || !currentUser) return;
+
+      const { owner, repo } = config.wiki.repository;
+      const userId = currentUser.id;
+      const username = currentUser.login;
+
+      // Check cooldown
+      const cooldownKey = `${userId}`;
+      const lastCheck = achievementCheckCooldowns.get(cooldownKey);
+      const now = Date.now();
+
+      if (lastCheck && (now - lastCheck) < ACHIEVEMENT_CHECK_COOLDOWN) {
+        const remainingSeconds = Math.ceil((ACHIEVEMENT_CHECK_COOLDOWN - (now - lastCheck)) / 1000);
+        logger.debug('Achievement check on cooldown', { userId, remainingSeconds });
+        return;
+      }
+
+      // Perform check
+      logger.info('Checking achievements on profile view', { userId, username });
+
+      try {
+        const result = await checkUserAchievements(owner, repo, userId, username);
+
+        if (result.checked && result.newlyUnlocked?.length > 0) {
+          logger.info('New achievements unlocked on profile view', {
+            count: result.newlyUnlocked.length,
+            achievements: result.newlyUnlocked.map(a => a.id),
+          });
+        }
+
+        // Update cooldown
+        achievementCheckCooldowns.set(cooldownKey, now);
+      } catch (error) {
+        logger.error('Failed to check achievements on profile view', { error: error.message });
+      }
+    };
+
+    checkAchievementsOnView();
+  }, [activeTab, config, profileUser, isOwnProfile, isAuthenticated, currentUser]);
 
   const handleRefresh = () => {
     // Clear snapshot data to force fresh fetch
@@ -900,7 +965,7 @@ const ProfilePage = () => {
               >
                 Edit Requests
               </button>
-              {config?.wiki?.repository && (
+              {config?.wiki?.repository && config?.features?.achievements?.enabled !== false && (
                 <button
                   onClick={() => setActiveTab('achievements')}
                   className={`
@@ -919,7 +984,7 @@ const ProfilePage = () => {
       )}
 
       {/* Achievements Tab */}
-      {activeTab === 'achievements' && config?.wiki?.repository && (
+      {activeTab === 'achievements' && config?.wiki?.repository && config?.features?.achievements?.enabled !== false && (
         <AchievementsSection
           owner={config.wiki.repository.owner}
           repo={config.wiki.repository.repo}

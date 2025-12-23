@@ -3,6 +3,7 @@ import { createAdminIssueWithBot, updateAdminIssueWithBot } from './botService';
 import { detectCurrentBranch } from './branchNamespace';
 import { getCacheValue, setCacheValue, clearCacheValue } from '../../utils/timeCache.js';
 import { cacheName } from '../../utils/storageManager';
+import { getCachedUserId } from './userCache.js';
 
 /**
  * GitHub Admin Service
@@ -307,14 +308,10 @@ export const isAdmin = async (username, owner, repo, config) => {
     return true;
   }
 
-  // Fetch user ID for comparison
-  const octokit = getOctokit();
+  // Fetch user ID for comparison (cached)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
   } catch (error) {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
     // Continue without userId, will fallback to username comparison
@@ -343,14 +340,10 @@ export const isAdmin = async (username, owner, repo, config) => {
 export const isBanned = async (username, owner, repo, config) => {
   console.log(`[Admin] Checking if ${username} is banned...`);
 
-  // Fetch user ID for cache key and comparison
-  const octokit = getOctokit();
+  // Fetch user ID for cache key and comparison (cached - prevents redundant API calls)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
   } catch (error) {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
     // Continue without userId, will fallback to username comparison
@@ -403,14 +396,10 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
   const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
-  // Fetch user info from GitHub to get their ID
-  const octokit = getOctokit();
+  // Fetch user info from GitHub to get their ID (cached)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
     console.log(`[Admin] Fetched userId ${userId} for ${username}`);
   } catch (error) {
     console.error(`[Admin] Failed to fetch user ID for ${username}:`, error);
@@ -478,14 +467,10 @@ export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   const issue = await getOrCreateAdminsIssue(owner, repo, config);
   const admins = parseUserListFromIssue(issue.body);
 
-  // Fetch user ID for comparison
-  const octokit = getOctokit();
+  // Fetch user ID for comparison (cached)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
     console.log(`[Admin] Fetched userId ${userId} for ${username}`);
   } catch (error) {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
@@ -551,14 +536,10 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
     throw new Error('Only the repository owner can ban admins');
   }
 
-  // Fetch user info from GitHub to get their ID (do this once upfront)
-  const octokit = getOctokit();
+  // Fetch user info from GitHub to get their ID (cached)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
     console.log(`[Admin] Fetched userId ${userId} for ${username}`);
   } catch (error) {
     console.error(`[Admin] Failed to fetch user ID for ${username}:`, error);
@@ -666,14 +647,10 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
   const bannedUsers = parseUserListFromIssue(issue.body);
 
-  // Fetch user ID for comparison
-  const octokit = getOctokit();
+  // Fetch user ID for comparison (cached)
   let userId;
   try {
-    const { data: userData } = await octokit.rest.users.getByUsername({
-      username,
-    });
-    userId = userData.id;
+    userId = await getCachedUserId(username);
     console.log(`[Admin] Fetched userId ${userId} for ${username}`);
   } catch (error) {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);

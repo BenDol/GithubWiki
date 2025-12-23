@@ -23,6 +23,12 @@ console.log('[GitHub API] OctokitWithRetry class created:', !!OctokitWithRetry);
 // Prevents multiple concurrent requests for the same data
 const pendingRequests = new Map();
 
+// Cache for authenticated user data
+// TTL: 5 minutes (user data rarely changes during a session)
+let authenticatedUserCache = null;
+let authenticatedUserCacheTime = 0;
+const AUTHENTICATED_USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Initialize Octokit with authentication token
  * Automatically includes retry plugin for rate limit handling
@@ -30,6 +36,10 @@ const pendingRequests = new Map();
 export const initializeOctokit = (token) => {
   console.log('[GitHub API] initializeOctokit() called with token:', token ? 'YES (length: ' + token.length + ')' : 'NO');
   console.log('[GitHub API] Creating OctokitWithRetry instance...');
+
+  // Clear authenticated user cache on reinitialize
+  authenticatedUserCache = null;
+  authenticatedUserCacheTime = 0;
 
   octokitInstance = new OctokitWithRetry({
     auth: token,
@@ -103,6 +113,9 @@ export const getOctokit = () => {
  */
 export const clearOctokit = () => {
   octokitInstance = null;
+  // Clear authenticated user cache on logout
+  authenticatedUserCache = null;
+  authenticatedUserCacheTime = 0;
 };
 
 /**
@@ -231,15 +244,29 @@ export const isAuthenticated = () => {
 };
 
 /**
- * Get authenticated user
+ * Get authenticated user (cached for 5 minutes)
  * Requires login
+ * @returns {Promise<Object>} User data from GitHub API
  */
 export const getAuthenticatedUser = async () => {
   if (!isAuthenticated()) {
     throw new Error('Authentication required. Please login first.');
   }
+
+  // Check cache first
+  const now = Date.now();
+  if (authenticatedUserCache && (now - authenticatedUserCacheTime) < AUTHENTICATED_USER_CACHE_TTL) {
+    return authenticatedUserCache;
+  }
+
+  // Fetch from GitHub API
   const octokit = getOctokit();
   const { data } = await octokit.rest.users.getAuthenticated();
+
+  // Cache the result
+  authenticatedUserCache = data;
+  authenticatedUserCacheTime = now;
+
   return data;
 };
 

@@ -320,7 +320,28 @@ export const useAuthStore = create(
        * Validate and restore session from stored token
        */
       restoreSession: async () => {
-        const { token: encryptedToken } = get();
+        const { token: encryptedToken, isAuthenticated, user } = get();
+
+        // Detect stale session: authenticated but no token
+        if (isAuthenticated && !encryptedToken) {
+          console.warn('[AuthStore] ⚠️  Stale session detected: authenticated but token missing');
+          console.log('[AuthStore] Clearing stale session - user needs to log in again');
+
+          // Clear the stale state
+          get().logout();
+
+          // Emit event to show user notification
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:session-expired', {
+              detail: {
+                message: 'Your session has expired. Please log in again.',
+                username: user?.login,
+              }
+            }));
+          }
+
+          return false;
+        }
 
         if (!encryptedToken) {
           console.log('[AuthStore] No stored token found, skipping session restore');
