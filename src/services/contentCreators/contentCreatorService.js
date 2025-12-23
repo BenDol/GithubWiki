@@ -480,20 +480,24 @@ export async function approveCreator(owner, repo, config, creatorId, adminUserna
 export async function deleteCreatorSubmission(owner, repo, config, creatorId, adminUsername, userToken) {
   try {
     const endpoint = getGithubBotEndpoint();
+    const payload = {
+      action: 'delete-creator-submission',
+      owner,
+      repo,
+      creatorId,
+      adminUsername,
+      userToken
+    };
+
+    logger.debug('Sending delete creator request', { payload: { ...payload, userToken: '[REDACTED]' } });
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${userToken}`
       },
-      body: JSON.stringify({
-        action: 'delete-creator-submission',
-        owner,
-        repo,
-        creatorId,
-        adminUsername,
-        userToken
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {

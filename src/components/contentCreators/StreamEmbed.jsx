@@ -28,8 +28,10 @@ const StreamEmbed = ({ creator }) => {
       const username = usernameMatch[1];
       const hostname = window.location.hostname || 'localhost';
 
-      // Twitch embed URL with parent parameter
-      return `https://player.twitch.tv/?channel=${username}&parent=${hostname}&muted=false`;
+      // Twitch embed URL following Twitch Embedded Experiences Requirements
+      // For autoplay to work: must be muted=true and meet visibility requirements
+      // See: https://dev.twitch.tv/docs/embed/
+      return `https://player.twitch.tv/?channel=${username}&parent=${hostname}&autoplay=true&muted=true`;
     } else if (creator.platform === 'youtube') {
       // Extract YouTube channel ID/name from URL
       const channelMatch = creator.channelUrl.match(/youtube\.com\/((@|c\/|channel\/|user\/)([a-zA-Z0-9_-]+))/);
@@ -40,9 +42,10 @@ const StreamEmbed = ({ creator }) => {
 
       const channelPart = channelMatch[1];
 
-      // YouTube live stream embed
+      // YouTube live stream embed with autoplay
       // Note: This will show the channel's live stream if they're streaming, or a placeholder if not
-      return `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(channelPart)}`;
+      // YouTube autoplay requires mute=1 and autoplay=1
+      return `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(channelPart)}&autoplay=1&mute=1`;
     }
 
     logger.error('Unsupported platform', { platform: creator.platform });
@@ -72,25 +75,25 @@ const StreamEmbed = ({ creator }) => {
 
   return (
     <div className="stream-embed bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-      {/* Embed Container - 16:9 aspect ratio */}
-      <div className="relative w-full pb-[56.25%] bg-gray-900">
+      {/* Embed Container - 16:9 aspect ratio with minimum Twitch requirements */}
+      <div className="relative w-full pb-[56.25%] bg-gray-900 min-h-[250px] sm:min-h-[300px]">
         <iframe
           src={embedUrl}
           title={`${creator.channelName || 'Stream'} - ${creator.platform}`}
           allowFullScreen
           allow="autoplay; encrypted-media; fullscreen"
           className="absolute top-0 left-0 w-full h-full"
-          loading="lazy"
+          style={{ visibility: 'visible', display: 'block' }}
         />
       </div>
 
       {/* Stream Info */}
-      <div className="p-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+      <div className="p-3 sm:p-4">
+        <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-2 truncate">
           {creator.channelName || 'Unknown Channel'}
         </h3>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded capitalize">
               {creator.platform}
@@ -101,9 +104,10 @@ const StreamEmbed = ({ creator }) => {
             href={creator.channelUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+            className="inline-flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors whitespace-nowrap"
           >
-            Visit Channel
+            <span className="hidden sm:inline">Visit Channel</span>
+            <span className="sm:hidden">Visit</span>
             <ExternalLink size={14} />
           </a>
         </div>

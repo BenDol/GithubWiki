@@ -78,13 +78,26 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
     return pendingPageIssueRequests.get(cacheKey);
   }
 
-  // Start a new request and track it
-  const requestPromise = (async () => {
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  // This prevents race condition where multiple calls check pendingPageIssueRequests
+  // at the same time before any of them set it
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingPageIssueRequests.set(cacheKey, requestPromise);
+
+  // Now do the actual async work
+  (async () => {
     try {
       // First try to find existing issue by page ID
       const existingIssue = await findPageIssue(owner, repo, sectionId, pageId, branch);
       if (existingIssue) {
-        return existingIssue;
+        resolvePromise(existingIssue);
+        return;
       }
 
       // Create new issue for this page using bot (server-side via Netlify Function)
@@ -102,16 +115,17 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
 
       console.log(`[Comments] ✓ Created page issue #${newIssue.number} for ${sectionId}/${pageId} in branch: ${branch} (bot)`);
 
-      return newIssue;
+      resolvePromise(newIssue);
     } catch (error) {
       console.error('[Comments] Failed to create page issue with bot:', error);
 
       // If bot service fails, throw a helpful error
       if (error.message?.includes('Bot token not configured')) {
-        throw new Error('Comment system requires bot token configuration. Please contact the wiki administrator.');
+        rejectPromise(new Error('Comment system requires bot token configuration. Please contact the wiki administrator.'));
+        return;
       }
 
-      throw error;
+      rejectPromise(error);
     } finally {
       // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
       setTimeout(() => {
@@ -120,8 +134,7 @@ export const getOrCreatePageIssue = async (owner, repo, sectionId, pageId, pageT
     }
   })();
 
-  // Track this request
-  pendingPageIssueRequests.set(cacheKey, requestPromise);
+  // Promise already tracked above (line 91) - return it
   return requestPromise;
 };
 

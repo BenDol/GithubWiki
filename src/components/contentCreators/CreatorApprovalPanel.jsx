@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Check, Trash2, ExternalLink } from 'lucide-react';
-import { getAllCreatorSubmissions, syncCreatorApprovals, approveCreator, deleteCreatorSubmission } from '../../services/contentCreators';
+import { RefreshCw, Check, Trash2, ExternalLink, Video } from 'lucide-react';
+import { getAllCreatorSubmissions, syncCreatorApprovals, approveCreator, deleteCreatorSubmission, loadVideoGuides, deleteVideoGuide } from '../../services/contentCreators';
 import { useAuthStore } from '../../store/authStore';
 import { createLogger } from '../../utils/logger';
 
@@ -13,26 +13,31 @@ const logger = createLogger('CreatorApprovalPanel');
 const CreatorApprovalPanel = ({ owner, repo, config }) => {
   const { user } = useAuthStore();
   const [submissions, setSubmissions] = useState([]);
+  const [videoGuides, setVideoGuides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
   const [actionInProgress, setActionInProgress] = useState(null);
 
   useEffect(() => {
-    loadSubmissions();
+    loadAllData();
   }, []);
 
-  async function loadSubmissions() {
+  async function loadAllData() {
     setLoading(true);
     setError(null);
 
     try {
-      logger.debug('Loading creator submissions');
-      const data = await getAllCreatorSubmissions(owner, repo, config);
-      setSubmissions(data);
-      logger.debug('Submissions loaded', { count: data.length });
+      logger.debug('Loading creator submissions and video guides');
+      const [submissionsData, guidesData] = await Promise.all([
+        getAllCreatorSubmissions(owner, repo, config),
+        loadVideoGuides()
+      ]);
+      setSubmissions(submissionsData);
+      setVideoGuides(guidesData);
+      logger.debug('Data loaded', { submissions: submissionsData.length, guides: guidesData.length });
     } catch (err) {
-      logger.error('Failed to load submissions', { error: err.message });
+      logger.error('Failed to load data', { error: err.message });
       setError(err.message);
     } finally {
       setLoading(false);
@@ -44,9 +49,14 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
     setError(null);
 
     try {
+      const token = useAuthStore.getState().getToken();
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
       logger.info('Syncing checkbox approvals');
-      await syncCreatorApprovals(owner, repo, config);
-      await loadSubmissions();
+      await syncCreatorApprovals(owner, repo, config, user.login, token);
+      await loadAllData();
       logger.info('Sync completed');
     } catch (err) {
       logger.error('Failed to sync approvals', { error: err.message });
@@ -61,9 +71,14 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
     setError(null);
 
     try {
+      const token = useAuthStore.getState().getToken();
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
       logger.info('Approving creator', { creatorId });
-      await approveCreator(owner, repo, config, creatorId, user.login);
-      await loadSubmissions();
+      await approveCreator(owner, repo, config, creatorId, user.login, token);
+      await loadAllData();
       logger.info('Creator approved', { creatorId });
     } catch (err) {
       logger.error('Failed to approve creator', { error: err.message, creatorId });
@@ -82,12 +97,46 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
     setError(null);
 
     try {
+      const token = useAuthStore.getState().getToken();
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
       logger.info('Deleting creator submission', { creatorId });
-      await deleteCreatorSubmission(owner, repo, config, creatorId, user.login);
-      await loadSubmissions();
+      await deleteCreatorSubmission(owner, repo, config, creatorId, user.login, token);
+      await loadAllData();
       logger.info('Creator submission deleted', { creatorId });
     } catch (err) {
       logger.error('Failed to delete submission', { error: err.message, creatorId });
+      setError(err.message);
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleDeleteVideoGuide(guideId, guideTitle) {
+    if (!confirm(`Delete video guide "${guideTitle}"? This will create a PR for review.`)) {
+      return;
+    }
+
+    setActionInProgress(guideId);
+    setError(null);
+
+    try {
+      const token = useAuthStore.getState().getToken();
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+
+      logger.info('Deleting video guide', { guideId });
+      const result = await deleteVideoGuide(owner, repo, config, guideId, user.login, token);
+      await loadAllData();
+      logger.info('Video guide deletion PR created', { guideId, prUrl: result.prUrl });
+
+      // Show success with PR link
+      alert(`Deletion PR created successfully!\n\nPR #${result.prNumber}: ${result.prUrl}\n\nThe video guide will be removed after the PR is merged.`);
+    } catch (err) {
+      logger.error('Failed to delete video guide', { error: err.message, guideId });
       setError(err.message);
     } finally {
       setActionInProgress(null);
@@ -278,6 +327,90 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
                         disabled={actionInProgress === submission.creatorId}
                         className="flex items-center gap-1 px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 transition-colors ml-auto"
                         title="Delete"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Video Guides Management */}
+      <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2 mb-4">
+          <Video className="text-blue-500" size={24} />
+          <h4 className="text-md font-semibold text-gray-900 dark:text-white">
+            Video Guides ({videoGuides.length})
+          </h4>
+        </div>
+
+        {videoGuides.length === 0 ? (
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            No video guides yet
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <thead className="bg-gray-50 dark:bg-gray-800">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Title
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Submitted By
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Category
+                  </th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                {videoGuides.map(guide => (
+                  <tr key={guide.id}>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={guide.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                        >
+                          {guide.title}
+                          <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      {guide.id && (
+                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                          ID: {guide.id}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      {guide.submittedBy ? `@${guide.submittedBy}` : 'Unknown'}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {guide.category ? (
+                        <span className="inline-flex px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded capitalize">
+                          {guide.category}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right">
+                      <button
+                        onClick={() => handleDeleteVideoGuide(guide.id, guide.title)}
+                        disabled={actionInProgress === guide.id}
+                        className="flex items-center gap-1 px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 transition-colors ml-auto"
+                        title="Delete (creates PR)"
                       >
                         <Trash2 size={14} />
                         Delete

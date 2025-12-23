@@ -66,14 +66,54 @@ const DonatePage = () => {
     }
 
     const amount = selectedAmount || parseFloat(customAmount) || 5;
+    let url = methodConfig.url;
 
-    // Check if URL has placeholders for amount
-    const url = methodConfig.url;
+    // Handle different URL formats for amount pre-filling
     if (url.includes('{amount}')) {
-      window.open(url.replace('{amount}', amount), '_blank');
-    } else {
-      window.open(url, '_blank');
+      // Generic placeholder format: https://example.com/donate?amount={amount}
+      url = url.replace('{amount}', amount.toFixed(2));
+    } else if (method === 'paypal') {
+      if (url.includes('paypal.me/')) {
+        // PayPal.me format: https://paypal.me/username/10.00
+        url = url.replace(/\/$/, ''); // Remove trailing slash
+        url = `${url}/${amount.toFixed(2)}`;
+      } else if (url.includes('paypal.com/donate')) {
+        // PayPal Donate Button: https://www.paypal.com/donate/?hosted_button_id=XXX&amount=10.00
+        const separator = url.includes('?') ? '&' : '?';
+        url = `${url}${separator}amount=${amount.toFixed(2)}`;
+      }
+    } else if (method === 'stripe') {
+      if (url.includes('donate.stripe.com/')) {
+        // Stripe Payment Links don't support URL parameters for amount pre-filling
+        // Users must select amount on Stripe's page
+        // Keep URL as-is
+        console.log('[Donate] Stripe Payment Links do not support pre-filled amounts');
+      } else if (url.includes('buy.stripe.com/')) {
+        // Stripe Checkout doesn't support URL amount parameters either
+        // Keep URL as-is
+        console.log('[Donate] Stripe Checkout links do not support pre-filled amounts');
+      } else if (url.includes('checkout.stripe.com/')) {
+        // Stripe Checkout Session - amount is pre-configured on the backend
+        // Keep URL as-is
+        console.log('[Donate] Stripe Checkout Session has pre-configured amount');
+      }
+    } else if (method === 'kofi') {
+      if (url.includes('ko-fi.com/')) {
+        // Ko-fi does not support amount pre-filling via URL parameters
+        // Users must select the amount on Ko-fi's donation page
+        // Keep URL as-is
+      } else if (url.includes('buymeacoffee.com/')) {
+        // Buy Me a Coffee supports amount parameter (in their currency unit)
+        // Format: https://buymeacoffee.com/username?amount=10
+        const separator = url.includes('?') ? '&' : '?';
+        // Buy Me a Coffee uses whole numbers representing their "coffee" units
+        // Default is 1 coffee = $5, so divide by 5 to get coffee count
+        const coffeeCount = Math.max(1, Math.round(amount / 5));
+        url = `${url}${separator}amount=${coffeeCount}`;
+      }
     }
+
+    window.open(url, '_blank');
   };
 
   return (

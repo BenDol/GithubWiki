@@ -166,26 +166,26 @@ const CreatorsPage = () => {
   const videoGuideSubmissionsAllowed = areVideoGuideSubmissionsAllowed(config);
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-12">
+    <div className="container mx-auto px-3 sm:px-4 py-6 sm:py-8 space-y-8 sm:space-y-12">
       {/* Page Header */}
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">
+        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">
           Content Creators
         </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto px-4">
           Watch live streams from community creators and learn from video guides
         </p>
       </div>
 
       {/* Submission Buttons */}
       {(streamerSubmissionsAllowed || videoGuideSubmissionsAllowed) && (
-        <div className="flex flex-wrap gap-3 justify-center">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center px-4">
           {streamerSubmissionsAllowed && (
             <button
               onClick={() => setShowCreatorModal(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+              className="flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
             >
-              <Tv size={20} />
+              <Tv size={18} className="sm:w-5 sm:h-5" />
               Submit Streamer
             </button>
           )}
@@ -193,73 +193,40 @@ const CreatorsPage = () => {
           {videoGuideSubmissionsAllowed && isAuthenticated && (
             <button
               onClick={() => setShowGuideModal(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              className="flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
             >
-              <Video size={20} />
+              <Video size={18} className="sm:w-5 sm:h-5" />
               Submit Video Guide
             </button>
           )}
         </div>
       )}
 
-      {/* Live Streams Section */}
-      {streamersEnabled && (
-      <section>
-        <div className="flex items-center gap-3 mb-6">
-          <Tv className="text-purple-500" size={32} />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Live Streams
-          </h2>
-        </div>
-
-        {approvedCreators.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <Tv size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-            <p className="text-gray-600 dark:text-gray-400">
-              No streamers yet. Be the first to submit one!
-            </p>
-            <button
-              onClick={() => setShowCreatorModal(true)}
-              className="mt-4 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-            >
-              Submit Streamer
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {approvedCreators.map(creator => (
-              <StreamEmbed key={creator.creatorId} creator={creator} />
-            ))}
-          </div>
-        )}
-      </section>
-      )}
-
       {/* Video Guides Section */}
       {videoGuidesEnabledFlag && (
       <section>
-        <div className="flex items-center gap-3 mb-6">
-          <Video className="text-blue-500" size={32} />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 px-1">
+          <Video className="text-blue-500 w-6 h-6 sm:w-8 sm:h-8" />
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             Video Guides
           </h2>
         </div>
 
         {/* Filters */}
-        <div className="mb-6 space-y-3">
+        <div className="mb-4 sm:mb-6 space-y-2 sm:space-y-3">
           <input
             type="search"
             placeholder="Search guides..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
+            className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
 
-          <div className="flex gap-3 flex-wrap">
+          <div className="flex gap-2 sm:gap-3 flex-wrap items-center">
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="flex-1 sm:flex-none px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               {categories.map(cat => (
                 <option key={cat} value={cat}>Category: {cat}</option>
@@ -269,14 +236,14 @@ const CreatorsPage = () => {
             <select
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="flex-1 sm:flex-none px-2 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
               {difficulties.map(diff => (
                 <option key={diff} value={diff}>Difficulty: {diff}</option>
               ))}
             </select>
 
-            <div className="ml-auto text-sm text-gray-600 dark:text-gray-400 flex items-center">
+            <div className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left py-1">
               {filteredGuides.length} guide{filteredGuides.length !== 1 ? 's' : ''}
             </div>
           </div>
@@ -284,24 +251,24 @@ const CreatorsPage = () => {
 
         {/* Video Guide Grid */}
         {filteredGuides.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <Video size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-            <p className="text-gray-600 dark:text-gray-400">
+          <div className="text-center py-8 sm:py-12 bg-gray-50 dark:bg-gray-800 rounded-lg mx-2">
+            <Video size={40} className="sm:w-12 sm:h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 px-4">
               {videoGuides.length === 0
                 ? 'No video guides yet.'
                 : 'No guides match your filters.'}
             </p>
-            {isAuthenticated && videoGuides.length === 0 && (
+            {isAuthenticated && videoGuides.length === 0 && videoGuideSubmissionsAllowed && (
               <button
                 onClick={() => setShowGuideModal(true)}
-                className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                className="mt-4 px-5 sm:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
               >
                 Submit Video Guide
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredGuides.map(guide => (
               <VideoGuideCard key={guide.id} guide={guide} mode="card" />
             ))}
@@ -310,10 +277,45 @@ const CreatorsPage = () => {
       </section>
       )}
 
+      {/* Live Streams Section */}
+      {streamersEnabled && (
+      <section>
+        <div className="flex items-center gap-2 sm:gap-3 mb-4 sm:mb-6 px-1">
+          <Tv className="text-purple-500 w-6 h-6 sm:w-8 sm:h-8" />
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Live Streams
+          </h2>
+        </div>
+
+        {approvedCreators.length === 0 ? (
+          <div className="text-center py-8 sm:py-12 bg-gray-50 dark:bg-gray-800 rounded-lg mx-2">
+            <Tv size={40} className="sm:w-12 sm:h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 px-4">
+              No streamers yet. Be the first to submit one!
+            </p>
+            {streamerSubmissionsAllowed && (
+              <button
+                onClick={() => setShowCreatorModal(true)}
+                className="mt-4 px-5 sm:px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
+              >
+                Submit Streamer
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {approvedCreators.map(creator => (
+              <StreamEmbed key={creator.creatorId} creator={creator} />
+            ))}
+          </div>
+        )}
+      </section>
+      )}
+
       {/* Admin Panel */}
       {isUserAdmin && (
-        <section className="border-t border-gray-200 dark:border-gray-700 pt-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+        <section className="border-t border-gray-200 dark:border-gray-700 pt-8 sm:pt-12 px-1">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
             Admin Panel
           </h2>
           <CreatorApprovalPanel owner={owner} repo={repo} config={config} />

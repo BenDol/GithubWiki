@@ -4,7 +4,7 @@
  */
 
 import { createLogger } from '../../utils/logger';
-import { getOctokit, getAuthenticatedUser } from '../github/api';
+import { getOctokit, getAuthenticatedUser, createBranch } from '../github/api';
 import { updateFileContent } from '../github/content';
 import { createPullRequest } from '../github/pullRequests';
 
@@ -384,15 +384,20 @@ export async function submitVideoGuide(owner, repo, config, guideData) {
     // Create branch name
     const branchName = `video-guide-${id}-${Date.now()}`;
 
-    // Create branch and commit file
-    logger.debug('Creating branch and committing changes', { branchName });
+    // Create branch from main
+    logger.debug('Creating branch from main', { branchName });
+    await createBranch(owner, repo, branchName, 'main');
+
+    // Commit file to branch
+    logger.debug('Committing changes to branch', { branchName });
     await updateFileContent(
       owner,
       repo,
       'public/data/video-guides.json',
       updatedContent,
       `Add video guide: ${guideData.title}`,
-      branchName
+      branchName,
+      fileData.sha  // Include SHA of the file being updated
     );
 
     // Create PR
@@ -438,6 +443,68 @@ Submitted by @${user.login}
     logger.error('Failed to submit video guide', {
       error: error.message,
       title: guideData?.title
+    });
+    throw error;
+  }
+}
+
+/**
+ * Delete a video guide (admin only)
+ * Creates a PR to remove the guide from video-guides.json via bot handler
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config
+ * @param {string} guideId - Guide ID to delete
+ * @param {string} adminUsername - Admin username
+ * @param {string} userToken - User authentication token
+ * @returns {Promise<Object>} PR details { prNumber, prUrl }
+ */
+export async function deleteVideoGuide(owner, repo, config, guideId, adminUsername, userToken) {
+  try {
+    logger.info('Deleting video guide', { guideId, adminUsername });
+
+    // Validate required fields
+    if (!guideId || !adminUsername || !userToken) {
+      throw new Error('Missing required fields: guideId, adminUsername, userToken');
+    }
+
+    const { getGithubBotEndpoint } = await import('../../utils/apiEndpoints');
+    const endpoint = getGithubBotEndpoint();
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`
+      },
+      body: JSON.stringify({
+        action: 'delete-video-guide',
+        owner,
+        repo,
+        guideId,
+        adminUsername,
+        userToken
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Deletion failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    logger.info('Video guide deletion PR created', {
+      prNumber: result.prNumber,
+      prUrl: result.prUrl,
+      guideId
+    });
+
+    return result;
+  } catch (error) {
+    logger.error('Failed to delete video guide', {
+      error: error.message,
+      guideId
     });
     throw error;
   }

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
@@ -68,6 +69,32 @@ const UserMenu = () => {
   const handleLogout = () => {
     logout();
     setIsOpen(false);
+  };
+
+  const handleClearCacheAndLogout = (e) => {
+    e.stopPropagation(); // Prevent triggering parent button
+
+    const confirmed = window.confirm(
+      'Clear all cache storage and log out?\n\n' +
+      'This will remove all cached data (prestige, highscores, emails, etc.) and require fresh API calls on next login.\n\n' +
+      'Are you sure?'
+    );
+
+    if (confirmed) {
+      // Clear all cache: prefixed localStorage items
+      const keys = Object.keys(localStorage);
+      const cacheKeys = keys.filter(key => key.startsWith('cache:') || key.startsWith('github_'));
+
+      cacheKeys.forEach(key => {
+        localStorage.removeItem(key);
+      });
+
+      console.log(`[UserMenu] Cleared ${cacheKeys.length} cache entries`);
+
+      // Then logout
+      logout();
+      setIsOpen(false);
+    }
   };
 
   return (
@@ -200,15 +227,24 @@ const UserMenu = () => {
 
           {/* Logout */}
           <div className="border-t border-gray-200 dark:border-gray-700 py-1">
-            <button
-              onClick={handleLogout}
-              className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign Out
-            </button>
+            <div className="flex items-center">
+              <button
+                onClick={handleLogout}
+                className="flex items-center flex-1 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </button>
+              <button
+                onClick={handleClearCacheAndLogout}
+                className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title="Clear cache & sign out"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -56,8 +56,20 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
     return pendingAdminIssueRequests.get(cacheKey);
   }
 
-  // Start a new request and track it
-  const requestPromise = (async () => {
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  // This prevents race condition where multiple calls check pendingAdminIssueRequests
+  // at the same time before any of them set it
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingAdminIssueRequests.set(cacheKey, requestPromise);
+
+  // Now do the actual async work
+  (async () => {
     try {
       const octokit = getOctokit();
 
@@ -90,7 +102,8 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
 
         // Cache for 1 minute
         setCacheValue(cacheName('admin_issue', cacheKey), existingIssue, 60000);
-        return existingIssue;
+        resolvePromise(existingIssue);
+        return;
       }
 
       // Create new admins issue using bot service
@@ -109,10 +122,10 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
       // Cache for 1 minute
       setCacheValue(cacheName('admin_issue', cacheKey), newIssue, 60000);
 
-      return newIssue;
+      resolvePromise(newIssue);
     } catch (error) {
       console.error('Failed to get/create admins issue:', error);
-      throw error;
+      rejectPromise(error);
     } finally {
       // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
       setTimeout(() => {
@@ -121,8 +134,7 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
     }
   })();
 
-  // Track this request
-  pendingAdminIssueRequests.set(cacheKey, requestPromise);
+  // Promise already tracked above (line 69) - return it
   return requestPromise;
 };
 
@@ -153,8 +165,20 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
     return pendingBanIssueRequests.get(cacheKey);
   }
 
-  // Start a new request and track it
-  const requestPromise = (async () => {
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  // This prevents race condition where multiple calls check pendingBanIssueRequests
+  // at the same time before any of them set it
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingBanIssueRequests.set(cacheKey, requestPromise);
+
+  // Now do the actual async work
+  (async () => {
     try {
       const octokit = getOctokit();
 
@@ -187,7 +211,8 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
 
         // Cache for 1 minute
         setCacheValue(cacheName('ban_issue', cacheKey), existingIssue, 60000);
-        return existingIssue;
+        resolvePromise(existingIssue);
+        return;
       }
 
       // Create new banned users issue using bot service
@@ -206,10 +231,10 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
       // Cache for 1 minute
       setCacheValue(cacheName('ban_issue', cacheKey), newIssue, 60000);
 
-      return newIssue;
+      resolvePromise(newIssue);
     } catch (error) {
       console.error('Failed to get/create banned users issue:', error);
-      throw error;
+      rejectPromise(error);
     } finally {
       // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
       setTimeout(() => {
@@ -218,8 +243,7 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
     }
   })();
 
-  // Track this request
-  pendingBanIssueRequests.set(cacheKey, requestPromise);
+  // Promise already tracked above (line 166) - return it
   return requestPromise;
 };
 

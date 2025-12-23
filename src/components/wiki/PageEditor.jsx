@@ -31,7 +31,8 @@ const PageEditor = ({
   customComponents = {},
   renderSkillPreview = null,
   renderEquipmentPreview = null,
-  dataAutocompleteSearch = null
+  dataAutocompleteSearch = null,
+  emoticonMap = null
 }) => {
   const [content, setContent] = useState(initialContent || '');
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
@@ -85,7 +86,7 @@ const PageEditor = ({
     // Add generic image picker
     pickers.push({
       icon: ImageIcon,
-      label: 'Insert Image',
+      label: 'Image',
       action: 'image',
       handler: () => setShowImagePicker(true)
     });
@@ -94,7 +95,7 @@ const PageEditor = ({
     if (hasDataSelector()) {
       pickers.push({
         icon: Database,
-        label: 'Insert Data',
+        label: 'Data',
         action: 'data',
         handler: () => setShowDataSelector(true)
       });
@@ -1020,6 +1021,20 @@ const PageEditor = ({
         api.insertAtCursor(tableTemplate);
         break;
 
+      case 'emoticon':
+        // Insert emoticon syntax at cursor
+        if (param && (param.id || param.name)) {
+          // Prefer name for readability, fallback to ID
+          const identifier = param.name || param.id;
+          const size = param.size || 'large';
+          // Only include size in syntax if it's not the default
+          const emoticonSyntax = size === 'large'
+            ? `{{emoticon:${identifier}}}`
+            : `{{emoticon:${identifier}:${size}}}`;
+          api.insertAtCursor(emoticonSyntax);
+        }
+        break;
+
       default:
         return;
     }
@@ -1561,6 +1576,7 @@ const PageEditor = ({
             colorButtonRef={colorButtonRef}
             boldActive={boldActive}
             italicActive={italicActive}
+            emoticonMap={emoticonMap}
           />
           <ColorPicker
             isOpen={showColorPicker}

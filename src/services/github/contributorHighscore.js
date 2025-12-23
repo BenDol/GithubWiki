@@ -50,8 +50,20 @@ async function getHighscoreCacheIssue(owner, repo) {
     return pendingHighscoreIssueRequests.get(cacheKey);
   }
 
-  // Start a new request and track it
-  const requestPromise = (async () => {
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  // This prevents race condition where multiple calls check pendingHighscoreIssueRequests
+  // at the same time before any of them set it
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingHighscoreIssueRequests.set(cacheKey, requestPromise);
+
+  // Now do the actual async work
+  (async () => {
     try {
       // Search for existing cache issue
       const { data: issues } = await octokit.rest.issues.listForRepo({
@@ -70,7 +82,8 @@ async function getHighscoreCacheIssue(owner, repo) {
         const validCreators = ['github-actions[bot]', import.meta.env.VITE_WIKI_BOT_USERNAME];
         if (!validCreators.includes(existingIssue.user.login)) {
           console.warn(`[Highscore] Security: Cache issue created by ${existingIssue.user.login}, expected github-actions or bot`);
-          return null;
+          resolvePromise(null);
+          return;
         }
 
         // Check for duplicates
@@ -81,28 +94,29 @@ async function getHighscoreCacheIssue(owner, repo) {
           });
         }
 
-        return existingIssue;
+        resolvePromise(existingIssue);
+        return;
       }
 
       // No cache issue found - only GitHub Actions should create it
       // Client should never create highscore cache issues
       console.log('[Highscore] No cache issue found. GitHub Actions workflow needs to run first.');
-      return null;
+      resolvePromise(null);
     } catch (error) {
       if (error.status === 403 || error.status === 401) {
         console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
-        return null;
+        resolvePromise(null);
+        return;
       }
       console.error('[Highscore] Failed to get/create cache issue:', error);
-      throw error;
+      rejectPromise(error);
     } finally {
       // Remove from in-flight requests
       pendingHighscoreIssueRequests.delete(cacheKey);
     }
   })();
 
-  // Track this request
-  pendingHighscoreIssueRequests.set(cacheKey, requestPromise);
+  // Promise already tracked above (line 61) - return it
   return requestPromise;
 }
 

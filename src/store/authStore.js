@@ -362,26 +362,67 @@ export const useAuthStore = create(
 
           console.log('[AuthStore] Token decrypted successfully, validating with GitHub...');
 
-          // Validate token and get user
-          const { valid, user, error } = await validateToken(token);
+          // Validate token with retries (handles network errors)
+          const { valid, user: validatedUser, error } = await validateToken(token);
 
           if (!valid) {
-            console.error('[AuthStore] Token validation failed:', error);
-            throw new Error(error || 'Invalid token');
+            // Check if error is network-related
+            const isNetworkError =
+              error === 'Failed to fetch' ||
+              error?.includes('NetworkError') ||
+              error?.includes('fetch') ||
+              error?.includes('network');
+
+            if (isNetworkError) {
+              // NETWORK ERROR: Don't log out, just mark as loading failed
+              console.warn('[AuthStore] ⚠️ Network error during session restore - keeping user logged in', {
+                error,
+                username: user?.login
+              });
+
+              // Initialize Octokit with token anyway (optimistic)
+              initializeOctokit(token);
+
+              // Keep user logged in but show warning
+              set({ isLoading: false });
+
+              // Dispatch event for UI notification (non-blocking)
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('auth:network-error', {
+                  detail: {
+                    message: 'Unable to verify session due to network issue. You may need to re-login if errors persist.',
+                    error,
+                  }
+                }));
+              }
+
+              return true; // Session kept alive
+            } else {
+              // AUTHENTICATION ERROR: Token is actually invalid, logout required
+              console.error('[AuthStore] Token validation failed - invalid token:', error);
+              throw new Error(error || 'Invalid token');
+            }
           }
 
-          console.log('[AuthStore] Token validated successfully for user:', user.login);
+          console.log('[AuthStore] Token validated successfully for user:', validatedUser.login);
 
           // Initialize Octokit
           initializeOctokit(token);
 
           // Update state
           set({
-            user,
+            user: validatedUser,
             isAuthenticated: true,
             isLoading: false,
             error: null,
           });
+
+          // Dispatch success event
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:session-restored', {
+              detail: { username: validatedUser.login }
+            }));
+          }
 
           console.log('[AuthStore] ✓ Session restored successfully');
 

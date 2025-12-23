@@ -186,8 +186,20 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
       return pendingIndexIssueRequests.get(cacheKey);
     }
 
-    // Start a new request and track it
-    const requestPromise = (async () => {
+    // Create promise placeholder and track it IMMEDIATELY (before any async work)
+    // This prevents race condition where multiple calls check pendingIndexIssueRequests
+    // at the same time before any of them set it
+    let resolvePromise, rejectPromise;
+    const requestPromise = new Promise((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    });
+
+    // Set in map IMMEDIATELY
+    pendingIndexIssueRequests.set(cacheKey, requestPromise);
+
+    // Now do the actual async work
+    (async () => {
       try {
         // Search for existing index issue
         let issues = [];
@@ -252,10 +264,11 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
           // Cache the issue number for future use
           window.__BUILD_SHARE_INDEX_NUMBER = issues[0].number;
 
-          return {
+          resolvePromise({
             number: issues[0].number,
             body: issues[0].body || '',
-          };
+          });
+          return;
         }
 
         // Create new index issue using bot service
@@ -276,13 +289,13 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
         // Cache the issue number for future use
         window.__BUILD_SHARE_INDEX_NUMBER = issue.number;
 
-        return {
+        resolvePromise({
           number: issue.number,
           body: issue.body || INDEX_HEADER,
-        };
+        });
       } catch (error) {
         console.error('[Build Share] Error getting/creating index issue:', error);
-        throw error;
+        rejectPromise(error);
       } finally {
         // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
         // This ensures concurrent requests during this window get the same result
@@ -292,8 +305,7 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
       }
     })();
 
-    // Track this request
-    pendingIndexIssueRequests.set(cacheKey, requestPromise);
+    // Promise already tracked above (line 199) - return it
     return requestPromise;
   } catch (error) {
     console.error('[Build Share] Error in getOrCreateIndexIssue:', error);

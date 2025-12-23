@@ -212,23 +212,33 @@ export const deduplicatedRequest = async (key, requestFn) => {
 
   console.log(`[Request Dedup] ▶️ Starting new request: ${key}`);
 
-  // Execute request and track it
-  const requestPromise = requestFn()
-    .then(result => {
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  // This prevents race condition where multiple calls check pendingRequests
+  // at the same time before any of them set it
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingRequests.set(key, requestPromise);
+
+  // Now execute the actual async work
+  (async () => {
+    try {
+      const result = await requestFn();
       console.log(`[Request Dedup] ✓ Request completed: ${key}`);
-      return result;
-    })
-    .catch(error => {
+      resolvePromise(result);
+    } catch (error) {
       console.error(`[Request Dedup] ✗ Request failed: ${key}`, error);
-      throw error;
-    })
-    .finally(() => {
+      rejectPromise(error);
+    } finally {
       // Clean up after completion (success or failure)
       pendingRequests.delete(key);
       console.log(`[Request Dedup] 🧹 Cleaned up request: ${key}`);
-    });
-
-  pendingRequests.set(key, requestPromise);
+    }
+  })();
 
   return requestPromise;
 };

@@ -27,7 +27,7 @@ import { useGitHubDataStore } from '../store/githubDataStore';
  * PageEditorPage
  * Handles the complete page editing workflow
  */
-const PageEditorPage = ({ sectionId, isNewPage = false }) => {
+const PageEditorPage = ({ sectionId, isNewPage = false, emoticonMap = null }) => {
   const { pageId: urlPageId } = useParams();
   const navigate = useNavigate();
   const { config } = useWikiConfig();
@@ -1789,6 +1789,7 @@ Include any supplementary details, notes, or related information.
             renderSkillPreview={getSkillPreview()}
             renderEquipmentPreview={getEquipmentPreview()}
             dataAutocompleteSearch={getDataAutocompleteSearch()}
+            emoticonMap={emoticonMap}
           />
         </div>
       )}

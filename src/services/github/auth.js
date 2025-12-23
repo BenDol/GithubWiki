@@ -186,27 +186,83 @@ export const waitForAuthorization = async (deviceCode, expiresIn, interval = 5) 
 };
 
 /**
+ * Retry a fetch operation with exponential backoff
+ * @param {Function} fn - Async function to retry
+ * @param {number} maxRetries - Maximum attempts
+ * @returns {Promise<any>}
+ */
+const retryFetch = async (fn, maxRetries = 3) => {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry on auth errors
+      if (error.status === 401 || error.status === 403) {
+        throw error;
+      }
+
+      // Check if network error
+      const isNetworkError =
+        error.message === 'Failed to fetch' ||
+        error.message.includes('NetworkError') ||
+        error.message.includes('fetch');
+
+      if (isNetworkError && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        console.warn(`[Auth] Network error, retrying in ${delay}ms... (${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastError;
+};
+
+/**
  * Fetch user information from GitHub
  * Also fetches email from /user/emails if not available in user object
  * (needed when user has email set to private in GitHub settings)
+ * Includes automatic retry on network errors
  */
 export const fetchGitHubUser = async (token) => {
-  const response = await fetch(USER_URL, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github.v3+json',
-    },
-  });
+  return retryFetch(async () => {
+    const response = await fetch(USER_URL, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch user information');
-  }
+    if (!response.ok) {
+      throw new Error('Failed to fetch user information');
+    }
 
-  const user = await response.json();
+    const user = await response.json();
 
   // If email is null (private email setting), fetch from /user/emails
   if (!user.email) {
     try {
+      // Import timeCache utility
+      const { getCacheValue, setCacheValue } = await import('../../utils/timeCache.js');
+
+      const cacheKey = `github_user_emails_${user.id}`;
+
+      // Check cache first (30 day TTL since emails rarely change)
+      const cachedEmail = getCacheValue(cacheKey);
+      if (cachedEmail) {
+        user.email = cachedEmail;
+        console.log('[Auth] Using cached primary email from localStorage');
+        return user;
+      }
+
+      // Cache miss - fetch from API
       const emailsResponse = await fetch('https://api.github.com/user/emails', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -218,9 +274,19 @@ export const fetchGitHubUser = async (token) => {
         const emails = await emailsResponse.json();
         // Find primary verified email
         const primaryEmail = emails.find(e => e.primary && e.verified);
-        if (primaryEmail) {
+        if (primaryEmail && primaryEmail.email) {
           user.email = primaryEmail.email;
-          console.log('[Auth] Fetched primary email from /user/emails (private email setting detected)');
+
+          // Cache for 30 days (30 * 24 * 60 * 60 * 1000 ms)
+          // Only cache if we actually got an email (don't cache empty responses)
+          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+          setCacheValue(cacheKey, primaryEmail.email, thirtyDaysMs);
+
+          console.log('[Auth] Fetched and cached primary email from /user/emails (private email setting detected)');
+        } else if (emails.length === 0) {
+          console.warn('[Auth] No emails found in /user/emails response (not caching)');
+        } else {
+          console.warn('[Auth] No primary verified email found (not caching)');
         }
       }
     } catch (error) {
@@ -228,7 +294,8 @@ export const fetchGitHubUser = async (token) => {
     }
   }
 
-  return user;
+    return user;
+  });
 };
 
 /**
@@ -263,12 +330,61 @@ export const decryptToken = (encryptedToken) => {
 
 /**
  * Validate token by making a test API call
+ * Retries on network errors (not 401/403)
+ * @param {string} token - Access token to validate
+ * @param {number} maxRetries - Maximum retry attempts (default: 3)
+ * @returns {Promise<{valid: boolean, user?: object, error?: string}>}
  */
-export const validateToken = async (token) => {
-  try {
-    const user = await fetchGitHubUser(token);
-    return { valid: true, user };
-  } catch (error) {
-    return { valid: false, error: error.message };
+export const validateToken = async (token, maxRetries = 3) => {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Auth] Validating token (attempt ${attempt}/${maxRetries})...`);
+      const user = await fetchGitHubUser(token);
+      console.log('[Auth] ✓ Token validation successful');
+      return { valid: true, user };
+    } catch (error) {
+      lastError = error;
+
+      // Check if it's a network error (not an auth error)
+      const isNetworkError =
+        error.message === 'Failed to fetch' ||
+        error.message.includes('NetworkError') ||
+        error.message.includes('fetch') ||
+        error.name === 'TypeError';
+
+      // Don't retry on authentication errors (401/403)
+      const isAuthError = error.status === 401 || error.status === 403;
+
+      if (isAuthError) {
+        console.error('[Auth] Token validation failed - authentication error', {
+          status: error.status,
+          message: error.message
+        });
+        return { valid: false, error: error.message };
+      }
+
+      if (isNetworkError && attempt < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        console.warn(`[Auth] Network error during token validation, retrying in ${delay}ms...`, {
+          attempt,
+          maxRetries,
+          error: error.message
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // Last attempt failed or non-retryable error
+      console.error('[Auth] Token validation failed after all retries', {
+        attempts: attempt,
+        error: error.message,
+        isNetworkError
+      });
+    }
   }
+
+  return { valid: false, error: lastError.message };
 };

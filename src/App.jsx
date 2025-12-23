@@ -44,8 +44,25 @@ function App() {
 
     window.addEventListener('auth:session-expired', handleSessionExpired);
 
+    // Handle network errors during auth (non-fatal)
+    const handleAuthNetworkError = (event) => {
+      const { message, error } = event.detail;
+
+      // Show warning toast (not error)
+      addToast(
+        message || 'Unable to verify session due to network issue.',
+        'warning',
+        5000 // Show for 5 seconds
+      );
+
+      console.warn('[App] Auth network error:', error);
+    };
+
+    window.addEventListener('auth:network-error', handleAuthNetworkError);
+
     return () => {
       window.removeEventListener('auth:session-expired', handleSessionExpired);
+      window.removeEventListener('auth:network-error', handleAuthNetworkError);
     };
   }, [addToast]);
 
