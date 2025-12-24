@@ -74,6 +74,12 @@ export function useDraftStorage(storageKey, user, isModal, draftData, debounceMs
 
   // Clear localStorage draft
   const clearDraft = useCallback(() => {
+    // Cancel any pending auto-save to prevent race condition
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
     try {
       localStorage.removeItem(getStorageKey());
       console.log(`[${storageKey}] Draft cleared from localStorage`);

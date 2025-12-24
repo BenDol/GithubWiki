@@ -154,6 +154,11 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
   const cacheKey = `${owner}/${repo}`;
 
   try {
+    // Bust cache if requested
+    if (bustCache) {
+      pendingIndexIssueRequests.delete(cacheKey);
+    }
+
     // Cache the issue number globally to avoid repeated searches
     if (!bustCache && window.__BUILD_SHARE_INDEX_NUMBER) {
       // Fetch issue directly by number (bypasses list cache)
@@ -200,6 +205,7 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
 
     // Now do the actual async work
     (async () => {
+      let hasError = false;
       try {
         // Search for existing index issue
         let issues = [];
@@ -295,13 +301,18 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
         });
       } catch (error) {
         console.error('[Build Share] Error getting/creating index issue:', error);
+        hasError = true;
         rejectPromise(error);
+        // On error, clear immediately so retry is possible
+        pendingIndexIssueRequests.delete(cacheKey);
       } finally {
-        // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+        // On success, keep in-flight entry for 5 seconds to prevent race conditions during GitHub's eventual consistency
         // This ensures concurrent requests during this window get the same result
-        setTimeout(() => {
-          pendingIndexIssueRequests.delete(cacheKey);
-        }, 5000);
+        if (!hasError) {
+          setTimeout(() => {
+            pendingIndexIssueRequests.delete(cacheKey);
+          }, 5000);
+        }
       }
     })();
 
@@ -388,6 +399,11 @@ export async function saveBuild(owner, repo, buildType, buildData) {
       console.log('[Build Share] Busting index cache after update');
       delete window.__BUILD_SHARE_INDEX_NUMBER;
     }
+
+    // Also clear pending request cache to force fresh fetch
+    const cacheKey = `${owner}/${repo}`;
+    pendingIndexIssueRequests.delete(cacheKey);
+    console.log('[Build Share] Cleared pending request cache');
 
     console.log('[Build Share] ✓ Build saved successfully!');
 
@@ -542,23 +558,38 @@ export function generateShareUrl(baseUrl, buildType, checksum) {
 }
 
 /**
- * Clear the build cache
+ * Clear all build share caches
  * Useful for debugging or manual cache management
  */
 export function clearBuildCache() {
-  const size = buildCache.size;
+  const buildCacheSize = buildCache.size;
+  const pendingRequestsSize = pendingIndexIssueRequests.size;
+
   buildCache.clear();
-  console.log(`[Build Share] Cache cleared. Removed ${size} cached builds.`);
+  pendingIndexIssueRequests.clear();
+
+  if (window.__BUILD_SHARE_INDEX_NUMBER) {
+    delete window.__BUILD_SHARE_INDEX_NUMBER;
+  }
+
+  console.log(`[Build Share] All caches cleared. Removed ${buildCacheSize} cached builds and ${pendingRequestsSize} pending requests.`);
 }
 
 /**
- * Get cache statistics
+ * Get cache statistics for all build share caches
  * @returns {Object} Cache statistics
  */
 export function getCacheStats() {
   return {
-    size: buildCache.size,
-    checksums: Array.from(buildCache.keys()),
+    buildCache: {
+      size: buildCache.size,
+      checksums: Array.from(buildCache.keys()),
+    },
+    pendingRequests: {
+      size: pendingIndexIssueRequests.size,
+      cacheKeys: Array.from(pendingIndexIssueRequests.keys()),
+    },
+    indexIssueNumber: window.__BUILD_SHARE_INDEX_NUMBER || null,
   };
 }
 

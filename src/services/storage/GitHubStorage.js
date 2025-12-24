@@ -193,8 +193,15 @@ class GitHubStorage extends StorageAdapter {
       const userLabel = this._createUserLabel(userId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
-      const allIssues = await this._findIssuesByLabels([typeLabel]);
-      const existingIssue = this._findIssueByLabel(allIssues, userLabel);
+      // Try modern issues first (with version label) to avoid 100-issue limit
+      let allIssues = await this._findIssuesByLabels([typeLabel, versionLabel]);
+      let existingIssue = this._findIssueByLabel(allIssues, userLabel);
+
+      // Fallback: search without version label for legacy issues
+      if (!existingIssue) {
+        allIssues = await this._findIssuesByLabels([typeLabel]);
+        existingIssue = this._findIssueByLabel(allIssues, userLabel);
+      }
 
       if (existingIssue) {
         // Update existing issue (add version label if missing)
@@ -248,8 +255,15 @@ class GitHubStorage extends StorageAdapter {
       const userLabel = this._createUserLabel(userId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
-      const allIssues = await this._findIssuesByLabels([typeLabel]);
-      const existingIssue = this._findIssueByLabel(allIssues, userLabel);
+      // Try modern issues first (with version label) to avoid 100-issue limit
+      let allIssues = await this._findIssuesByLabels([typeLabel, versionLabel]);
+      let existingIssue = this._findIssueByLabel(allIssues, userLabel);
+
+      // Fallback: search without version label for legacy issues
+      if (!existingIssue) {
+        allIssues = await this._findIssuesByLabels([typeLabel]);
+        existingIssue = this._findIssueByLabel(allIssues, userLabel);
+      }
 
       if (!existingIssue) {
         throw new Error('Issue not found');
@@ -290,14 +304,19 @@ class GitHubStorage extends StorageAdapter {
   /**
    * Load items stored as comments on an issue
    * Identified by entity-id label (e.g., weapon-id:abc)
+   * @param {string} entityId - Entity ID
+   * @param {Object} config - Optional configuration
+   * @param {string} config.typeLabel - Type label to narrow search (e.g., 'soul-weapon-grids')
    */
-  async loadGridSubmissions(entityId) {
+  async loadGridSubmissions(entityId, config = {}) {
     try {
       const entityLabel = this._createEntityLabel(entityId);
       const versionLabel = `data-version:${this.dataVersion}`;
+      const typeLabel = config.typeLabel;
 
-      // Find entity's issue
-      const issues = await this._findIssuesByLabels([versionLabel]);
+      // Find entity's issue - include typeLabel if provided to avoid 100-issue limit
+      const searchLabels = typeLabel ? [typeLabel, versionLabel] : [versionLabel];
+      const issues = await this._findIssuesByLabels(searchLabels);
       const entityIssue = this._findIssueByLabel(issues, entityLabel);
 
       if (!entityIssue) {
@@ -345,8 +364,8 @@ class GitHubStorage extends StorageAdapter {
       const entityLabel = this._createEntityLabel(entityId);
       const versionLabel = `data-version:${this.dataVersion}`;
 
-      // Find entity's issue
-      const allIssues = await this._findIssuesByLabels([]);
+      // Find entity's issue - search with typeLabel and versionLabel to avoid hitting the 100-issue limit
+      const allIssues = await this._findIssuesByLabels([typeLabel, versionLabel]);
       let entityIssue = this._findIssueByLabel(allIssues, entityLabel);
 
       if (!entityIssue) {
