@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Check, Trash2, ExternalLink, Video } from 'lucide-react';
-import { getAllCreatorSubmissions, syncCreatorApprovals, approveCreator, deleteCreatorSubmission, loadVideoGuides, deleteVideoGuide } from '../../services/contentCreators';
+import { getAllCreatorSubmissions, syncCreatorApprovals, approveCreator, deleteCreatorSubmission, loadVideoGuides, deleteVideoGuide, getPendingVideoGuideDeletions } from '../../services/contentCreators';
 import { useAuthStore } from '../../store/authStore';
 import { createLogger } from '../../utils/logger';
 
@@ -14,6 +14,7 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
   const { user } = useAuthStore();
   const [submissions, setSubmissions] = useState([]);
   const [videoGuides, setVideoGuides] = useState([]);
+  const [pendingDeletions, setPendingDeletions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
@@ -29,13 +30,25 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
 
     try {
       logger.debug('Loading creator submissions and video guides');
-      const [submissionsData, guidesData] = await Promise.all([
+      const token = useAuthStore.getState().getToken();
+
+      const [submissionsData, guidesData, deletionsData] = await Promise.all([
         getAllCreatorSubmissions(owner, repo, config),
-        loadVideoGuides()
+        loadVideoGuides(),
+        token ? getPendingVideoGuideDeletions(owner, repo, config, token).catch(err => {
+          logger.warn('Failed to load pending deletions', { error: err.message });
+          return [];
+        }) : Promise.resolve([])
       ]);
+
       setSubmissions(submissionsData);
       setVideoGuides(guidesData);
-      logger.debug('Data loaded', { submissions: submissionsData.length, guides: guidesData.length });
+      setPendingDeletions(deletionsData);
+      logger.debug('Data loaded', {
+        submissions: submissionsData.length,
+        guides: guidesData.length,
+        pendingDeletions: deletionsData.length
+      });
     } catch (err) {
       logger.error('Failed to load data', { error: err.message });
       setError(err.message);
@@ -142,6 +155,17 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
       setActionInProgress(null);
     }
   }
+
+  // Create lookup map for pending deletions by guide ID
+  const deletionMap = useMemo(() => {
+    const map = new Map();
+    pendingDeletions.forEach(deletion => {
+      if (deletion.guideId) {
+        map.set(deletion.guideId, deletion);
+      }
+    });
+    return map;
+  }, [pendingDeletions]);
 
   if (loading) {
     return (
@@ -406,15 +430,28 @@ const CreatorApprovalPanel = ({ owner, repo, config }) => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-right">
-                      <button
-                        onClick={() => handleDeleteVideoGuide(guide.id, guide.title)}
-                        disabled={actionInProgress === guide.id}
-                        className="flex items-center gap-1 px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 transition-colors ml-auto"
-                        title="Delete (creates PR)"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
+                      {deletionMap.has(guide.id) ? (
+                        <a
+                          href={deletionMap.get(guide.id).prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline ml-auto w-fit"
+                          title={`View deletion PR #${deletionMap.get(guide.id).prNumber}`}
+                        >
+                          Delete PR #{deletionMap.get(guide.id).prNumber}
+                          <ExternalLink size={12} />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteVideoGuide(guide.id, guide.title)}
+                          disabled={actionInProgress === guide.id}
+                          className="flex items-center gap-1 px-3 py-1 text-xs bg-red-600 hover:bg-red-700 text-white rounded disabled:opacity-50 transition-colors ml-auto"
+                          title="Delete (creates PR)"
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

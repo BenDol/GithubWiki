@@ -116,6 +116,14 @@ export function getCreateCommentIssueEndpoint() {
   return `${getFunctionsBaseUrl()}/create-comment-issue`;
 }
 
+/**
+ * Get video-upload endpoint
+ * @returns {string} - Endpoint URL
+ */
+export function getVideoUploadEndpoint() {
+  return `${getFunctionsBaseUrl()}/video-upload`;
+}
+
 // ===== PLATFORM INFO =====
 
 /**

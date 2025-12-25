@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink } from 'lucide-react';
-import { extractYouTubeVideoId } from '../../services/contentCreators';
+import VideoPlayer from './VideoPlayer';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('VideoPlayerModal');
@@ -33,8 +33,6 @@ const VideoPlayerModal = ({ guide, isOpen, onClose }) => {
   }, [isOpen, onClose]);
 
   if (!isOpen || !guide) return null;
-
-  const videoId = extractYouTubeVideoId(guide.videoUrl);
 
   const handleBackdropClick = (e) => {
     // Only close if clicking the backdrop itself (not the modal content)
@@ -103,24 +101,9 @@ const VideoPlayerModal = ({ guide, isOpen, onClose }) => {
           <X size={24} className="text-white" />
         </button>
 
-        {/* Video Container - Responsive 16:9 */}
-        <div className="relative w-full bg-black video-container flex-shrink-0" style={{ paddingBottom: '56.25%' }}>
-          {videoId ? (
-            <iframe
-              className="absolute top-0 left-0 w-full h-full video-iframe"
-              src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
-              title={guide.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-              allowFullScreen
-              webkitallowfullscreen="true"
-              mozallowfullscreen="true"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-red-400 text-lg">Invalid video URL</p>
-            </div>
-          )}
+        {/* Video Container - Responsive */}
+        <div className="relative w-full bg-black video-container flex-shrink-0">
+          <VideoPlayer guide={guide} className="w-full" />
         </div>
 
         {/* Video Info - Scrollable on mobile */}
@@ -182,7 +165,7 @@ const VideoPlayerModal = ({ guide, isOpen, onClose }) => {
             className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-medium transition-colors"
           >
             <ExternalLink size={16} />
-            Watch on YouTube
+            {guide.sourceType === 'uploaded' ? 'Open Video' : 'Watch on YouTube'}
           </a>
 
           {/* Submission Info */}

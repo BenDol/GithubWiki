@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ExternalLink, Play } from 'lucide-react';
 import { getVideoGuideById, getVideoGuideByTitle, extractYouTubeVideoId, getYouTubeThumbnail } from '../../services/contentCreators';
 import VideoPlayerModal from './VideoPlayerModal';
+import VideoPlayer from './VideoPlayer';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('VideoGuideCard');
@@ -91,27 +92,13 @@ const VideoGuideCard = ({
   const videoId = extractYouTubeVideoId(loadedGuide.videoUrl);
   const thumbnailUrl = loadedGuide.thumbnailUrl || getYouTubeThumbnail(loadedGuide.videoUrl);
 
-  // Embed mode - full YouTube iframe with metadata
+  // Embed mode - full video player with metadata
   if (mode === 'embed') {
     return (
       <div className="video-guide-embed not-prose my-6">
-        {/* YouTube Embed */}
-        <div className="relative w-full pb-[56.25%] mb-4 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
-          {videoId ? (
-            <iframe
-              className="absolute top-0 left-0 w-full h-full"
-              src={`https://www.youtube.com/embed/${videoId}`}
-              title={loadedGuide.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <p className="text-red-500">Invalid video URL</p>
-            </div>
-          )}
+        {/* Video Player (handles both YouTube and uploaded videos) */}
+        <div className="mb-4">
+          <VideoPlayer guide={loadedGuide} />
         </div>
 
         {/* Metadata */}
@@ -295,14 +282,14 @@ const VideoGuideMetadata = ({ guide, showId }) => (
       </div>
     )}
 
-    {/* Link to video */}
+    {/* Link to video (show appropriate text based on source) */}
     <a
       href={guide.videoUrl}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
     >
-      Watch on YouTube
+      {guide.sourceType === 'uploaded' ? 'Open Video' : 'Watch on YouTube'}
       <ExternalLink size={14} />
     </a>
   </div>

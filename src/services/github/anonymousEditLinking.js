@@ -76,7 +76,7 @@ export async function linkAnonymousEditsOnLogin(user, owner, repo, token) {
 
 /**
  * Check if user has been checked for linking (prevents redundant calls)
- * Uses persistent storage: `<userId>:anonymous_edits_linked`
+ * Uses persistent storage: `<userId>:anonymous_edit_linked`
  *
  * @param {number} userId - GitHub user ID
  * @returns {boolean} True if already checked
@@ -88,8 +88,8 @@ export function hasBeenCheckedForLinking(userId) {
   }
 
   try {
-    // Use persistent storage (survives cache purges): <userId>:anonymous_edits_linked
-    const key = persistName('anonymous_edits_linked', userId);
+    // Use persistent storage (survives cache purges): <userId>:anonymous_edit_linked
+    const key = persistName('anonymous_edit_linked', userId);
     const checked = getItem(key);
     return checked === true;
   } catch (error) {
@@ -100,7 +100,7 @@ export function hasBeenCheckedForLinking(userId) {
 
 /**
  * Mark user as checked for linking
- * Uses persistent storage: `<userId>:anonymous_edits_linked`
+ * Uses persistent storage: `<userId>:anonymous_edit_linked`
  *
  * @param {number} userId - GitHub user ID
  */
@@ -111,8 +111,8 @@ export function markAsCheckedForLinking(userId) {
   }
 
   try {
-    // Use persistent storage (survives cache purges): <userId>:anonymous_edits_linked
-    const key = persistName('anonymous_edits_linked', userId);
+    // Use persistent storage (survives cache purges): <userId>:anonymous_edit_linked
+    const key = persistName('anonymous_edit_linked', userId);
     setItem(key, true);
     logger.debug('Marked user as checked for linking', { userId });
   } catch (error) {
@@ -122,7 +122,7 @@ export function markAsCheckedForLinking(userId) {
 
 /**
  * Clear linking check status (for testing/debugging)
- * Uses persistent storage: `<userId>:anonymous_edits_linked`
+ * Uses persistent storage: `<userId>:anonymous_edit_linked`
  *
  * @param {number} userId - GitHub user ID
  */
@@ -133,8 +133,8 @@ export function clearLinkingCheckStatus(userId) {
   }
 
   try {
-    // Use persistent storage (survives cache purges): <userId>:anonymous_edits_linked
-    const key = persistName('anonymous_edits_linked', userId);
+    // Use persistent storage (survives cache purges): <userId>:anonymous_edit_linked
+    const key = persistName('anonymous_edit_linked', userId);
     removeItem(key);
     logger.debug('Cleared linking check status', { userId });
   } catch (error) {

@@ -312,11 +312,13 @@ export async function searchVideoGuides(filters = {}) {
  * @param {string} guideData.category - Category (optional)
  * @param {Array<string>} guideData.tags - Tags (optional)
  * @param {string} guideData.difficulty - Difficulty level (optional)
+ * @param {string} [userEmail] - Email for anonymous submissions
+ * @param {string} [verificationToken] - Verification token for anonymous submissions
  * @returns {Promise<Object>} PR details { prNumber, prUrl }
  */
-export async function submitVideoGuide(owner, repo, config, guideData) {
+export async function submitVideoGuide(owner, repo, config, guideData, userEmail, verificationToken) {
   try {
-    logger.info('Submitting video guide', { title: guideData.title });
+    logger.info('Submitting video guide', { title: guideData.title, authenticated: !!userEmail ? false : true });
 
     // Validate required fields
     if (!guideData.videoUrl || !guideData.title || !guideData.description) {
@@ -328,116 +330,56 @@ export async function submitVideoGuide(owner, repo, config, guideData) {
       throw new Error('Invalid YouTube URL');
     }
 
-    // Get authenticated user
-    const user = await getAuthenticatedUser();
-    logger.debug('User authenticated', { username: user.login });
+    // Get github-bot endpoint
+    const { getGithubBotEndpoint } = await import('../../utils/apiEndpoints');
+    const endpoint = getGithubBotEndpoint();
 
-    // Fetch current video-guides.json
-    const octokit = getOctokit();
-    const { data: fileData } = await octokit.rest.repos.getContent({
+    // Get user token for authenticated submissions
+    const { useAuthStore } = await import('../../store/authStore');
+    const userToken = useAuthStore.getState().getToken();
+
+    // Prepare request body
+    const requestBody = {
+      action: 'submit-video-guide',
       owner,
       repo,
-      path: 'public/data/video-guides.json',
-      ref: 'main'
-    });
-
-    // Decode and parse current content
-    const currentContent = Buffer.from(fileData.content, 'base64').toString('utf8');
-    const videoGuidesData = JSON.parse(currentContent);
-    const existingGuides = videoGuidesData.videoGuides || [];
-
-    // Check for duplicate video URL
-    const duplicateUrl = existingGuides.find(g => g.videoUrl === guideData.videoUrl);
-    if (duplicateUrl) {
-      throw new Error('This video has already been submitted');
-    }
-
-    // Generate unique ID
-    const id = generateGuideId(guideData.title, existingGuides);
-    const videoId = extractYouTubeVideoId(guideData.videoUrl);
-
-    // Build new guide entry
-    const newGuide = {
-      id,
-      videoUrl: guideData.videoUrl,
-      title: guideData.title,
-      description: guideData.description,
-      thumbnailUrl: getYouTubeThumbnail(guideData.videoUrl),
-      submittedBy: user.login,
-      submittedAt: new Date().toISOString(),
-      featured: false
+      guideData,
     };
 
-    // Add optional fields
-    if (guideData.creator) newGuide.creator = guideData.creator;
-    if (guideData.category) newGuide.category = guideData.category;
-    if (guideData.tags && guideData.tags.length > 0) newGuide.tags = guideData.tags;
-    if (guideData.difficulty) newGuide.difficulty = guideData.difficulty;
+    // Add authentication info
+    if (userToken) {
+      requestBody.userToken = userToken;
+    } else if (userEmail && verificationToken) {
+      requestBody.userEmail = userEmail;
+      requestBody.verificationToken = verificationToken;
+    }
 
-    // Add to guides array
-    existingGuides.push(newGuide);
-    videoGuidesData.videoGuides = existingGuides;
+    // Submit via server-side endpoint
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-    // Serialize updated content
-    const updatedContent = JSON.stringify(videoGuidesData, null, 2);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to submit video guide');
+    }
 
-    // Create branch name
-    const branchName = `video-guide-${id}-${Date.now()}`;
-
-    // Create branch from main
-    logger.debug('Creating branch from main', { branchName });
-    await createBranch(owner, repo, branchName, 'main');
-
-    // Commit file to branch
-    logger.debug('Committing changes to branch', { branchName });
-    await updateFileContent(
-      owner,
-      repo,
-      'public/data/video-guides.json',
-      updatedContent,
-      `Add video guide: ${guideData.title}`,
-      branchName,
-      fileData.sha  // Include SHA of the file being updated
-    );
-
-    // Create PR
-    const prTitle = `[Video Guide] ${guideData.title}`;
-    const prBody = `## Video Guide Submission
-
-**Title:** ${guideData.title}
-**Video:** ${guideData.videoUrl}
-**Description:** ${guideData.description}
-${guideData.creator ? `**Creator:** ${guideData.creator}` : ''}
-${guideData.category ? `**Category:** ${guideData.category}` : ''}
-${guideData.difficulty ? `**Difficulty:** ${guideData.difficulty}` : ''}
-${guideData.tags && guideData.tags.length > 0 ? `**Tags:** ${guideData.tags.join(', ')}` : ''}
-
----
-
-Submitted by @${user.login}
-
-**For reviewers:** Please review the video content before merging to ensure it's appropriate and follows community guidelines.`;
-
-    const pr = await createPullRequest(
-      owner,
-      repo,
-      prTitle,
-      prBody,
-      branchName,
-      'main',
-      config
-    );
+    const result = await response.json();
 
     logger.info('Video guide PR created successfully', {
-      prNumber: pr.number,
-      prUrl: pr.url,
-      guideId: id
+      prNumber: result.prNumber,
+      prUrl: result.prUrl,
+      guideId: result.guideId
     });
 
     return {
-      prNumber: pr.number,
-      prUrl: pr.url,
-      guideId: id
+      prNumber: result.prNumber,
+      prUrl: result.prUrl,
+      guideId: result.guideId
     };
   } catch (error) {
     logger.error('Failed to submit video guide', {
@@ -446,6 +388,138 @@ Submitted by @${user.login}
     });
     throw error;
   }
+}
+
+/**
+ * Submit an uploaded video guide
+ * Uploads video file to CDN and creates PRs for approval
+ *
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config
+ * @param {File} videoFile - Video file to upload
+ * @param {File} [thumbnailFile] - Optional thumbnail file
+ * @param {Object} metadata - Video metadata
+ * @param {string} metadata.title - Video title
+ * @param {string} metadata.description - Video description
+ * @param {string} [metadata.creator] - Creator name
+ * @param {string} [metadata.category] - Category
+ * @param {Array<string>} [metadata.tags] - Tags array
+ * @param {string} [metadata.difficulty] - Difficulty level
+ * @param {string} [userEmail] - Email for anonymous uploads
+ * @param {string} [verificationToken] - Verification token for anonymous uploads
+ * @returns {Promise<Object>} Upload result with videoId and PR info
+ */
+export async function submitUploadedVideoGuide(owner, repo, config, videoFile, thumbnailFile, metadata, userEmail, verificationToken) {
+  try {
+    logger.info('Submitting uploaded video guide', {
+      title: metadata.title,
+      videoSize: videoFile.size,
+      hasThumbnail: !!thumbnailFile,
+    });
+
+    // Validate required fields
+    if (!videoFile || !metadata.title || !metadata.description) {
+      throw new Error('Missing required fields: videoFile, title, description');
+    }
+
+    // Get video upload endpoint
+    const { getVideoUploadEndpoint } = await import('../../utils/apiEndpoints');
+    const endpoint = getVideoUploadEndpoint();
+
+    // Create FormData
+    const formData = new FormData();
+    formData.append('videoFile', videoFile);
+    if (thumbnailFile) {
+      formData.append('thumbnailFile', thumbnailFile);
+    }
+    formData.append('title', metadata.title);
+    formData.append('description', metadata.description);
+
+    // Add optional fields
+    if (metadata.creator) formData.append('creator', metadata.creator);
+    if (metadata.category) formData.append('category', metadata.category);
+    if (metadata.tags && metadata.tags.length > 0) {
+      formData.append('tags', metadata.tags.join(','));
+    }
+    if (metadata.difficulty) formData.append('difficulty', metadata.difficulty);
+
+    // Add email verification fields for anonymous uploads
+    if (userEmail) formData.append('userEmail', userEmail);
+    if (verificationToken) formData.append('verificationToken', verificationToken);
+
+    // Get user token for authentication (if logged in)
+    const { useAuthStore } = await import('../../store/authStore');
+    const userToken = useAuthStore.getState().getToken();
+
+    logger.debug('Uploading video to API', {
+      endpoint,
+      authenticated: !!userToken,
+    });
+
+    // Upload video with user's token if authenticated
+    const headers = {};
+    if (userToken) {
+      headers['Authorization'] = `Bearer ${userToken}`;
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: formData,
+      // Note: Don't set Content-Type header - browser will set it with boundary
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Upload failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    logger.info('Video upload successful', {
+      videoId: result.videoId,
+      cdnPR: result.cdnPR.number,
+      contentPR: result.contentPR.number,
+    });
+
+    return result;
+  } catch (error) {
+    // Detect Netlify CLI body size limitation
+    if (error.message && error.message.includes('Failed to fetch')) {
+      const isLocalDev = typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+      if (isLocalDev) {
+        throw new Error(
+          'Upload failed. This may be due to Netlify CLI file size limitations in local development. ' +
+          'Videos larger than 6MB cannot be tested locally. Please test in production or use a smaller test file.'
+        );
+      }
+    }
+
+    logger.error('Failed to upload video guide', {
+      error: error.message,
+      title: metadata.title,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Convert File to base64 string
+ * @private
+ */
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1]; // Remove data:image/...;base64, prefix
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
@@ -505,6 +579,57 @@ export async function deleteVideoGuide(owner, repo, config, guideId, adminUserna
     logger.error('Failed to delete video guide', {
       error: error.message,
       guideId
+    });
+    throw error;
+  }
+}
+
+/**
+ * Get pending video guide deletion PRs (admin only)
+ * Fetches open PRs with 'delete-video-guide' label
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {Object} config - Wiki config
+ * @param {string} userToken - User authentication token
+ * @returns {Promise<Array>} Array of pending deletion PRs with guide IDs
+ */
+export async function getPendingVideoGuideDeletions(owner, repo, config, userToken) {
+  try {
+    logger.debug('Fetching pending video guide deletion PRs');
+
+    // Validate required fields
+    if (!userToken) {
+      throw new Error('Missing required field: userToken');
+    }
+
+    const { getGithubBotEndpoint } = await import('../../utils/apiEndpoints');
+    const endpoint = getGithubBotEndpoint();
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`
+      },
+      body: JSON.stringify({
+        action: 'get-pending-video-guide-deletions',
+        owner,
+        repo
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to fetch pending deletions: ${response.status}`);
+    }
+
+    const result = await response.json();
+    logger.debug('Pending deletions fetched', { count: result.deletions?.length || 0 });
+
+    return result.deletions || [];
+  } catch (error) {
+    logger.error('Failed to fetch pending video guide deletions', {
+      error: error.message
     });
     throw error;
   }

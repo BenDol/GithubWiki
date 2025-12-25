@@ -190,7 +190,7 @@ const CreatorsPage = () => {
             </button>
           )}
 
-          {videoGuideSubmissionsAllowed && isAuthenticated && (
+          {videoGuideSubmissionsAllowed && (
             <button
               onClick={() => setShowGuideModal(true)}
               className="flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
@@ -258,7 +258,7 @@ const CreatorsPage = () => {
                 ? 'No video guides yet.'
                 : 'No guides match your filters.'}
             </p>
-            {isAuthenticated && videoGuides.length === 0 && videoGuideSubmissionsAllowed && (
+            {videoGuides.length === 0 && videoGuideSubmissionsAllowed && (
               <button
                 onClick={() => setShowGuideModal(true)}
                 className="mt-4 px-5 sm:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors text-sm sm:text-base"
