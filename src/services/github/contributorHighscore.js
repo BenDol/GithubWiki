@@ -42,6 +42,8 @@ const pendingHighscoreIssueRequests = new Map();
  */
 async function getHighscoreCacheIssue(owner, repo) {
   const cacheKey = `${owner}/${repo}`;
+  // Use unauthenticated Octokit for reading public cache issue
+  // Authentication may fail with expired tokens, but cache is public
   const octokit = getOctokit();
 
   // Check if there's already a request in-flight for this repo
@@ -66,13 +68,43 @@ async function getHighscoreCacheIssue(owner, repo) {
   (async () => {
     try {
       // Search for existing cache issue
-      const { data: issues } = await octokit.rest.issues.listForRepo({
-        owner,
-        repo,
-        state: 'open',
-        labels: 'highscore-cache',
-        per_page: 100,
-      });
+      // Try with authenticated Octokit first (may have better rate limits)
+      let issues;
+      try {
+        const response = await octokit.rest.issues.listForRepo({
+          owner,
+          repo,
+          state: 'open',
+          labels: 'highscore-cache',
+          per_page: 100,
+        });
+        issues = response.data;
+      } catch (authError) {
+        // If authenticated request fails with 401, the token may be expired
+        // Fall back to unauthenticated request since cache is public
+        if (authError.status === 401) {
+          console.warn('[Highscore] Authenticated request failed (token may be expired), trying unauthenticated...');
+          console.warn('[Highscore] Error details:', authError.message);
+
+          // Import Octokit and create unauthenticated instance
+          const { Octokit } = await import('octokit');
+          const unauthenticatedOctokit = new Octokit({
+            userAgent: 'GitHub-Wiki-Framework/1.0',
+          });
+
+          const response = await unauthenticatedOctokit.rest.issues.listForRepo({
+            owner,
+            repo,
+            state: 'open',
+            labels: 'highscore-cache',
+            per_page: 100,
+          });
+          issues = response.data;
+          console.log('[Highscore] ✓ Unauthenticated request succeeded');
+        } else {
+          throw authError; // Re-throw other errors
+        }
+      }
 
       // Find issue with exact title match
       const existingIssue = issues.find(issue => issue.title === HIGHSCORE_ISSUE_TITLE);
@@ -104,11 +136,12 @@ async function getHighscoreCacheIssue(owner, repo) {
       resolvePromise(null);
     } catch (error) {
       if (error.status === 403 || error.status === 401) {
-        console.warn('[Highscore] Cannot access/create cache issue (no permissions)');
+        console.warn('[Highscore] Cannot access cache issue:', error.status, error.message);
+        console.warn('[Highscore] This should not happen - fallback to unauthenticated should have worked');
         resolvePromise(null);
         return;
       }
-      console.error('[Highscore] Failed to get/create cache issue:', error);
+      console.error('[Highscore] Failed to get cache issue:', error);
       rejectPromise(error);
     } finally {
       // Remove from in-flight requests

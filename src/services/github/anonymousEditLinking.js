@@ -10,12 +10,15 @@ const logger = createLogger('AnonymousEditLinking');
 
 /**
  * Hash email using same algorithm as backend (SHA-256)
+ * IMPORTANT: Must normalize email (lowercase + trim) for consistent hashing
  * @param {string} email - Email address to hash
  * @returns {Promise<string>} 64-character hex hash
  */
 async function hashEmail(email) {
   const encoder = new TextEncoder();
-  const data = encoder.encode(email);
+  // Normalize email: lowercase and trim whitespace for consistent hashing
+  // This MUST match the server-side hashing in GitHub Actions workflow
+  const data = encoder.encode(email.toLowerCase().trim());
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
