@@ -46,6 +46,7 @@ const PageEditor = ({
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
   const [showSpiritPicker, setShowSpiritPicker] = useState(false);
+  const [showBattleLoadoutPicker, setShowBattleLoadoutPicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showDataSelector, setShowDataSelector] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -78,6 +79,7 @@ const PageEditor = ({
   const SpiritPicker = getPicker('spirit');
   const SkillPicker = getPicker('skill');
   const EquipmentPicker = getPicker('equipment');
+  const BattleLoadoutPicker = getPicker('battle-loadout');
 
   // Build content pickers array for toolbar (generic + registered)
   const contentPickers = useMemo(() => {
@@ -114,6 +116,8 @@ const PageEditor = ({
           handler = () => setShowSkillPicker(true);
         } else if (picker.name === 'equipment') {
           handler = () => setShowEquipmentPicker(true);
+        } else if (picker.name === 'battle-loadout') {
+          handler = () => setShowBattleLoadoutPicker(true);
         }
 
         if (handler) {
@@ -813,6 +817,15 @@ const PageEditor = ({
     // Insert at cursor position with trailing spaces and paragraph breaks
     // Two spaces at end of line create hard break, blank line separates blocks
     editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}  \n\n`);
+  };
+
+  // Handle battle loadout selection from picker
+  const handleBattleLoadoutSelect = ({ loadout, mode, syntax }) => {
+    if (!editorApiRef.current) return;
+
+    // Insert battle loadout syntax into content
+    // The syntax is provided by the picker: {{battle-loadout:identifier:mode}}
+    editorApiRef.current.insertAtCursor(`\n\n${syntax}  \n\n`);
   };
 
   // Handle spirit selection from picker
@@ -1746,6 +1759,15 @@ const PageEditor = ({
           isOpen={showSpiritPicker}
           onClose={() => setShowSpiritPicker(false)}
           onSelect={handleSpiritSelect}
+        />
+      )}
+
+      {/* Battle Loadout Picker Modal */}
+      {BattleLoadoutPicker && (
+        <BattleLoadoutPicker
+          isOpen={showBattleLoadoutPicker}
+          onClose={() => setShowBattleLoadoutPicker(false)}
+          onSelect={handleBattleLoadoutSelect}
         />
       )}
 
