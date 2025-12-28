@@ -151,6 +151,55 @@ class GitHubStorage extends StorageAdapter {
   }
 
   /**
+   * Load public data from all users
+   * Returns all items from all users with owner metadata
+   */
+  async loadPublic(type) {
+    try {
+      // Search for all issues with type label
+      const typeLabel = type;
+      const versionLabel = `data-version:${this.dataVersion}`;
+
+      const issues = await this._findIssuesByLabels([typeLabel, versionLabel]);
+
+      // Combine all items from all users
+      const allItems = [];
+
+      for (const issue of issues) {
+        const data = this._parseJSON(issue.body);
+        if (Array.isArray(data)) {
+          // Extract userId and username from issue
+          const userIdLabel = issue.labels.find(label => {
+            const name = typeof label === 'string' ? label : label.name;
+            return name.startsWith('user-id:');
+          });
+
+          const userId = userIdLabel
+            ? (typeof userIdLabel === 'string' ? userIdLabel : userIdLabel.name).replace('user-id:', '')
+            : null;
+
+          // Extract username from issue title (format: "Username's TYPE")
+          const username = issue.title.split("'s ")[0] || null;
+
+          // Add owner metadata to each item
+          const itemsWithOwner = data.map(item => ({
+            ...item,
+            userId,
+            username
+          }));
+
+          allItems.push(...itemsWithOwner);
+        }
+      }
+
+      return allItems;
+    } catch (error) {
+      console.error('[GitHubStorage] LoadPublic error:', error);
+      throw new Error(`Failed to load public ${type}: ${error.message}`);
+    }
+  }
+
+  /**
    * Save data to an issue
    * Creates or updates an issue with the provided data
    *

@@ -43,10 +43,9 @@ const PageEditor = ({
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shakeValidationError, setShakeValidationError] = useState(false);
-  const [showSkillPicker, setShowSkillPicker] = useState(false);
-  const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
-  const [showSpiritPicker, setShowSpiritPicker] = useState(false);
-  const [showBattleLoadoutPicker, setShowBattleLoadoutPicker] = useState(false);
+  // Dynamic picker state - stores which picker is currently open (if any)
+  const [openPicker, setOpenPicker] = useState(null);
+  const [showVideoGuidePicker, setShowVideoGuidePicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showDataSelector, setShowDataSelector] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -75,11 +74,8 @@ const PageEditor = ({
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
 
-  // Get registered picker components from parent project
-  const SpiritPicker = getPicker('spirit');
-  const SkillPicker = getPicker('skill');
-  const EquipmentPicker = getPicker('equipment');
-  const BattleLoadoutPicker = getPicker('battle-loadout');
+  // Get framework-level picker components
+  const VideoGuidePicker = getPicker('video-guide');
 
   // Build content pickers array for toolbar (generic + registered)
   const contentPickers = useMemo(() => {
@@ -103,29 +99,28 @@ const PageEditor = ({
       });
     }
 
-    // Add registered pickers (skill, equipment, spirit, etc.) from parent project
+    // Add registered pickers dynamically from parent project
     const registeredPickers = getAllPickers();
     registeredPickers.forEach(picker => {
       const pickerComponent = getPicker(picker.name);
       if (pickerComponent) {
-        // Determine which state to toggle based on picker name
-        let handler;
-        if (picker.name === 'spirit') {
-          handler = () => setShowSpiritPicker(true);
-        } else if (picker.name === 'skill') {
-          handler = () => setShowSkillPicker(true);
-        } else if (picker.name === 'equipment') {
-          handler = () => setShowEquipmentPicker(true);
-        } else if (picker.name === 'battle-loadout') {
-          handler = () => setShowBattleLoadoutPicker(true);
-        }
-
-        if (handler) {
+        // Framework-level pickers use dedicated state
+        if (picker.name === 'video-guide') {
           pickers.push({
             icon: picker.icon,
             label: picker.label,
             action: picker.action,
-            handler
+            handler: () => setShowVideoGuidePicker(true),
+            pickerHandler: picker.handler // Store for onSelect callback
+          });
+        } else {
+          // All other pickers use dynamic state
+          pickers.push({
+            icon: picker.icon,
+            label: picker.label,
+            action: picker.action,
+            handler: () => setOpenPicker(picker.name),
+            pickerHandler: picker.handler // Store for onSelect callback
           });
         }
       }
@@ -767,92 +762,33 @@ const PageEditor = ({
     }
   };
 
-  // Handle skill selection from picker
-  const handleSkillSelect = ({ skill, mode, alignment }) => {
+  // Generic handler for dynamically registered pickers
+  // Delegates to the picker-specific handler registered by the parent project
+  const handleDynamicPickerSelect = (pickerName) => (data) => {
     if (!editorApiRef.current) return;
 
-    // Insert skill syntax into content
-    // Format: {{skill:Fire Slash:detailed}} or {{skill:1:compact}}
-    let skillSyntax = `{{skill:${skill.name}:${mode}}}`;
+    // Get the registered handler for this picker
+    const registeredPickers = getAllPickers();
+    const pickerMeta = registeredPickers.find(p => p.name === pickerName);
 
-    // Apply alignment wrapper if needed
-    if (alignment && alignment !== 'none') {
-      let style;
-      if (alignment === 'center') {
-        style = 'display: flex; justify-content: center;';
-      } else if (alignment === 'left') {
-        style = 'display: flex; justify-content: flex-start;';
-      } else if (alignment === 'right') {
-        style = 'display: flex; justify-content: flex-end;';
-      }
-      skillSyntax = `<div style="${style}">\n\n${skillSyntax}\n\n</div>`;
+    if (pickerMeta && pickerMeta.handler) {
+      // Call the parent-specific handler with editor API
+      pickerMeta.handler(data, editorApiRef.current);
+    } else {
+      logger.warn(`No handler registered for picker: ${pickerName}`);
     }
 
-    // Insert at cursor position with trailing spaces and paragraph breaks
-    // Two spaces at end of line create hard break, blank line separates blocks
-    editorApiRef.current.insertAtCursor(`\n\n${skillSyntax}  \n\n`);
+    // Close the picker
+    setOpenPicker(null);
   };
 
-  // Handle equipment selection from picker
-  const handleEquipmentSelect = ({ equipment, mode, alignment }) => {
+  const handleVideoGuideSelect = (syntax) => {
     if (!editorApiRef.current) return;
 
-    // Insert equipment syntax into content
-    // Format: {{equipment:Innocence:detailed}} or {{equipment:1:compact}}
-    let equipmentSyntax = `{{equipment:${equipment.name}:${mode}}}`;
-
-    // Apply alignment wrapper if needed
-    if (alignment && alignment !== 'none') {
-      let style;
-      if (alignment === 'center') {
-        style = 'display: flex; justify-content: center;';
-      } else if (alignment === 'left') {
-        style = 'display: flex; justify-content: flex-start;';
-      } else if (alignment === 'right') {
-        style = 'display: flex; justify-content: flex-end;';
-      }
-      equipmentSyntax = `<div style="${style}">\n\n${equipmentSyntax}\n\n</div>`;
-    }
-
+    // Insert video guide syntax into content
+    // Format: {{video-guide:ID}}
     // Insert at cursor position with trailing spaces and paragraph breaks
-    // Two spaces at end of line create hard break, blank line separates blocks
-    editorApiRef.current.insertAtCursor(`\n\n${equipmentSyntax}  \n\n`);
-  };
-
-  // Handle battle loadout selection from picker
-  const handleBattleLoadoutSelect = ({ loadout, mode, syntax }) => {
-    if (!editorApiRef.current) return;
-
-    // Insert battle loadout syntax into content
-    // The syntax is provided by the picker: {{battle-loadout:identifier:mode}}
     editorApiRef.current.insertAtCursor(`\n\n${syntax}  \n\n`);
-  };
-
-  // Handle spirit selection from picker
-  const handleSpiritSelect = ({ spirit, mode, alignment, level, inline = true }) => {
-    if (!editorApiRef.current) return;
-
-    // Insert spirit syntax into content
-    // Format: {{spirit:Loar:detailed:4:inline}} or {{spirit:Loar:compact:4:block}}
-    const displayType = inline ? 'inline' : 'block';
-    let spiritSyntax = `{{spirit:${spirit.name}:${mode}:${level}:${displayType}}}`;
-
-    // Apply alignment wrapper if needed
-    if (alignment && alignment !== 'none') {
-      let style;
-      if (alignment === 'center') {
-        style = 'display: flex; justify-content: center;';
-      } else if (alignment === 'left') {
-        style = 'display: flex; justify-content: flex-start;';
-      } else if (alignment === 'right') {
-        style = 'display: flex; justify-content: flex-end;';
-      }
-      spiritSyntax = `<div style="${style}">\n\n${spiritSyntax}\n\n</div>`;
-    }
-
-    // Insert at cursor position with trailing spaces and paragraph breaks
-    // Two spaces at end of line create hard break, blank line separates blocks
-    editorApiRef.current.insertAtCursor(`\n\n${spiritSyntax}  \n\n`);
   };
 
   // Handle image selection from picker
@@ -1733,41 +1669,35 @@ const PageEditor = ({
         </ul>
       </div>
 
-      {/* Skill Picker Modal */}
-      {SkillPicker && (
-        <SkillPicker
-          isOpen={showSkillPicker}
-          onClose={() => setShowSkillPicker(false)}
-          onSelect={handleSkillSelect}
-          renderPreview={renderSkillPreview}
-        />
-      )}
+      {/* Dynamic Picker Rendering - Game-specific pickers from parent project */}
+      {openPicker && (() => {
+        const PickerComponent = getPicker(openPicker);
+        if (!PickerComponent) return null;
 
-      {/* Equipment Picker Modal */}
-      {EquipmentPicker && (
-        <EquipmentPicker
-          isOpen={showEquipmentPicker}
-          onClose={() => setShowEquipmentPicker(false)}
-          onSelect={handleEquipmentSelect}
-          renderPreview={renderEquipmentPreview}
-        />
-      )}
+        // Get the picker metadata to access renderPreview
+        const registeredPickers = getAllPickers();
+        const pickerMeta = registeredPickers.find(p => p.name === openPicker);
 
-      {/* Spirit Picker Modal */}
-      {SpiritPicker && (
-        <SpiritPicker
-          isOpen={showSpiritPicker}
-          onClose={() => setShowSpiritPicker(false)}
-          onSelect={handleSpiritSelect}
-        />
-      )}
+        const props = {
+          isOpen: true,
+          onClose: () => setOpenPicker(null),
+          onSelect: handleDynamicPickerSelect(openPicker)
+        };
 
-      {/* Battle Loadout Picker Modal */}
-      {BattleLoadoutPicker && (
-        <BattleLoadoutPicker
-          isOpen={showBattleLoadoutPicker}
-          onClose={() => setShowBattleLoadoutPicker(false)}
-          onSelect={handleBattleLoadoutSelect}
+        // Add renderPreview if registered with this picker
+        if (pickerMeta && pickerMeta.renderPreview) {
+          props.renderPreview = pickerMeta.renderPreview;
+        }
+
+        return <PickerComponent {...props} />;
+      })()}
+
+      {/* Video Guide Picker Modal - Framework-level picker */}
+      {VideoGuidePicker && (
+        <VideoGuidePicker
+          isOpen={showVideoGuidePicker}
+          onClose={() => setShowVideoGuidePicker(false)}
+          onSelect={handleVideoGuideSelect}
         />
       )}
 

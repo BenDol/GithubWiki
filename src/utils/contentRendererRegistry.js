@@ -141,7 +141,9 @@ export function registerPicker(name, component, metadata = {}) {
     component,
     icon: metadata.icon || null,
     label: metadata.label || `Insert ${name.charAt(0).toUpperCase() + name.slice(1)}`,
-    action: name
+    action: name,
+    handler: metadata.handler || null, // Optional handler function for parent-specific logic
+    renderPreview: metadata.renderPreview || null // Optional preview renderer for picker
   };
   console.log(`[Content Registry] Picker '${name}' registered with label: ${registeredPickers[name].label}`);
 }
@@ -167,14 +169,16 @@ export function hasPicker(name) {
 
 /**
  * Get all registered pickers with their metadata
- * @returns {Array} Array of picker configs { name, icon, label, action, handler }
+ * @returns {Array} Array of picker configs { name, icon, label, action, handler, renderPreview }
  */
 export function getAllPickers() {
   return Object.entries(registeredPickers).map(([name, picker]) => ({
     name,
     icon: picker.icon,
     label: picker.label,
-    action: picker.action
+    action: picker.action,
+    handler: picker.handler,
+    renderPreview: picker.renderPreview
   }));
 }
 
