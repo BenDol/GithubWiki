@@ -77,15 +77,19 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
   // Use provided content pickers (configured by parent project)
   const pickerButtons = contentPickers;
 
-  const handleFormatClick = (action, special) => {
+  const handleFormatClick = (action, special, buttonElement = null) => {
     if (special && action === 'color') {
       onColorPicker?.();
     } else if (special && action === 'insert') {
       const newState = !showInsertPicker;
 
-      if (newState && insertButtonRef.current) {
+      // Use provided button element or fall back to ref
+      // This handles both desktop and mobile Insert buttons correctly
+      const targetButton = buttonElement || insertButtonRef.current;
+
+      if (newState && targetButton) {
         // Calculate position to keep dropdown in viewport
-        const buttonRect = insertButtonRef.current.getBoundingClientRect();
+        const buttonRect = targetButton.getBoundingClientRect();
         const dropdownWidth = 200; // Approximate dropdown width
         const dropdownHeight = 250; // Approximate dropdown height (will grow with more pickers)
         const viewportWidth = window.innerWidth;
@@ -289,7 +293,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
             ref={insertButtonRef}
             onClick={(e) => {
               e.stopPropagation();
-              handleFormatClick('insert', true);
+              handleFormatClick('insert', true, e.currentTarget);
             }}
             className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors text-sm font-medium flex-shrink-0 ${
               showInsertPicker
@@ -308,7 +312,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleFormatClick('insert', true);
+              handleFormatClick('insert', true, e.currentTarget);
             }}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors text-sm font-medium flex-shrink-0 ${
               showInsertPicker
