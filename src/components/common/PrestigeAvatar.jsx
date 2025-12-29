@@ -21,6 +21,7 @@ const PrestigeAvatar = ({
   size = 'md',
   stats = null,
   username = null,
+  userId = null,
   className = '',
   showBadge = true,
   badgeScale = 1.0,
@@ -72,7 +73,7 @@ const PrestigeAvatar = ({
 
   const handleClick = (e) => {
     if (onClick) {
-      onClick(e, targetUsername);
+      onClick(e, targetUsername, userId);
     }
   };
 

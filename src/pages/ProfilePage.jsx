@@ -16,6 +16,9 @@ import AchievementsSection from '../components/achievements/AchievementsSection'
 import { manualLinkAnonymousEdits } from '../services/github/anonymousEditLinking';
 import { checkUserAchievements } from '../services/achievements/achievementChecker';
 import { createLogger } from '../utils/logger';
+import { DisplayNameEditor } from '../components/profile/DisplayNameEditor';
+import { DisplayNameAdminControls } from '../components/profile/DisplayNameAdminControls';
+import { useDisplayName } from '../hooks/useDisplayName';
 
 const logger = createLogger('ProfilePage');
 
@@ -44,6 +47,10 @@ const ProfilePage = () => {
   const [showClosed, setShowClosed] = useState(false);
   const [userIsBanned, setUserIsBanned] = useState(false);
   const [activeTab, setActiveTab] = useState('edits'); // 'edits', 'statistics', 'achievements'
+
+  // Display name state
+  const [displayName, setDisplayName] = useState(null);
+  const { displayName: fetchedDisplayName, loading: displayNameLoading } = useDisplayName(profileUser);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -323,6 +330,13 @@ const ProfilePage = () => {
     checkAchievementsOnView();
   }, [activeTab, config, profileUser, isOwnProfile, isAuthenticated, currentUser]);
 
+  // Update display name when fetched
+  useEffect(() => {
+    if (fetchedDisplayName) {
+      setDisplayName(fetchedDisplayName);
+    }
+  }, [fetchedDisplayName]);
+
   const handleRefresh = () => {
     // Clear snapshot data to force fresh fetch
     setSnapshotData(null);
@@ -561,9 +575,34 @@ const ProfilePage = () => {
       <div className="mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
           <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white text-center sm:text-left">
-              {isOwnProfile ? 'My Profile' : `${profileUser?.login}'s Profile`}
-            </h1>
+            <div className="flex flex-col items-center sm:items-start gap-2">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white text-center sm:text-left">
+                {isOwnProfile ? 'My Profile' : `${displayName || profileUser?.login}'s Profile`}
+              </h1>
+
+              {/* Display name editor for own profile */}
+              {isOwnProfile && profileUser && (
+                <DisplayNameEditor
+                  currentDisplayName={displayName}
+                  onUpdate={(newDisplayName) => setDisplayName(newDisplayName)}
+                />
+              )}
+
+              {/* Show original GitHub username when display name differs */}
+              {displayName && profileUser && displayName !== profileUser.login && (
+                <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                  <span>GitHub:</span>
+                  <a
+                    href={`https://github.com/${profileUser.login}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-gray-900 dark:hover:text-gray-200 hover:underline"
+                  >
+                    @{profileUser.login}
+                  </a>
+                </div>
+              )}
+            </div>
             {userIsBanned && (
               <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border border-red-200 dark:border-red-800">
                 <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -802,6 +841,15 @@ const ProfilePage = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Admin Controls for Display Name */}
+        {!isOwnProfile && profileUser && isAuthenticated && currentUser && config?.wiki?.admins?.includes(currentUser.login) && (
+          <DisplayNameAdminControls
+            targetUserId={profileUser.id}
+            currentDisplayName={displayName}
+            onUpdate={(newDisplayName) => setDisplayName(newDisplayName)}
+          />
         )}
       </div>
 

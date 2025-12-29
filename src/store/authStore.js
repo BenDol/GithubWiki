@@ -9,7 +9,8 @@ import {
   validateToken,
 } from '../services/github/auth';
 import { initializeOctokit, clearOctokit } from '../services/github/api';
-import { configName } from '../utils/storageManager';
+import { configName, cacheName } from '../utils/storageManager';
+import { clearSessionCacheValue } from '../utils/timeCache';
 import { updateUserSnapshot, getUserSnapshot } from '../services/github/userSnapshots';
 import { eventBus, EventNames } from '../services/eventBus';
 
@@ -300,6 +301,11 @@ export const useAuthStore = create(
        */
       logout: () => {
         const { user } = get();
+
+        // Clear GitHub user data from session cache
+        const userCacheKey = cacheName('github_user_data', 'current');
+        clearSessionCacheValue(userCacheKey);
+        console.log('[AuthStore] Cleared GitHub user data from sessionStorage on logout');
 
         clearOctokit();
         set({

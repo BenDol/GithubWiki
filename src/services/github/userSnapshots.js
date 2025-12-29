@@ -27,6 +27,12 @@ const SNAPSHOT_TITLE_PREFIX = '[User Snapshot]';
 const MAX_PRS_IN_SNAPSHOT = 100;
 
 /**
+ * Track in-progress snapshot updates to prevent concurrent duplicates
+ * Key: username, Value: Promise
+ */
+const snapshotUpdatesInProgress = new Map();
+
+/**
  * Get snapshot data for a specific user
  * Searches by user ID label (permanent) first, falls back to username title match (legacy)
  * @param {string} owner - Repository owner
@@ -149,6 +155,28 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
 
       if (existingIssue) {
         console.log(`[UserSnapshot] Found legacy snapshot for ${username} by title, will migrate to user ID label`);
+      }
+    }
+
+    // Check for duplicate snapshots (should not happen with proper locking)
+    const allMatchingSnapshots = issues.filter(issue => {
+      const matchesTitle = issue.title === `${SNAPSHOT_TITLE_PREFIX} ${username}`;
+      const matchesUserId = snapshotData.userId && issue.labels.some(label =>
+        (typeof label === 'string' && label === `user-id:${snapshotData.userId}`) ||
+        (typeof label === 'object' && label.name === `user-id:${snapshotData.userId}`)
+      );
+      return matchesTitle || matchesUserId;
+    });
+
+    if (allMatchingSnapshots.length > 1) {
+      console.warn(`[UserSnapshot] WARNING: Found ${allMatchingSnapshots.length} duplicate snapshots for ${username}!`, {
+        issueNumbers: allMatchingSnapshots.map(i => i.number),
+        titles: allMatchingSnapshots.map(i => i.title)
+      });
+      console.warn(`[UserSnapshot] This indicates a race condition occurred. Using first match: #${allMatchingSnapshots[0].number}`);
+      // Use the first one found (oldest)
+      if (!existingIssue) {
+        existingIssue = allMatchingSnapshots[0];
       }
     }
 
@@ -403,15 +431,33 @@ export async function getAllUserSnapshots(owner, repo) {
 
 /**
  * Update snapshot for a user (build and save)
+ * Prevents concurrent updates for the same user (race condition protection)
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - GitHub username
  * @returns {Object} Updated snapshot data
  */
 export async function updateUserSnapshot(owner, repo, username) {
-  console.log(`[UserSnapshot] Updating snapshot for ${username}...`);
-  const snapshot = await buildUserSnapshot(owner, repo, username);
-  await saveUserSnapshot(owner, repo, username, snapshot);
-  console.log(`[UserSnapshot] Snapshot updated successfully for ${username}`);
-  return snapshot;
+  // Check if an update is already in progress for this user
+  if (snapshotUpdatesInProgress.has(username)) {
+    console.log(`[UserSnapshot] Update already in progress for ${username}, waiting for existing update...`);
+    return snapshotUpdatesInProgress.get(username);
+  }
+
+  // Create and store the update promise
+  const updatePromise = (async () => {
+    try {
+      console.log(`[UserSnapshot] Updating snapshot for ${username}...`);
+      const snapshot = await buildUserSnapshot(owner, repo, username);
+      await saveUserSnapshot(owner, repo, username, snapshot);
+      console.log(`[UserSnapshot] Snapshot updated successfully for ${username}`);
+      return snapshot;
+    } finally {
+      // Always remove from in-progress map when done (success or error)
+      snapshotUpdatesInProgress.delete(username);
+    }
+  })();
+
+  snapshotUpdatesInProgress.set(username, updatePromise);
+  return updatePromise;
 }

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import UserActionMenu from '../common/UserActionMenu';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayNames } from '../../hooks/useDisplayName';
 import { addAdmin } from '../../services/github/admin';
 
 /**
@@ -12,6 +13,13 @@ import { addAdmin } from '../../services/github/admin';
 const HighscoreList = ({ contributors, startRank = 4 }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
+
+  // Extract users from contributors for display name fetching
+  const contributorUsers = useMemo(() =>
+    contributors ? contributors.map(c => ({ id: c.userId, login: c.login })) : [],
+    [contributors]
+  );
+  const { displayNames } = useDisplayNames(contributorUsers);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -110,18 +118,25 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-1 sm:space-x-2">
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">
-                        {contributor.login}
-                      </h3>
-                      {isTopTen && (
-                        <span className="hidden sm:inline-flex text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-medium">
-                          Top 10
-                        </span>
-                      )}
-                      {contributor.isAnonymous && (
-                        <span className="inline-flex text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
-                          Anonymous
+                    <div className="flex flex-col space-y-0.5">
+                      <div className="flex items-center space-x-1 sm:space-x-2">
+                        <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">
+                          {displayNames[contributor.userId] || contributor.login}
+                        </h3>
+                        {isTopTen && (
+                          <span className="hidden sm:inline-flex text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-medium">
+                            Top 10
+                          </span>
+                        )}
+                        {contributor.isAnonymous && (
+                          <span className="inline-flex text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
+                            Anonymous
+                          </span>
+                        )}
+                      </div>
+                      {displayNames[contributor.userId] && displayNames[contributor.userId] !== contributor.login && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          @{contributor.login}
                         </span>
                       )}
                     </div>

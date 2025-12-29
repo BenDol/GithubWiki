@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { usePageHistory } from '../../hooks/usePageHistory';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useDisplayName } from '../../hooks/useDisplayName';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import UserActionMenu from '../common/UserActionMenu';
 import { addAdmin } from '../../services/github/admin';
@@ -21,12 +22,118 @@ const StarContributor = ({ sectionId, pageId }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
+  // Helper to parse anonymous contribution from commit message
+  const parseAnonymousContribution = (commitMessage) => {
+    if (!commitMessage) return null;
+    const nameMatch = commitMessage.match(/Anonymous contribution by:\s*(.+)/);
+    const emailMatch = commitMessage.match(/Email:\s*(.+?)\s*\(verified\s*✓\)/);
+    if (nameMatch && emailMatch) {
+      return {
+        displayName: nameMatch[1].trim(),
+        email: emailMatch[1].trim(),
+      };
+    }
+    return null;
+  };
+
+  // Calculate top contributor (user with most commits)
+  // Support both regular users and anonymous contributors
+  const topContributor = useMemo(() => {
+    if (!commits || commits.length === 0) {
+      console.log('StarContributor: No commits found');
+      return null;
+    }
+
+    const contributorCounts = {};
+    const anonymousContributors = {}; // Track anonymous by email
+    const botUsername = config?.wiki?.botUsername || import.meta.env.VITE_WIKI_BOT_USERNAME;
+
+    console.log('[StarContributor] Debug:', {
+      botUsername,
+      totalCommits: commits.length,
+      firstCommit: commits[0],
+    });
+
+    commits.forEach((commit) => {
+      const username = commit.author?.username;
+
+      console.log('[StarContributor] Processing commit:', {
+        username,
+        isBotCommit: username === botUsername,
+        messagePreview: commit.message?.substring(0, 100),
+      });
+
+      // Check if this is an anonymous contribution
+      if (username === botUsername) {
+        const anonData = parseAnonymousContribution(commit.message);
+        console.log('[StarContributor] Anonymous data:', anonData);
+        if (anonData) {
+          const key = `anon:${anonData.email}`;
+          contributorCounts[key] = (contributorCounts[key] || 0) + 1;
+          // Store display name for this anonymous contributor (use first one encountered)
+          if (!anonymousContributors[key]) {
+            anonymousContributors[key] = {
+              displayName: anonData.displayName,
+              email: anonData.email,
+              isAnonymous: true,
+            };
+          }
+        }
+      } else if (username) {
+        // Regular contributor
+        contributorCounts[username] = (contributorCounts[username] || 0) + 1;
+      }
+    });
+
+    console.log('[StarContributor] Contributor counts:', contributorCounts);
+    console.log('[StarContributor] Anonymous contributors:', anonymousContributors);
+
+    // Find user/contributor with most commits
+    let topContrib = null;
+    let maxCommits = 0;
+    Object.entries(contributorCounts).forEach(([key, count]) => {
+      if (count > maxCommits) {
+        maxCommits = count;
+
+        if (key.startsWith('anon:')) {
+          // Anonymous contributor
+          topContrib = {
+            ...anonymousContributors[key],
+            name: anonymousContributors[key].displayName,
+            username: null,
+            avatar: null,
+          };
+        } else {
+          // Regular contributor
+          topContrib = commits.find((c) => c.author?.username === key)?.author;
+        }
+      }
+    });
+
+    if (topContrib) {
+      console.log('StarContributor: Found top contributor', {
+        contributor: topContrib.name,
+        commits: maxCommits
+      });
+    } else {
+      console.log('StarContributor: No top contributor found');
+    }
+
+    return topContrib;
+  }, [commits, config?.wiki?.botUsername]);
+
+  // Fetch display name for top contributor (skip anonymous)
+  const topContributorUser = topContributor && !topContributor.isAnonymous && topContributor.username
+    ? { id: topContributor.userId, login: topContributor.username }
+    : null;
+  const { displayName } = useDisplayName(topContributorUser);
+
   // Handle avatar click
-  const handleAvatarClick = (e, username) => {
+  const handleAvatarClick = (e, username, userId) => {
     if (!username) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setSelectedUser(username);
+    setSelectedUser({ username, userId });
     setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
     setShowUserActionMenu(true);
   };
@@ -89,103 +196,10 @@ const StarContributor = ({ sectionId, pageId }) => {
     );
   }
 
-  if (!commits || commits.length === 0) {
-    console.log('StarContributor: No commits found');
-    return null;
-  }
-
-  // Helper to parse anonymous contribution from commit message
-  const parseAnonymousContribution = (commitMessage) => {
-    if (!commitMessage) return null;
-    const nameMatch = commitMessage.match(/Anonymous contribution by:\s*(.+)/);
-    const emailMatch = commitMessage.match(/Email:\s*(.+?)\s*\(verified\s*✓\)/);
-    if (nameMatch && emailMatch) {
-      return {
-        displayName: nameMatch[1].trim(),
-        email: emailMatch[1].trim(),
-      };
-    }
-    return null;
-  };
-
-  // Calculate top contributor (user with most commits)
-  // Support both regular users and anonymous contributors
-  const contributorCounts = {};
-  const anonymousContributors = {}; // Track anonymous by email
-  const botUsername = config?.wiki?.botUsername || import.meta.env.VITE_WIKI_BOT_USERNAME;
-
-  console.log('[StarContributor] Debug:', {
-    botUsername,
-    totalCommits: commits.length,
-    firstCommit: commits[0],
-  });
-
-  commits.forEach((commit) => {
-    const username = commit.author?.username;
-
-    console.log('[StarContributor] Processing commit:', {
-      username,
-      isBotCommit: username === botUsername,
-      messagePreview: commit.message?.substring(0, 100),
-    });
-
-    // Check if this is an anonymous contribution
-    if (username === botUsername) {
-      const anonData = parseAnonymousContribution(commit.message);
-      console.log('[StarContributor] Anonymous data:', anonData);
-      if (anonData) {
-        const key = `anon:${anonData.email}`;
-        contributorCounts[key] = (contributorCounts[key] || 0) + 1;
-        // Store display name for this anonymous contributor (use first one encountered)
-        if (!anonymousContributors[key]) {
-          anonymousContributors[key] = {
-            displayName: anonData.displayName,
-            email: anonData.email,
-            isAnonymous: true,
-          };
-        }
-      }
-    } else if (username) {
-      // Regular contributor
-      contributorCounts[username] = (contributorCounts[username] || 0) + 1;
-    }
-  });
-
-  console.log('[StarContributor] Contributor counts:', contributorCounts);
-  console.log('[StarContributor] Anonymous contributors:', anonymousContributors);
-
-  // Find user/contributor with most commits
-  let topContributor = null;
-  let maxCommits = 0;
-  Object.entries(contributorCounts).forEach(([key, count]) => {
-    if (count > maxCommits) {
-      maxCommits = count;
-
-      if (key.startsWith('anon:')) {
-        // Anonymous contributor
-        topContributor = {
-          ...anonymousContributors[key],
-          name: anonymousContributors[key].displayName,
-          username: null,
-          avatar: null,
-        };
-      } else {
-        // Regular contributor
-        topContributor = commits.find((c) => c.author?.username === key)?.author;
-      }
-    }
-  });
-
   // Don't show if no contributor found
   if (!topContributor) {
-    console.log('StarContributor: No top contributor found');
     return null;
   }
-
-  console.log('StarContributor: Showing contributor', {
-    contributor: topContributor.name,
-    commits: maxCommits
-  });
 
   const starIcon = starContributorConfig.icon || '⭐';
 
@@ -253,6 +267,7 @@ const StarContributor = ({ sectionId, pageId }) => {
             src={topContributor.avatar}
             alt={topContributor.name}
             username={topContributor.username}
+            userId={topContributor.userId}
             size="sm"
             showBadge={false}
             onClick={handleAvatarClick}
@@ -271,14 +286,15 @@ const StarContributor = ({ sectionId, pageId }) => {
           Top Contributor
         </span>
         <span className="text-xs text-amber-700 dark:text-amber-300 truncate leading-none">
-          {topContributor.name}
+          {topContributor.isAnonymous ? topContributor.name : (displayName || topContributor.username || topContributor.name)}
         </span>
       </div>
 
       {/* User Action Menu - only for registered users */}
       {showUserActionMenu && selectedUser && !topContributor.isAnonymous && (
         <UserActionMenu
-          username={selectedUser}
+          username={selectedUser.username}
+          userId={selectedUser.userId}
           onClose={handleUserMenuClose}
           position={userMenuPosition}
           onBan={() => {}}

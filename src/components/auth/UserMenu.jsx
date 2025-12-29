@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayName } from '../../hooks/useDisplayName';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useUserPrestige } from '../../hooks/usePrestige';
@@ -19,6 +20,9 @@ const UserMenu = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminCheckLoading, setAdminCheckLoading] = useState(true);
   const menuRef = useRef(null);
+
+  // Load display name for current user
+  const { displayName } = useDisplayName(user ? { id: user.id, login: user.login } : null);
 
   // Load prestige data for current user
   const { tier: prestigeTier } = useUserPrestige(user?.login);
@@ -139,7 +143,7 @@ const UserMenu = () => {
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {user.name || user.login}
+                  {displayName || user.login}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   @{user.login}

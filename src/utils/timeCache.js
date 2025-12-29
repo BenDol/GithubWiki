@@ -1,8 +1,11 @@
 /**
  * Time-based Cache Utility
  *
- * Simple cache with expiration using localStorage
+ * Simple cache with expiration using localStorage or sessionStorage
  * Used to reduce API calls for data that doesn't change frequently
+ *
+ * localStorage = persists across browser sessions
+ * sessionStorage = cleared when tab/window closes
  */
 
 /**
@@ -113,5 +116,65 @@ export function cleanupExpiredCache(prefix = '') {
     }
   } catch (error) {
     console.warn('[TimeCache] Failed to cleanup expired cache:', error);
+  }
+}
+
+/**
+ * SessionStorage-based cache (cleared when tab/window closes)
+ * Use for sensitive data that shouldn't persist across sessions
+ */
+
+/**
+ * Set a value in session cache with expiration
+ * @param {string} key - Cache key
+ * @param {any} value - Value to cache (will be JSON stringified)
+ * @param {number} ttlMs - Time to live in milliseconds
+ */
+export function setSessionCacheValue(key, value, ttlMs) {
+  try {
+    const cacheData = {
+      value,
+      expiresAt: Date.now() + ttlMs,
+    };
+    sessionStorage.setItem(key, JSON.stringify(cacheData));
+  } catch (error) {
+    console.warn('[TimeCache] Failed to set session cache:', error);
+  }
+}
+
+/**
+ * Get a value from session cache if not expired
+ * @param {string} key - Cache key
+ * @returns {any|null} Cached value or null if expired/not found
+ */
+export function getSessionCacheValue(key) {
+  try {
+    const cached = sessionStorage.getItem(key);
+    if (!cached) return null;
+
+    const cacheData = JSON.parse(cached);
+
+    // Check if expired
+    if (Date.now() > cacheData.expiresAt) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+
+    return cacheData.value;
+  } catch (error) {
+    console.warn('[TimeCache] Failed to get session cache:', error);
+    return null;
+  }
+}
+
+/**
+ * Clear a specific session cache entry
+ * @param {string} key - Cache key
+ */
+export function clearSessionCacheValue(key) {
+  try {
+    sessionStorage.removeItem(key);
+  } catch (error) {
+    console.warn('[TimeCache] Failed to clear session cache:', error);
   }
 }

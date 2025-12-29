@@ -9,11 +9,15 @@ import LinkDialog from './LinkDialog';
 import ColorPicker from './ColorPicker';
 import { useUIStore } from '../../store/uiStore';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
+import { useAuthStore } from '../../store/authStore';
+import { useDraftStorage } from '../../hooks/useDraftStorage';
 import Button from '../common/Button';
 import TagInput from '../common/TagInput';
 import { isValidPageId } from '../../utils/pageIdUtils';
 import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegistry';
 import { getPicker, hasPicker, getAllPickers } from '../../utils/contentRendererRegistry';
+import { resolveShortcuts, getShortcutDisplayMap } from '../../utils/keyboardShortcutResolver';
+import { useEnhancedKeyboardShortcuts } from '../../hooks/useEnhancedKeyboardShortcuts';
 import { Image as ImageIcon, Database } from 'lucide-react';
 
 /**
@@ -32,7 +36,12 @@ const PageEditor = ({
   renderSkillPreview = null,
   renderEquipmentPreview = null,
   dataAutocompleteSearch = null,
-  emoticonMap = null
+  emoticonMap = null,
+  sectionId = null,
+  pageId = null,
+  isNewPage = false,
+  onDraftLoaded = null,
+  onGetClearDraft = null
 }) => {
   const [content, setContent] = useState(initialContent || '');
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
@@ -71,8 +80,32 @@ const PageEditor = ({
     order: 0,
   });
 
+  // Draft tracking
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
   const { darkMode } = useUIStore();
   const { config } = useWikiConfig();
+  const { user } = useAuthStore();
+
+  // Draft storage hook for auto-save/restore
+  // Generate unique storage key based on section + page
+  const draftStorageKey = sectionId && (pageId || isNewPage)
+    ? `pageEditor_${sectionId}_${pageId || 'new'}`
+    : 'pageEditor';
+
+  const { loadDraft, clearDraft, isDraftAvailable } = useDraftStorage(
+    draftStorageKey,
+    user,
+    false, // not modal mode
+    { content, metadata, editSummary }
+  );
+
+  // Pass clearDraft function to parent so it can be called after successful save
+  useEffect(() => {
+    if (onGetClearDraft) {
+      onGetClearDraft(clearDraft);
+    }
+  }, [clearDraft, onGetClearDraft]);
 
   // Get framework-level picker components
   const VideoGuidePicker = getPicker('video-guide');
@@ -136,6 +169,25 @@ const PageEditor = ({
   const editorApiRef = useRef(null);
   const colorButtonRef = useRef(null);
   const metadataRef = useRef(metadata); // Track latest metadata to prevent loss during race conditions
+
+  // Keyboard shortcuts - resolve from defaults, config, and localStorage
+  const resolvedShortcutMap = useMemo(() => {
+    return resolveShortcuts(config);
+  }, [config]);
+
+  const shortcutDisplayMap = useMemo(() => {
+    return getShortcutDisplayMap(resolvedShortcutMap);
+  }, [resolvedShortcutMap]);
+
+  // Setup keyboard shortcuts
+  useEnhancedKeyboardShortcuts(
+    resolvedShortcutMap,
+    (action) => {
+      handleFormat(action);
+    },
+    editorApiRef,
+    true // enabled
+  );
 
   // Get available categories from sections
   const availableCategories = config?.sections
@@ -231,6 +283,53 @@ const PageEditor = ({
       }
     }
   }, [initialContent, initialMetadata]);
+
+  // Load draft from localStorage (only for new pages or when no initial content provided)
+  useEffect(() => {
+    // Skip if already loaded a draft
+    if (draftLoaded) return;
+
+    // Skip if we're still initializing with initial content
+    // Wait for initial content to be set first
+    if (initialContent && content === initialContent) {
+      return;
+    }
+
+    // Only load draft for new pages or when explicitly empty
+    // Don't load draft when editing existing pages (they have content from GitHub)
+    if (!isNewPage && initialContent) {
+      return;
+    }
+
+    // Check if draft is available
+    if (!isDraftAvailable()) {
+      return;
+    }
+
+    try {
+      const draft = loadDraft();
+      if (draft && draft.content) {
+        console.log('[PageEditor] Loading draft from localStorage');
+
+        // Parse the draft content to get metadata
+        const parsed = matter(draft.content);
+
+        setContent(draft.content);
+        setMetadata(draft.metadata || parsed.data);
+        setEditSummary(draft.editSummary || '');
+        setDraftLoaded(true);
+
+        // Notify parent that draft was loaded
+        if (onDraftLoaded) {
+          onDraftLoaded();
+        }
+
+        console.log('[PageEditor] Draft loaded successfully');
+      }
+    } catch (error) {
+      console.error('[PageEditor] Failed to load draft:', error);
+    }
+  }, [content, initialContent, isNewPage, draftLoaded, loadDraft, isDraftAvailable, onDraftLoaded]);
 
   // Track if content has been modified
   useEffect(() => {
@@ -567,7 +666,11 @@ const PageEditor = ({
     // Extract only the body without frontmatter
     try {
       const parsed = matter(content);
-      return parsed.content.trim();
+      // CRITICAL: Strip trailing newlines from body to match what matter.stringify() will produce
+      // This prevents the infinite newline-adding loop when typing at the end of the file
+      // We preserve internal empty lines and whitespace, just not trailing ones
+      const body = parsed.content.replace(/\n+$/, '');
+      return body;
     } catch (err) {
       return content;
     }
@@ -575,14 +678,6 @@ const PageEditor = ({
 
   // When content is manually edited in the markdown editor, sync back to metadata state
   const handleContentChange = (newContent) => {
-    // console.log('[PageEditor] handleContentChange called', {
-    //   showFrontmatter,
-    //   hasNewContent: !!newContent,
-    //   newContentLength: newContent?.length,
-    //   currentMetadata: metadata,
-    //   metadataRef: metadataRef.current
-    // });
-
     // If frontmatter is hidden, reconstruct full content with existing metadata
     if (!showFrontmatter) {
       try {
@@ -590,10 +685,6 @@ const PageEditor = ({
         // Don't rely on metadata state which may be stale/empty
         const currentParsed = matter(content);
         const existingMetadata = currentParsed.data || {};
-
-        // console.log('[PageEditor] Frontmatter hidden - existing metadata from content:', existingMetadata);
-        // console.log('[PageEditor] Current metadata state:', metadata);
-        // console.log('[PageEditor] Metadata from ref (latest):', metadataRef.current);
 
         // CRITICAL: Use metadataRef as source of truth since it has the latest values
         // The metadata state might be stale during rapid edits, but metadataRef is always current
@@ -613,14 +704,11 @@ const PageEditor = ({
           }
         }
 
-        // console.log('[PageEditor] Merged metadata (existing + latest from ref):', mergedMetadata);
-
-        const fullContent = matter.stringify(newContent, mergedMetadata);
-        // console.log('[PageEditor] Reconstructed content length:', fullContent.length);
-
-        // Verify reconstructed content has frontmatter
-        const verifyParsed = matter(fullContent);
-        // console.log('[PageEditor] Verified reconstructed frontmatter:', verifyParsed.data);
+        // CRITICAL: Remove trailing newlines from body before stringify
+        // matter.stringify() adds its own trailing newline, which causes the editor
+        // to add a new line per character when typing at the end of the file
+        const cleanedBody = newContent.replace(/\n+$/, '');
+        const fullContent = matter.stringify(cleanedBody, mergedMetadata);
 
         setContent(fullContent);
       } catch (err) {
@@ -736,7 +824,22 @@ const PageEditor = ({
       return;
     }
 
-    onSave?.(content, editSummary);
+    // Clean content before saving: trim the body but preserve frontmatter structure
+    // This ensures clean git diffs and consistent file formatting
+    let cleanedContent = content;
+    try {
+      const parsed = matter(content);
+      // Trim the body content (not the entire document) to remove trailing whitespace
+      const trimmedBody = parsed.content.trim();
+      // Reconstruct with cleaned body
+      cleanedContent = matter.stringify(trimmedBody, parsed.data);
+      console.log('[PageEditor] Content cleaned for save');
+    } catch (err) {
+      console.warn('[PageEditor] Could not clean content, saving as-is:', err);
+      // If parsing fails, save the original content
+    }
+
+    onSave?.(cleanedContent, editSummary);
   };
 
   // Handle cancel with confirmation if there are unsaved changes
@@ -825,6 +928,80 @@ const PageEditor = ({
     setShowDataSelector(false);
   };
 
+  /**
+   * Helper function to detect and remove formatting markers
+   *
+   * Provides smart toggle behavior for inline formatting (bold, italic, code).
+   *
+   * Scenarios handled:
+   * 1. Selection is wrapped with markers (e.g., **text**) → removes markers
+   * 2. Cursor is inside markers (e.g., **te|xt**) → removes markers
+   *
+   * @param {Object} api - Editor API reference
+   * @param {Object} selection - Current selection { from, to, text, empty }
+   * @param {string} marker - Formatting marker to detect (e.g., '**', '*', '`')
+   * @param {boolean} isBlock - Whether this is block-level formatting (unused, for future)
+   * @returns {boolean} True if formatting was found and removed, false otherwise
+   */
+  const toggleFormatting = (api, selection, marker, isBlock = false) => {
+    const content = api.getContent();
+    const { from, to, empty } = selection;
+
+    // For inline formatting (bold, italic, code)
+    if (!isBlock) {
+      // Check if selection is already wrapped with markers
+      const beforeStart = Math.max(0, from - marker.length);
+      const afterEnd = Math.min(content.length, to + marker.length);
+      const before = content.substring(beforeStart, from);
+      const after = content.substring(to, afterEnd);
+
+      if (before.endsWith(marker) && after.startsWith(marker)) {
+        // Remove the markers
+        api.replaceRange(afterEnd - marker.length, afterEnd, '');
+        api.replaceRange(beforeStart, from, '');
+        return true; // Formatting removed
+      }
+
+      // If empty selection, check if cursor is inside formatted text
+      if (empty) {
+        // Search backwards for opening marker
+        let openPos = -1;
+        for (let i = from - 1; i >= 0; i--) {
+          if (content.substring(i, i + marker.length) === marker) {
+            openPos = i;
+            break;
+          }
+          // Stop if we hit a newline (formatting doesn't span lines for inline)
+          if (content[i] === '\n') break;
+        }
+
+        // Search forwards for closing marker
+        let closePos = -1;
+        if (openPos !== -1) {
+          for (let i = from; i < content.length; i++) {
+            if (content.substring(i, i + marker.length) === marker) {
+              closePos = i;
+              break;
+            }
+            // Stop if we hit a newline
+            if (content[i] === '\n') break;
+          }
+        }
+
+        // If we found both markers, remove them
+        if (openPos !== -1 && closePos !== -1) {
+          // Remove closing marker first (higher index)
+          api.replaceRange(closePos, closePos + marker.length, '');
+          // Then remove opening marker
+          api.replaceRange(openPos, openPos + marker.length, '');
+          return true; // Formatting removed
+        }
+      }
+    }
+
+    return false; // Formatting not found/removed
+  };
+
   // Handle markdown formatting actions
   const handleFormat = (action, param) => {
     if (!editorApiRef.current) return;
@@ -872,29 +1049,36 @@ const PageEditor = ({
         break;
 
       case 'bold':
-        if (selection.empty) {
-          // Toggle mode
-          setBoldActive(!boldActive);
-          if (!boldActive) {
-            api.insertAtCursor('****');
-            // Move cursor between asterisks (would need cursor positioning API)
+        // Try to remove existing formatting first
+        if (!toggleFormatting(api, selection, '**')) {
+          // No formatting found, add it
+          if (selection.empty) {
+            // Toggle mode
+            setBoldActive(!boldActive);
+            if (!boldActive) {
+              api.insertAtCursor('****');
+            }
+          } else {
+            // Wrap selection
+            api.replaceSelection(`**${selection.text}**`);
           }
-        } else {
-          // Wrap selection
-          api.replaceSelection(`**${selection.text}**`);
         }
         break;
 
       case 'italic':
-        if (selection.empty) {
-          // Toggle mode
-          setItalicActive(!italicActive);
-          if (!italicActive) {
-            api.insertAtCursor('**');
+        // Try to remove existing formatting first
+        if (!toggleFormatting(api, selection, '*')) {
+          // No formatting found, add it
+          if (selection.empty) {
+            // Toggle mode
+            setItalicActive(!italicActive);
+            if (!italicActive) {
+              api.insertAtCursor('**');
+            }
+          } else {
+            // Wrap selection
+            api.replaceSelection(`*${selection.text}*`);
           }
-        } else {
-          // Wrap selection
-          api.replaceSelection(`*${selection.text}*`);
         }
         break;
 
@@ -920,8 +1104,18 @@ const PageEditor = ({
           api.insertAtCursor('\n- List item');
         } else {
           const lines = selection.text.split('\n');
-          const formatted = lines.map(line => `- ${line}`).join('\n');
-          api.replaceSelection(formatted);
+          // Check if all lines already start with '- '
+          const allBulleted = lines.every(line => /^-\s/.test(line.trim()));
+
+          if (allBulleted) {
+            // Remove bullet markers
+            const unformatted = lines.map(line => line.replace(/^-\s*/, '')).join('\n');
+            api.replaceSelection(unformatted);
+          } else {
+            // Add bullet markers
+            const formatted = lines.map(line => `- ${line}`).join('\n');
+            api.replaceSelection(formatted);
+          }
         }
         break;
 
@@ -930,8 +1124,18 @@ const PageEditor = ({
           api.insertAtCursor('\n1. List item');
         } else {
           const lines = selection.text.split('\n');
-          const formatted = lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
-          api.replaceSelection(formatted);
+          // Check if all lines already start with numbered list markers
+          const allNumbered = lines.every(line => /^\d+\.\s/.test(line.trim()));
+
+          if (allNumbered) {
+            // Remove number markers
+            const unformatted = lines.map(line => line.replace(/^\d+\.\s*/, '')).join('\n');
+            api.replaceSelection(unformatted);
+          } else {
+            // Add number markers
+            const formatted = lines.map((line, i) => `${i + 1}. ${line}`).join('\n');
+            api.replaceSelection(formatted);
+          }
         }
         break;
 
@@ -943,9 +1147,36 @@ const PageEditor = ({
 
       case 'code':
         if (selection.empty) {
+          // Insert code block template
           api.insertAtCursor('\n```\ncode block\n```\n');
         } else {
-          api.replaceSelection(`\`\`\`\n${selection.text}\n\`\`\``);
+          const isMultiLine = selection.text.includes('\n');
+
+          if (isMultiLine) {
+            // Multi-line: use code block (```)
+            // Check if already wrapped with triple backticks
+            const content = api.getContent();
+            const beforeStart = Math.max(0, selection.from - 4); // "```\n" = 4 chars
+            const afterEnd = Math.min(content.length, selection.to + 4); // "\n```" = 4 chars
+            const before = content.substring(beforeStart, selection.from);
+            const after = content.substring(selection.to, afterEnd);
+
+            if (before.endsWith('```\n') && after.startsWith('\n```')) {
+              // Remove code block markers
+              api.replaceRange(selection.to, selection.to + 4, '');
+              api.replaceRange(selection.from - 4, selection.from, '');
+            } else {
+              // Add code block markers
+              api.replaceSelection(`\`\`\`\n${selection.text}\n\`\`\``);
+            }
+          } else {
+            // Single line: use inline code (`)
+            // Try to toggle inline code formatting
+            if (!toggleFormatting(api, selection, '`')) {
+              // No formatting found, add it
+              api.replaceSelection(`\`${selection.text}\``);
+            }
+          }
         }
         break;
 
@@ -954,8 +1185,18 @@ const PageEditor = ({
           api.insertAtCursor('\n> Quote text');
         } else {
           const lines = selection.text.split('\n');
-          const formatted = lines.map(line => `> ${line}`).join('\n');
-          api.replaceSelection(formatted);
+          // Check if all lines already start with '> '
+          const allQuoted = lines.every(line => line.trim().startsWith('>'));
+
+          if (allQuoted) {
+            // Remove quote markers
+            const unformatted = lines.map(line => line.replace(/^>\s*/, '')).join('\n');
+            api.replaceSelection(unformatted);
+          } else {
+            // Add quote markers
+            const formatted = lines.map(line => `> ${line}`).join('\n');
+            api.replaceSelection(formatted);
+          }
         }
         break;
 
@@ -1526,6 +1767,7 @@ const PageEditor = ({
             boldActive={boldActive}
             italicActive={italicActive}
             emoticonMap={emoticonMap}
+            shortcutDisplayMap={shortcutDisplayMap}
           />
           <ColorPicker
             isOpen={showColorPicker}

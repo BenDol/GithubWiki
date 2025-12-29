@@ -18,8 +18,9 @@ import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote,
  * - colorButtonRef: Ref for color button positioning
  * - boldActive/italicActive: Active states for format buttons
  * - emoticonMap: Map of emoticon IDs to names (optional, for custom emoticons)
+ * - shortcutDisplayMap: Map of action -> shortcut display string (e.g., "Ctrl+B")
  */
-const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false, emoticonMap = null }) => {
+const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false, emoticonMap = null, shortcutDisplayMap = {} }) => {
   const internalColorButtonRef = useRef(null);
   const alignButtonRef = useRef(null);
   const alignDropdownRef = useRef(null);
@@ -59,13 +60,13 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
   const emoticons = emoticonMap || defaultEmoticons;
 
   const formatButtons = [
-    { icon: Bold, label: 'Bold', action: 'bold', shortcut: 'Ctrl+B', active: boldActive },
-    { icon: Italic, label: 'Italic', action: 'italic', shortcut: 'Ctrl+I', active: italicActive },
+    { icon: Bold, label: 'Bold', action: 'bold', active: boldActive },
+    { icon: Italic, label: 'Italic', action: 'italic', active: italicActive },
     { icon: Heading1, label: 'Heading 1', action: 'h1' },
     { icon: Heading2, label: 'Heading 2', action: 'h2' },
     { icon: List, label: 'Bullet List', action: 'ul' },
     { icon: ListOrdered, label: 'Numbered List', action: 'ol' },
-    { icon: Link, label: 'Link', action: 'link', shortcut: 'Ctrl+K' },
+    { icon: Link, label: 'Link', action: 'link' },
     { icon: Smile, label: 'Insert Emoticon', action: 'emoticon', special: true },
     { icon: Code, label: 'Code Block', action: 'code' },
     { icon: Quote, label: 'Quote', action: 'quote' },
@@ -278,7 +279,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
                 }`}
-                title={btn.shortcut ? `${btn.label} (${btn.shortcut})` : btn.label}
+                title={shortcutDisplayMap[btn.action] ? `${btn.label} (${shortcutDisplayMap[btn.action]})` : btn.label}
               >
                 <btn.icon className="w-4 h-4" />
               </button>

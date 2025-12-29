@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { formatDistance } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { usePageHistory } from '../../hooks/usePageHistory';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayNames } from '../../hooks/useDisplayName';
 import LoadingSpinner from '../common/LoadingSpinner';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import UserActionMenu from '../common/UserActionMenu';
@@ -18,17 +19,27 @@ const PageHistory = ({ sectionId, pageId }) => {
   const { user } = useAuthStore();
   const { commits, loading, loadingMore, error, hasMore, loadMore } = usePageHistory(sectionId, pageId, 10);
 
+  // Extract unique commit authors for display name fetching (exclude bot/anonymous)
+  const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+  const commitAuthors = useMemo(() =>
+    commits
+      .filter(c => c.author.username && c.author.username !== botUsername)
+      .map(c => ({ id: c.author.userId, login: c.author.username })),
+    [commits, botUsername]
+  );
+  const { displayNames } = useDisplayNames(commitAuthors);
+
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
   // Handle avatar click
-  const handleAvatarClick = (e, username) => {
+  const handleAvatarClick = (e, username, userId) => {
     if (!username) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setSelectedUser(username);
+    setSelectedUser({ username, userId });
     setUserMenuPosition({ x: rect.left, y: rect.bottom - 20 });
     setShowUserActionMenu(true);
   };
@@ -113,13 +124,17 @@ const PageHistory = ({ sectionId, pageId }) => {
           const isBotCommit = commit.author.username === botUsername;
           const isAnonymousContribution = isBotCommit && commit.message.includes('Anonymous contribution by:');
 
-          // Extract display name from anonymous commit message
+          // Determine display name: anonymous > fetched display name > GitHub username
           let displayName = commit.author.name;
           if (isAnonymousContribution) {
             const nameMatch = commit.message.match(/Anonymous contribution by:\s*(.+)/);
             if (nameMatch) {
               displayName = nameMatch[1].trim();
             }
+          } else if (commit.author.userId && displayNames[commit.author.userId]) {
+            displayName = displayNames[commit.author.userId];
+          } else if (commit.author.username) {
+            displayName = commit.author.username;
           }
 
           return (
@@ -149,6 +164,7 @@ const PageHistory = ({ sectionId, pageId }) => {
                     src={commit.author.avatar}
                     alt={commit.author.name}
                     username={commit.author.username}
+                    userId={commit.author.userId}
                     size="md"
                     showBadge={true}
                     onClick={handleAvatarClick}
@@ -204,18 +220,18 @@ const PageHistory = ({ sectionId, pageId }) => {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
-                    <span>
+                    <span className="flex items-center gap-1">
                       {isAnonymousContribution ? (
                         displayName
                       ) : commit.author.username ? (
-                        <a
-                          href={`https://github.com/${commit.author.username}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:text-blue-600 dark:hover:text-blue-400"
-                        >
-                          {displayName}
-                        </a>
+                        <>
+                          <Link
+                            to={`/profile/${commit.author.username}`}
+                            className="hover:text-blue-600 dark:hover:text-blue-400"
+                          >
+                            {displayName}
+                          </Link>
+                        </>
                       ) : (
                         displayName
                       )}
@@ -299,7 +315,8 @@ const PageHistory = ({ sectionId, pageId }) => {
       {/* User Action Menu */}
       {showUserActionMenu && selectedUser && (
         <UserActionMenu
-          username={selectedUser}
+          username={selectedUser.username}
+          userId={selectedUser.userId}
           onClose={handleUserMenuClose}
           position={userMenuPosition}
           onBan={() => {}}

@@ -4,6 +4,8 @@
  */
 
 import { getDeviceCodeEndpoint, getAccessTokenEndpoint, getPlatform } from '../../utils/apiEndpoints.js';
+import { getCacheValue, setCacheValue, getSessionCacheValue, setSessionCacheValue } from '../../utils/timeCache.js';
+import { cacheName } from '../../utils/storageManager.js';
 
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
 
@@ -230,8 +232,23 @@ const retryFetch = async (fn, maxRetries = 3) => {
  * Also fetches email from /user/emails if not available in user object
  * (needed when user has email set to private in GitHub settings)
  * Includes automatic retry on network errors
+ *
+ * Caching: Results cached in sessionStorage for 20 minutes to prevent duplicate API calls
+ * sessionStorage is cleared when tab/window closes (doesn't persist across sessions)
  */
 export const fetchGitHubUser = async (token) => {
+  // Check session cache first (20 minute TTL)
+  const cacheKey = cacheName('github_user_data', 'current');
+  const cachedUser = getSessionCacheValue(cacheKey);
+
+  if (cachedUser) {
+    console.log('[Auth] Using cached user data from sessionStorage (20min TTL)');
+    return cachedUser;
+  }
+
+  // Cache miss - fetch from API
+  console.log('[Auth] Session cache miss - fetching user data from GitHub API');
+
   return retryFetch(async () => {
     const response = await fetch(USER_URL, {
       headers: {
@@ -249,51 +266,52 @@ export const fetchGitHubUser = async (token) => {
   // If email is null (private email setting), fetch from /user/emails
   if (!user.email) {
     try {
-      // Import timeCache utility
-      const { getCacheValue, setCacheValue } = await import('../../utils/timeCache.js');
-      const { cacheName } = await import('../../utils/storageManager.js');
-
-      const cacheKey = cacheName('github_user_emails', user.id);
+      const emailCacheKey = cacheName('github_user_emails', user.id);
 
       // Check cache first (30 day TTL since emails rarely change)
-      const cachedEmail = getCacheValue(cacheKey);
+      const cachedEmail = getCacheValue(emailCacheKey);
       if (cachedEmail) {
         user.email = cachedEmail;
         console.log('[Auth] Using cached primary email from localStorage');
-        return user;
-      }
+      } else {
+        // Cache miss - fetch from API
+        const emailsResponse = await fetch('https://api.github.com/user/emails', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+          },
+        });
 
-      // Cache miss - fetch from API
-      const emailsResponse = await fetch('https://api.github.com/user/emails', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github.v3+json',
-        },
-      });
+        if (emailsResponse.ok) {
+          const emails = await emailsResponse.json();
+          // Find primary verified email
+          const primaryEmail = emails.find(e => e.primary && e.verified);
+          if (primaryEmail && primaryEmail.email) {
+            user.email = primaryEmail.email;
 
-      if (emailsResponse.ok) {
-        const emails = await emailsResponse.json();
-        // Find primary verified email
-        const primaryEmail = emails.find(e => e.primary && e.verified);
-        if (primaryEmail && primaryEmail.email) {
-          user.email = primaryEmail.email;
+            // Cache for 30 days (30 * 24 * 60 * 60 * 1000 ms)
+            // Only cache if we actually got an email (don't cache empty responses)
+            const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+            setCacheValue(emailCacheKey, primaryEmail.email, thirtyDaysMs);
 
-          // Cache for 30 days (30 * 24 * 60 * 60 * 1000 ms)
-          // Only cache if we actually got an email (don't cache empty responses)
-          const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-          setCacheValue(cacheKey, primaryEmail.email, thirtyDaysMs);
-
-          console.log('[Auth] Fetched and cached primary email from /user/emails (private email setting detected)');
-        } else if (emails.length === 0) {
-          console.warn('[Auth] No emails found in /user/emails response (not caching)');
-        } else {
-          console.warn('[Auth] No primary verified email found (not caching)');
+            console.log('[Auth] Fetched and cached primary email from /user/emails (private email setting detected)');
+          } else if (emails.length === 0) {
+            console.warn('[Auth] No emails found in /user/emails response (not caching)');
+          } else {
+            console.warn('[Auth] No primary verified email found (not caching)');
+          }
         }
       }
     } catch (error) {
       console.warn('[Auth] Failed to fetch user emails:', error.message);
     }
   }
+
+    // Cache the complete user data (with email) for 20 minutes in sessionStorage
+    const twentyMinutesMs = 20 * 60 * 1000;
+    const userCacheKey = cacheName('github_user_data', 'current');
+    setSessionCacheValue(userCacheKey, user, twentyMinutesMs);
+    console.log('[Auth] Cached user data in sessionStorage (20min TTL)');
 
     return user;
   });

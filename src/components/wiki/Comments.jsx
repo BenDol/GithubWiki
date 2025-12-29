@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatDistance } from 'date-fns';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayNames } from '../../hooks/useDisplayName';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import LoadingSpinner from '../common/LoadingSpinner';
 import UserActionMenu from '../common/UserActionMenu';
@@ -34,6 +35,13 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [commentReactions, setCommentReactions] = useState({});
   const [reactionLoading, setReactionLoading] = useState({});
   const [userIsBanned, setUserIsBanned] = useState(false);
+
+  // Extract unique comment authors for display name fetching
+  const commentAuthors = useMemo(() =>
+    comments.map(c => ({ id: c.user.id, login: c.user.login })),
+    [comments]
+  );
+  const { displayNames } = useDisplayNames(commentAuthors);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -883,14 +891,21 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                   {/* Comment header */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
-                      <a
-                        href={comment.user.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-gray-900 dark:text-white hover:underline"
-                      >
-                        {comment.user.login}
-                      </a>
+                      <div className="flex flex-col">
+                        <a
+                          href={comment.user.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-gray-900 dark:text-white hover:underline"
+                        >
+                          {displayNames[comment.user.id] || comment.user.login}
+                        </a>
+                        {displayNames[comment.user.id] && displayNames[comment.user.id] !== comment.user.login && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            @{comment.user.login}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-gray-500 dark:text-gray-400 text-sm">
                         {formatDistance(new Date(comment.created_at), new Date(), {
                           addSuffix: true,

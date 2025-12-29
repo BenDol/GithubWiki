@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayName } from '../../hooks/useDisplayName';
 import { getCurrentUserAdminStatus, banUser } from '../../services/github/admin';
 
 /**
@@ -9,10 +10,15 @@ import { getCurrentUserAdminStatus, banUser } from '../../services/github/admin'
  * Shows action menu when clicking on user avatars
  * Options based on current user's permissions
  */
-const UserActionMenu = ({ username, onClose, position, onBan, onMakeAdmin }) => {
+const UserActionMenu = ({ username, userId, onClose, position, onBan, onMakeAdmin }) => {
   const navigate = useNavigate();
   const { config } = useWikiConfig();
   const { user, isAuthenticated } = useAuthStore();
+
+  // Fetch display name if userId is provided
+  const { displayName } = useDisplayName(userId ? { id: userId, login: username } : null);
+  const displayNameOrUsername = displayName || username;
+
   const [adminStatus, setAdminStatus] = useState({ isOwner: false, isAdmin: false });
   const [loading, setLoading] = useState(true);
   const [showBanModal, setShowBanModal] = useState(false);
@@ -130,8 +136,13 @@ const UserActionMenu = ({ username, onClose, position, onBan, onMakeAdmin }) => 
         {/* User Header */}
         <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
           <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            @{username}
+            {displayNameOrUsername}
           </p>
+          {displayName && displayName !== username && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              @{username}
+            </p>
+          )}
         </div>
 
         {/* View Profile */}
@@ -183,7 +194,10 @@ const UserActionMenu = ({ username, onClose, position, onBan, onMakeAdmin }) => 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-                Ban User: @{username}
+                Ban User: {displayNameOrUsername}
+                {displayName && displayName !== username && (
+                  <span className="text-sm text-gray-500 dark:text-gray-400 font-normal"> (@{username})</span>
+                )}
               </h3>
 
               <form onSubmit={handleBanSubmit}>

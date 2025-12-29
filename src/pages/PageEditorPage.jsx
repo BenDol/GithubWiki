@@ -58,6 +58,8 @@ const PageEditorPage = ({ sectionId, isNewPage = false, emoticonMap = null }) =>
   const [checkingBanStatus, setCheckingBanStatus] = useState(true); // Track if we're checking ban status
   const [showAnonymousForm, setShowAnonymousForm] = useState(false); // Track if showing anonymous edit form
   const [pendingAnonymousEdit, setPendingAnonymousEdit] = useState(null); // Store content awaiting anonymous submission
+  const [clearDraftFn, setClearDraftFn] = useState(null); // Store clearDraft function from PageEditor
+  const [draftWasLoaded, setDraftWasLoaded] = useState(false); // Track if draft was loaded to show banner
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -553,6 +555,13 @@ Include any supplementary details, notes, or related information.
    */
   const handleAnonymousSuccess = (pr) => {
     console.log('[Anonymous Edit] Success! PR:', pr);
+
+    // Clear draft after successful anonymous edit
+    if (clearDraftFn) {
+      clearDraftFn();
+      console.log('[PageEditorPage] Draft cleared after successful anonymous edit');
+    }
+
     setPrUrl(pr.html_url || pr.url);
     setIsUpdatingExistingPR(false);
     setIsFirstContribution(false);
@@ -720,6 +729,12 @@ Include any supplementary details, notes, or related information.
         if (user?.login) {
           invalidatePrestige(user.login);
           console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
+
+        // Clear draft after successful save
+        if (clearDraftFn) {
+          clearDraftFn();
+          console.log('[PageEditorPage] Draft cleared after successful direct commit');
         }
 
         // Show success message without PR
@@ -1012,6 +1027,12 @@ Include any supplementary details, notes, or related information.
         setPrestigeTier(firstTier);
       }
 
+      // Clear draft after successful save
+      if (clearDraftFn) {
+        clearDraftFn();
+        console.log('[PageEditorPage] Draft cleared after successful PR creation/update');
+      }
+
       setSavingStatus(''); // Clear saving status on success
       setPrUrl(pr.url);
     } catch (err) {
@@ -1098,6 +1119,12 @@ Include any supplementary details, notes, or related information.
         if (user?.login) {
           invalidatePrestige(user.login);
           console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+        }
+
+        // Clear draft after successful deletion
+        if (clearDraftFn) {
+          clearDraftFn();
+          console.log('[PageEditorPage] Draft cleared after successful direct deletion');
         }
 
         // Show success and navigate back
@@ -1247,6 +1274,12 @@ Include any supplementary details, notes, or related information.
       if (user?.login) {
         invalidatePrestige(user.login);
         console.log(`[PageEditor] Invalidated prestige cache for ${user.login}`);
+      }
+
+      // Clear draft after successful deletion PR (though deletion shouldn't need draft clearing)
+      if (clearDraftFn) {
+        clearDraftFn();
+        console.log('[PageEditorPage] Draft cleared after successful deletion PR');
       }
 
       setSavingStatus('');
@@ -1654,6 +1687,32 @@ Include any supplementary details, notes, or related information.
         )}
       </div>
 
+      {/* Draft Loaded Banner */}
+      {draftWasLoaded && (
+        <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="flex items-start space-x-3">
+            <div className="flex-shrink-0 text-2xl">💾</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-green-900 dark:text-green-200 mb-1">
+                Draft Restored
+              </h3>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                Your previous work has been restored from a saved draft. Continue editing or save your changes.
+              </p>
+            </div>
+            <button
+              onClick={() => setDraftWasLoaded(false)}
+              className="flex-shrink-0 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200"
+              aria-label="Dismiss"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Editing PR Banner */}
       {editingPR && (
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
@@ -1790,6 +1849,17 @@ Include any supplementary details, notes, or related information.
             renderEquipmentPreview={getEquipmentPreview()}
             dataAutocompleteSearch={getDataAutocompleteSearch()}
             emoticonMap={emoticonMap}
+            sectionId={sectionId}
+            pageId={pageId}
+            isNewPage={isNewPage}
+            onDraftLoaded={() => {
+              console.log('[PageEditorPage] Draft loaded from localStorage');
+              setDraftWasLoaded(true);
+            }}
+            onGetClearDraft={(clearDraft) => {
+              // Store clearDraft function so we can call it after successful save
+              setClearDraftFn(() => clearDraft);
+            }}
           />
         </div>
       )}

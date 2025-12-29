@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayNames } from '../../hooks/useDisplayName';
 import { getOctokit } from '../../services/github/api';
 import { useGitHubDataStore } from '../../store/githubDataStore';
 
@@ -16,6 +17,15 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
   const [error, setError] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [closingPR, setClosingPR] = useState(null);
+
+  // Fetch display names for PR authors (exclude anonymous)
+  const prAuthors = useMemo(() =>
+    prs
+      .filter(pr => !pr.isAnonymous && pr.author)
+      .map(pr => ({ id: pr.authorId, login: pr.author })),
+    [prs]
+  );
+  const { displayNames } = useDisplayNames(prAuthors);
 
   useEffect(() => {
     const fetchPendingPRs = async () => {
@@ -112,6 +122,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
             title: pr.title,
             url: pr.html_url,
             author: pr.user.login,
+            authorId: pr.user.id,
             authorAvatar: pr.user.avatar_url,
             createdAt: pr.created_at,
             updatedAt: pr.updated_at,
@@ -236,7 +247,10 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           {prs.map(pr => {
             const isOwnPR = isAuthenticated && user?.login === pr.author;
             const isClosing = closingPR === pr.number;
-            const displayAuthor = pr.isAnonymous && pr.displayName ? pr.displayName : pr.author;
+            // Prioritize: anonymous displayName > fetched displayName > GitHub username
+            const displayAuthor = pr.isAnonymous && pr.displayName
+              ? pr.displayName
+              : (displayNames[pr.authorId] || pr.author);
 
             return (
               <div

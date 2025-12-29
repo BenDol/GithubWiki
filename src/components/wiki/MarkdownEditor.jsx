@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { EditorView, basicSetup } from 'codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { EditorState } from '@codemirror/state';
+import { EditorState, Prec } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
+import { deleteCharBackward, deleteCharForward } from '@codemirror/commands';
 import ImageDimensionWidget from './ImageDimensionWidget';
 import DataAutocomplete from './DataAutocomplete';
 
@@ -129,10 +131,96 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
   useEffect(() => {
     if (!editorRef.current) return;
 
+    // Custom deletion handlers to provide intuitive deletion behavior
+    // Prevents unexpected multi-character or newline deletions
+    const customDeletionKeymap = keymap.of([
+      {
+        key: 'Backspace',
+        run: (view) => {
+          const { state } = view;
+          const { selection } = state;
+          const { main } = selection;
+
+          // If there's a selection, delete it normally
+          if (!main.empty) {
+            return deleteCharBackward(view);
+          }
+
+          // Get cursor position
+          const pos = main.head;
+
+          // Don't delete anything if at the start of the document
+          if (pos === 0) {
+            return true;
+          }
+
+          // Get the current line
+          const line = state.doc.lineAt(pos);
+          const lineText = line.text;
+          const posInLine = pos - line.from;
+
+          // Check if we're at the start of a line (deleting would merge with previous line)
+          if (pos === line.from) {
+            // At line start - allow normal behavior to merge lines
+            return deleteCharBackward(view);
+          }
+
+          // If this is the only character on the line, delete it but keep the line
+          if (lineText.length === 1 && posInLine === 1) {
+            // Delete the character
+            view.dispatch({
+              changes: { from: pos - 1, to: pos, insert: '' },
+              selection: { anchor: pos - 1 }
+            });
+            // Don't allow the default behavior to run
+            return true;
+          }
+
+          // Normal deletion: just delete the single character before cursor
+          view.dispatch({
+            changes: { from: pos - 1, to: pos },
+            selection: { anchor: pos - 1 }
+          });
+
+          return true; // Prevent default behavior
+        }
+      },
+      {
+        key: 'Delete',
+        run: (view) => {
+          const { state } = view;
+          const { selection } = state;
+          const { main } = selection;
+
+          // If there's a selection, delete it normally
+          if (!main.empty) {
+            return deleteCharForward(view);
+          }
+
+          // Get cursor position
+          const pos = main.head;
+
+          // Don't delete anything if at the end of the document
+          if (pos === state.doc.length) {
+            return true;
+          }
+
+          // Normal deletion: just delete the single character after cursor
+          view.dispatch({
+            changes: { from: pos, to: pos + 1 },
+            selection: { anchor: pos }
+          });
+
+          return true; // Prevent default behavior
+        }
+      }
+    ]);
+
     // Create editor state
     const startState = EditorState.create({
       doc: value || '',
       extensions: [
+        Prec.highest(customDeletionKeymap), // Highest precedence to override all defaults
         basicSetup,
         markdown(),
         darkMode ? oneDark : [],

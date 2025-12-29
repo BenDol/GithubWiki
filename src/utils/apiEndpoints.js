@@ -124,6 +124,14 @@ export function getVideoUploadEndpoint() {
   return `${getFunctionsBaseUrl()}/video-upload`;
 }
 
+/**
+ * Get display-name endpoint
+ * @returns {string} - Endpoint URL
+ */
+export function getDisplayNameEndpoint() {
+  return `${getFunctionsBaseUrl()}/display-name`;
+}
+
 // ===== PLATFORM INFO =====
 
 /**

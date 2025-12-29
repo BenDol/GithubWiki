@@ -356,6 +356,7 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
         date: commit.commit.author.date,
         avatar: commit.author?.avatar_url,
         username: commit.author?.login,
+        userId: commit.author?.id,
       },
       committer: {
         name: commit.commit.committer.name,

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import SparkleEffect from '../effects/SparkleEffect';
 import UserActionMenu from '../common/UserActionMenu';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
+import { useDisplayNames } from '../../hooks/useDisplayName';
 import { addAdmin } from '../../services/github/admin';
 
 /**
@@ -14,6 +15,13 @@ const HighscorePodium = ({ topThree }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
   const [isVisible, setIsVisible] = useState(false);
+
+  // Extract users from topThree for display name fetching
+  const podiumUsers = useMemo(() =>
+    topThree ? topThree.filter(Boolean).map(u => ({ id: u.userId, login: u.login })) : [],
+    [topThree]
+  );
+  const { displayNames } = useDisplayNames(podiumUsers);
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -94,8 +102,13 @@ const HighscorePodium = ({ topThree }) => {
             <div className="text-center mb-1 sm:mb-2">
               <div className="flex flex-col items-center space-y-1">
                 <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
-                  {second.login}
+                  {displayNames[second.userId] || second.login}
                 </h3>
+                {displayNames[second.userId] && displayNames[second.userId] !== second.login && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    @{second.login}
+                  </span>
+                )}
                 {second.isAnonymous && (
                   <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
                     Anonymous
@@ -157,8 +170,13 @@ const HighscorePodium = ({ topThree }) => {
             <div className="text-center mb-1 sm:mb-2">
               <div className="flex flex-col items-center space-y-1">
                 <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-500 dark:text-yellow-400 truncate max-w-[100px] sm:max-w-none">
-                  {first.login}
+                  {displayNames[first.userId] || first.login}
                 </h3>
+                {displayNames[first.userId] && displayNames[first.userId] !== first.login && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    @{first.login}
+                  </span>
+                )}
                 {first.isAnonymous && (
                   <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
                     Anonymous
@@ -213,8 +231,13 @@ const HighscorePodium = ({ topThree }) => {
             <div className="text-center mb-1 sm:mb-2">
               <div className="flex flex-col items-center space-y-1">
                 <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 dark:text-gray-200 truncate max-w-[80px] sm:max-w-none">
-                  {third.login}
+                  {displayNames[third.userId] || third.login}
                 </h3>
+                {displayNames[third.userId] && displayNames[third.userId] !== third.login && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    @{third.login}
+                  </span>
+                )}
                 {third.isAnonymous && (
                   <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">
                     Anonymous
