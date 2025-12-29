@@ -24,7 +24,7 @@ if (import.meta.env.DEV) {
  * Create issue directly with bot token (DEVELOPMENT ONLY - TREE-SHAKEN IN PRODUCTION)
  * This fallback allows local development without running Netlify Functions locally
  */
-const createIssueDirectly = async (owner, repo, title, body, labels) => {
+const createIssueDirectly = async (owner, repo, title, body, labels, preventDuplicates = false) => {
   // This entire function is removed from production builds by Vite
   if (!import.meta.env.DEV) {
     throw new Error('Direct API calls are disabled in production builds');
@@ -44,6 +44,38 @@ const createIssueDirectly = async (owner, repo, title, body, labels) => {
     userAgent: 'GitHub-Wiki-Bot/1.0',
     throttle: { enabled: false }, // Disable built-in throttling
   });
+
+  // Check for existing issue if preventDuplicates is enabled
+  if (preventDuplicates) {
+    const { data: existingIssues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: Array.isArray(labels) ? labels.join(',') : labels,
+      state: 'open',
+      per_page: 100,
+    });
+
+    // Filter to only bot-created issues
+    const botLogin = import.meta.env.VITE_WIKI_BOT_USERNAME;
+    const botIssues = existingIssues.filter(issue => issue.user.login === botLogin);
+
+    // If issue already exists, return it instead of creating duplicate
+    if (botIssues.length > 0) {
+      const existingIssue = botIssues[0];
+      console.log(`[Bot Service] Issue already exists with labels ${labels}, returning existing issue #${existingIssue.number}`);
+
+      return {
+        number: existingIssue.number,
+        title: existingIssue.title,
+        url: existingIssue.html_url,
+        body: existingIssue.body,
+        labels: existingIssue.labels,
+        created_at: existingIssue.created_at,
+        state: existingIssue.state,
+        wasExisting: true, // Indicate this was an existing issue
+      };
+    }
+  }
 
   const { data: issue } = await octokit.rest.issues.create({
     owner,
@@ -74,9 +106,10 @@ const createIssueDirectly = async (owner, repo, title, body, labels) => {
  * @param {string} title - Issue title
  * @param {string} body - Issue body
  * @param {string[]} labels - Issue labels
+ * @param {boolean} preventDuplicates - If true, checks for existing issue with same labels before creating
  * @returns {Promise<Object>} Created issue data
  */
-export const createCommentIssueWithBot = async (owner, repo, title, body, labels) => {
+export const createCommentIssueWithBot = async (owner, repo, title, body, labels, preventDuplicates = false) => {
   try {
     // Get current user for server-side ban checking
     const authStore = useAuthStore.getState();
@@ -90,7 +123,7 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call');
-        return await createIssueDirectly(owner, repo, title, body, labels);
+        return await createIssueDirectly(owner, repo, title, body, labels, preventDuplicates);
       } else {
         console.log('[Bot Service] Development mode: No local token, trying Netlify Dev function...');
       }
@@ -113,6 +146,7 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
         labels,
         requestedBy,
         requestedByUserId,
+        preventDuplicates,
       }),
     });
 

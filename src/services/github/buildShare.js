@@ -287,7 +287,8 @@ async function getOrCreateIndexIssue(owner, repo, bustCache = false) {
           repo,
           BUILD_SHARE_TITLE,
           INDEX_HEADER,
-          [BUILD_SHARE_LABEL, 'automated']
+          [BUILD_SHARE_LABEL, 'automated'],
+          true // preventDuplicates - check for existing issue before creating
         );
 
         console.log('[Build Share] ✓ Index issue created:', issue.number);
