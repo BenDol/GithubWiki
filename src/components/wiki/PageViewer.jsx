@@ -75,21 +75,22 @@ const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    // Allow class attribute on span for text colors (Tailwind CSS classes starting with 'text-')
-    span: [...(defaultSchema.attributes.span || []), ['className', /^text-/]],
+    // Allow class and style attributes on span (needed for text colors and custom styling)
+    span: [...(defaultSchema.attributes?.span || []), 'className', 'class', 'style'],
     // Allow src, alt, style, and data attributes on img
-    img: ['src', 'alt', 'title', 'width', 'height', 'style', ['className', /^inline-image$/], ['dataInline', /^true$/]],
-    // Allow align attribute on div for text alignment
-    div: [...(defaultSchema.attributes.div || []), ['align', /^(left|center|right)$/], 'style'],
+    // Keep className restricted to inline-image for security, allow general class attribute
+    img: ['src', 'alt', 'title', 'width', 'height', 'style', ['className', /^inline-image$/], 'class', ['dataInline', /^true$/]],
+    // Allow align attribute on div for text alignment (with validation), plus class/style
+    div: [...(defaultSchema.attributes?.div || []), ['align', /^(left|center|right)$/], 'style', 'className', 'class'],
     // Allow id on headings for anchor links
-    h1: [...(defaultSchema.attributes.h1 || []), 'id'],
-    h2: [...(defaultSchema.attributes.h2 || []), 'id'],
-    h3: [...(defaultSchema.attributes.h3 || []), 'id'],
-    h4: [...(defaultSchema.attributes.h4 || []), 'id'],
-    h5: [...(defaultSchema.attributes.h5 || []), 'id'],
-    h6: [...(defaultSchema.attributes.h6 || []), 'id'],
-    // Allow all default anchor attributes
-    a: [...(defaultSchema.attributes.a || [])],
+    h1: [...(defaultSchema.attributes?.h1 || []), 'id', 'className', 'class'],
+    h2: [...(defaultSchema.attributes?.h2 || []), 'id', 'className', 'class'],
+    h3: [...(defaultSchema.attributes?.h3 || []), 'id', 'className', 'class'],
+    h4: [...(defaultSchema.attributes?.h4 || []), 'id', 'className', 'class'],
+    h5: [...(defaultSchema.attributes?.h5 || []), 'id', 'className', 'class'],
+    h6: [...(defaultSchema.attributes?.h6 || []), 'id', 'className', 'class'],
+    // Allow all default anchor attributes plus class
+    a: [...(defaultSchema.attributes?.a || []), 'className', 'class'],
   },
   // Explicitly allow safe protocols only
   protocols: {

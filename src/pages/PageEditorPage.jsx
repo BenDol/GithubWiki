@@ -383,10 +383,40 @@ Include any supplementary details, notes, or related information.
           }
         }
 
-        // If no stored content, load from main branch
+        // If no stored content, load from appropriate branch
         if (!fileData) {
-          console.log(`[PageEditor] Loading from main branch`);
-          fileData = await getFileContent(owner, repo, filePath, currentBranch);
+          // If editing a PR, fetch from PR branch instead of main
+          if (existingPR) {
+            try {
+              // Get the PR branch name (strip fork prefix if present)
+              let prBranch = existingPR.head.ref;
+              let prOwner = owner;
+              let prRepo = repo;
+
+              // Handle fork branches (format: "username:branch-name")
+              if (prBranch.includes(':')) {
+                const parts = prBranch.split(':');
+                prBranch = parts[1]; // Just the branch name
+                // Use fork repo info if available
+                if (existingPR.head.repo) {
+                  prOwner = existingPR.head.repo.owner.login;
+                  prRepo = existingPR.head.repo.name;
+                }
+              }
+
+              console.log(`[PageEditor] Loading content from PR branch: ${prOwner}/${prRepo}:${prBranch}`);
+              fileData = await getFileContent(prOwner, prRepo, filePath, prBranch);
+              console.log(`[PageEditor] ✓ Loaded content from PR branch`);
+            } catch (err) {
+              console.warn(`[PageEditor] Could not load from PR branch, falling back to main:`, err);
+              console.log(`[PageEditor] Loading from main branch`);
+              fileData = await getFileContent(owner, repo, filePath, currentBranch);
+            }
+          } else {
+            // Not editing a PR, load from main branch
+            console.log(`[PageEditor] Loading from main branch`);
+            fileData = await getFileContent(owner, repo, filePath, currentBranch);
+          }
         }
 
         if (!fileData) {
@@ -578,7 +608,7 @@ Include any supplementary details, notes, or related information.
     setShowAnonymousForm(false);
   };
 
-  const handleSave = async (newContent, editSummary) => {
+  const handleSave = async (newContent, editSummary, stayInEditMode = false) => {
     // If in anonymous mode, use anonymous submission
     if (isAnonymousMode && !isAuthenticated) {
       return handleAnonymousSave(newContent, editSummary);
@@ -741,10 +771,12 @@ Include any supplementary details, notes, or related information.
         setSavingStatus('');
         setIsSaving(false);
 
-        // Navigate back to the page view
-        setTimeout(() => {
-          navigate(isNewPage ? `/${sectionId}/${currentPageId}` : `/${sectionId}/${pageId}`);
-        }, 1000);
+        // Navigate back to the page view (unless quick save)
+        if (!stayInEditMode) {
+          setTimeout(() => {
+            navigate(isNewPage ? `/${sectionId}/${currentPageId}` : `/${sectionId}/${pageId}`);
+          }, 1000);
+        }
 
         return;
       }
@@ -1852,6 +1884,8 @@ Include any supplementary details, notes, or related information.
             sectionId={sectionId}
             pageId={pageId}
             isNewPage={isNewPage}
+            isAnonymousMode={isAnonymousMode}
+            editingExistingPR={!!editingPR}
             onDraftLoaded={() => {
               console.log('[PageEditorPage] Draft loaded from localStorage');
               setDraftWasLoaded(true);

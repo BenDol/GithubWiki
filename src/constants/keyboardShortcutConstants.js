@@ -143,6 +143,17 @@ export const DEFAULT_SHORTCUTS = [
     label: 'Table',
     description: 'Insert table',
     category: SHORTCUT_CATEGORIES.INSERTION
+  },
+  {
+    action: 'save',
+    key: 's',
+    ctrl: true,
+    shift: false,
+    alt: false,
+    enabled: true,
+    label: 'Quick Save',
+    description: 'Save changes and continue editing',
+    category: SHORTCUT_CATEGORIES.INSERTION
   }
 ];
 

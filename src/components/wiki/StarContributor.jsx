@@ -36,7 +36,9 @@ const StarContributor = ({ sectionId, pageId }) => {
     return null;
   };
 
-  // Calculate top contributor (user with most commits)
+  // Calculate top contributor using weighted scoring
+  // Scoring: additions/deletions weighted more heavily than commit count
+  // Formula: (commits * 10) + (additions * 0.5) + (deletions * 0.5)
   // Support both regular users and anonymous contributors
   const topContributor = useMemo(() => {
     if (!commits || commits.length === 0) {
@@ -44,24 +46,38 @@ const StarContributor = ({ sectionId, pageId }) => {
       return null;
     }
 
-    const contributorCounts = {};
+    const contributorScores = {}; // Track weighted scores
+    const contributorStats = {}; // Track detailed stats
     const anonymousContributors = {}; // Track anonymous by email
     const botUsername = config?.wiki?.botUsername || import.meta.env.VITE_WIKI_BOT_USERNAME;
+
+    // Scoring weights (configurable)
+    const COMMIT_WEIGHT = 10; // Each commit is worth 10 points
+    const ADDITION_WEIGHT = 0.5; // Each line added is worth 0.5 points
+    const DELETION_WEIGHT = 0.5; // Each line deleted is worth 0.5 points
 
     console.log('[StarContributor] Debug:', {
       botUsername,
       totalCommits: commits.length,
       firstCommit: commits[0],
+      weights: { COMMIT_WEIGHT, ADDITION_WEIGHT, DELETION_WEIGHT },
     });
 
     commits.forEach((commit) => {
       const username = commit.author?.username;
+      const stats = commit.stats || { additions: 0, deletions: 0, total: 0 };
 
       console.log('[StarContributor] Processing commit:', {
         username,
         isBotCommit: username === botUsername,
+        stats,
         messagePreview: commit.message?.substring(0, 100),
       });
+
+      // Calculate score for this commit
+      const commitScore = COMMIT_WEIGHT +
+        (stats.additions * ADDITION_WEIGHT) +
+        (stats.deletions * DELETION_WEIGHT);
 
       // Check if this is an anonymous contribution
       if (username === botUsername) {
@@ -69,7 +85,16 @@ const StarContributor = ({ sectionId, pageId }) => {
         console.log('[StarContributor] Anonymous data:', anonData);
         if (anonData) {
           const key = `anon:${anonData.email}`;
-          contributorCounts[key] = (contributorCounts[key] || 0) + 1;
+          contributorScores[key] = (contributorScores[key] || 0) + commitScore;
+
+          // Track detailed stats
+          if (!contributorStats[key]) {
+            contributorStats[key] = { commits: 0, additions: 0, deletions: 0 };
+          }
+          contributorStats[key].commits += 1;
+          contributorStats[key].additions += stats.additions;
+          contributorStats[key].deletions += stats.deletions;
+
           // Store display name for this anonymous contributor (use first one encountered)
           if (!anonymousContributors[key]) {
             anonymousContributors[key] = {
@@ -81,19 +106,28 @@ const StarContributor = ({ sectionId, pageId }) => {
         }
       } else if (username) {
         // Regular contributor
-        contributorCounts[username] = (contributorCounts[username] || 0) + 1;
+        contributorScores[username] = (contributorScores[username] || 0) + commitScore;
+
+        // Track detailed stats
+        if (!contributorStats[username]) {
+          contributorStats[username] = { commits: 0, additions: 0, deletions: 0 };
+        }
+        contributorStats[username].commits += 1;
+        contributorStats[username].additions += stats.additions;
+        contributorStats[username].deletions += stats.deletions;
       }
     });
 
-    console.log('[StarContributor] Contributor counts:', contributorCounts);
+    console.log('[StarContributor] Contributor scores:', contributorScores);
+    console.log('[StarContributor] Contributor stats:', contributorStats);
     console.log('[StarContributor] Anonymous contributors:', anonymousContributors);
 
-    // Find user/contributor with most commits
+    // Find user/contributor with highest score
     let topContrib = null;
-    let maxCommits = 0;
-    Object.entries(contributorCounts).forEach(([key, count]) => {
-      if (count > maxCommits) {
-        maxCommits = count;
+    let maxScore = 0;
+    Object.entries(contributorScores).forEach(([key, score]) => {
+      if (score > maxScore) {
+        maxScore = score;
 
         if (key.startsWith('anon:')) {
           // Anonymous contributor
@@ -113,7 +147,8 @@ const StarContributor = ({ sectionId, pageId }) => {
     if (topContrib) {
       console.log('StarContributor: Found top contributor', {
         contributor: topContrib.name,
-        commits: maxCommits
+        score: maxScore.toFixed(1),
+        stats: contributorStats[topContrib.username || `anon:${topContrib.email}`],
       });
     } else {
       console.log('StarContributor: No top contributor found');

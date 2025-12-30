@@ -389,29 +389,74 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       per_page: perPage,
     });
 
-    // Map commits to our format with a flat date field for filtering
-    const allCommits = data.map(commit => ({
-      sha: commit.sha,
-      message: commit.commit.message,
-      date: commit.commit.author.date, // Flat date field for filtering
-      author: {
-        name: commit.commit.author.name,
-        email: commit.commit.author.email,
-        date: commit.commit.author.date,
-        avatar: commit.author?.avatar_url,
-        username: commit.author?.login,
-        userId: commit.author?.id,
-      },
-      committer: {
-        name: commit.commit.committer.name,
-        date: commit.commit.committer.date,
-      },
-      url: commit.html_url,
-      parents: commit.parents,
-    }));
+    // Fetch detailed commit info including stats (additions/deletions) in parallel
+    const commitsWithStats = await Promise.all(
+      data.map(async (commit) => {
+        try {
+          // Fetch full commit details to get stats
+          const { data: commitDetails } = await octokit.rest.repos.getCommit({
+            owner,
+            repo,
+            ref: commit.sha,
+          });
+
+          return {
+            sha: commit.sha,
+            message: commit.commit.message,
+            date: commit.commit.author.date, // Flat date field for filtering
+            author: {
+              name: commit.commit.author.name,
+              email: commit.commit.author.email,
+              date: commit.commit.author.date,
+              avatar: commit.author?.avatar_url,
+              username: commit.author?.login,
+              userId: commit.author?.id,
+            },
+            committer: {
+              name: commit.commit.committer.name,
+              date: commit.commit.committer.date,
+            },
+            url: commit.html_url,
+            parents: commit.parents,
+            stats: {
+              additions: commitDetails.stats?.additions || 0,
+              deletions: commitDetails.stats?.deletions || 0,
+              total: commitDetails.stats?.total || 0,
+            },
+          };
+        } catch (err) {
+          // If fetching stats fails for a commit, return without stats
+          console.error(`Failed to fetch stats for commit ${commit.sha}:`, err);
+          return {
+            sha: commit.sha,
+            message: commit.commit.message,
+            date: commit.commit.author.date,
+            author: {
+              name: commit.commit.author.name,
+              email: commit.commit.author.email,
+              date: commit.commit.author.date,
+              avatar: commit.author?.avatar_url,
+              username: commit.author?.login,
+              userId: commit.author?.id,
+            },
+            committer: {
+              name: commit.commit.committer.name,
+              date: commit.commit.committer.date,
+            },
+            url: commit.html_url,
+            parents: commit.parents,
+            stats: {
+              additions: 0,
+              deletions: 0,
+              total: 0,
+            },
+          };
+        }
+      })
+    );
 
     // Filter commits by release date (respects VITE_RELEASE_DATE)
-    const commits = filterByReleaseDate(allCommits, 'date');
+    const commits = filterByReleaseDate(commitsWithStats, 'date');
 
     // Check if there are more pages
     // GitHub returns fewer than perPage if it's the last page

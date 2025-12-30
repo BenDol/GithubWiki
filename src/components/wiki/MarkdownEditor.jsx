@@ -244,14 +244,18 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           '&': {
             height: '100%',
             fontSize: '14px',
+            touchAction: 'manipulation', // Optimize touch interactions
           },
           '.cm-scroller': {
             overflow: 'auto',
             fontFamily: '"Fira Code", "Courier New", monospace',
+            WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
           },
           '.cm-content': {
             minHeight: '400px',
             padding: '10px 0',
+            userSelect: 'text', // Ensure text selection works on touch devices
+            WebkitUserSelect: 'text', // Safari support
           },
           '.cm-line': {
             padding: '0 12px',
@@ -707,25 +711,28 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     setWidgetVisible(false);
   };
 
-  // Add click listener to check for images
+  // Add click and touch listeners to check for images
   useEffect(() => {
     if (!editorRef.current) return;
 
-    const handleClick = () => {
+    const handleInteraction = () => {
       setTimeout(checkCursorOnImage, 50);
     };
 
     const element = editorRef.current;
-    element.addEventListener('click', handleClick);
+    // Support both mouse and touch events
+    element.addEventListener('click', handleInteraction);
+    element.addEventListener('touchend', handleInteraction);
 
     return () => {
-      element.removeEventListener('click', handleClick);
+      element.removeEventListener('click', handleInteraction);
+      element.removeEventListener('touchend', handleInteraction);
     };
   }, []);
 
   return (
     <>
-      <div className="h-full border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden relative">
+      <div className="h-full border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden relative" style={{ touchAction: 'manipulation' }}>
         <div ref={editorRef} className="h-full" />
       </div>
       {widgetVisible && createPortal(

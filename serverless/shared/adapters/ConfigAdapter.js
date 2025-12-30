@@ -89,12 +89,33 @@ export class ConfigAdapter {
    */
   _getDefaultConfig() {
     return {
+      wiki: {
+        title: 'Wiki',
+        repository: {
+          owner: process.env.WIKI_REPO_OWNER || process.env.VITE_WIKI_REPO_OWNER || '',
+          repo: process.env.WIKI_REPO_NAME || process.env.VITE_WIKI_REPO_NAME || '',
+          branch: 'main',
+          contentPath: 'public/content'
+        },
+        botUsername: process.env.WIKI_BOT_USERNAME || process.env.VITE_WIKI_BOT_USERNAME || ''
+      },
       storage: {
         backend: 'github',
         version: 'v1',
         github: {
-          owner: null, // Will be set from env
-          repo: null   // Will be set from env
+          owner: process.env.WIKI_REPO_OWNER || process.env.VITE_WIKI_REPO_OWNER || null,
+          repo: process.env.WIKI_REPO_NAME || process.env.VITE_WIKI_REPO_NAME || null
+        }
+      },
+      features: {
+        donation: {
+          enabled: true,
+          badge: {
+            enabled: true,
+            badge: '💎',
+            color: '#ffd700',
+            title: 'Donator'
+          }
         }
       }
     };

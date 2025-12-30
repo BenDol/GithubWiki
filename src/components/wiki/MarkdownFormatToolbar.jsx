@@ -251,7 +251,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
   };
 
   return (
-    <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative">
+    <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative" style={{ touchAction: 'manipulation' }}>
       {/* Toolbar Container - Split into scrollable left and pinned right on mobile */}
       <div className="flex items-center">
         {/* Left Section - Scrollable Format Buttons */}
@@ -273,7 +273,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
                   }
                   handleFormatClick(btn.action, btn.special);
                 }}
-                className={`p-2 rounded transition-colors flex-shrink-0 ${
+                className={`p-2 min-w-[44px] min-h-[44px] rounded transition-colors flex-shrink-0 flex items-center justify-center ${
                   btn.active ||
                   (btn.action === 'align' && showAlignmentPicker) ||
                   (btn.action === 'emoticon' && showEmoticonPicker)
@@ -297,7 +297,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
               e.stopPropagation();
               handleFormatClick('insert', true, e.currentTarget);
             }}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors text-sm font-medium flex-shrink-0 ${
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] rounded transition-colors text-sm font-medium flex-shrink-0 ${
               showInsertPicker
                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                 : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -316,7 +316,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
               e.stopPropagation();
               handleFormatClick('insert', true, e.currentTarget);
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded transition-colors text-sm font-medium flex-shrink-0 ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 min-h-[44px] rounded transition-colors text-sm font-medium flex-shrink-0 ${
               showInsertPicker
                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                 : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'

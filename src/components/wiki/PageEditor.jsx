@@ -18,7 +18,7 @@ import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegist
 import { getPicker, hasPicker, getAllPickers } from '../../utils/contentRendererRegistry';
 import { resolveShortcuts, getShortcutDisplayMap } from '../../utils/keyboardShortcutResolver';
 import { useEnhancedKeyboardShortcuts } from '../../hooks/useEnhancedKeyboardShortcuts';
-import { Image as ImageIcon, Database } from 'lucide-react';
+import { Image as ImageIcon, Database, Save } from 'lucide-react';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('PageEditor');
@@ -117,7 +117,9 @@ const PageEditor = ({
   pageId = null,
   isNewPage = false,
   onDraftLoaded = null,
-  onGetClearDraft = null
+  onGetClearDraft = null,
+  isAnonymousMode = false,
+  editingExistingPR = false
 }) => {
   // Fix any duplicate YAML keys before processing
   const fixedInitialContent = fixDuplicateYAMLKeys(initialContent || '');
@@ -843,16 +845,10 @@ const PageEditor = ({
     }
   };
 
-  const handleSave = () => {
-    logger.info('Save clicked', {
-      metadata,
-      contentLength: content.length,
-      contentPreview: content.substring(0, 500)
-    });
-
+  const performSaveValidation = () => {
     if (!content.trim()) {
       alert('Content cannot be empty');
-      return;
+      return null;
     }
 
     // Check if content has actually changed (using same normalization as unsaved changes detection)
@@ -863,7 +859,7 @@ const PageEditor = ({
 
     if (normalizeContent(content) === normalizeContent(initialContent)) {
       alert('No changes detected. Please make changes before saving.');
-      return;
+      return null;
     }
 
     // Run validation
@@ -874,7 +870,7 @@ const PageEditor = ({
       // Trigger shake animation
       setShakeValidationError(true);
       setTimeout(() => setShakeValidationError(false), 500);
-      return;
+      return null;
     }
 
     // CRITICAL: Final safety check - ensure content has valid frontmatter with metadata
@@ -890,7 +886,7 @@ const PageEditor = ({
       if (!parsed.data || Object.keys(parsed.data).length === 0) {
         alert('CRITICAL ERROR: No metadata found in content. Cannot save to prevent data loss.');
         logger.error('BLOCKED SAVE: No metadata in content', { content, metadata });
-        return;
+        return null;
       }
 
       if (!parsed.data.title?.trim()) {
@@ -900,26 +896,26 @@ const PageEditor = ({
           metadata,
           contentPreview: content.substring(0, 1000)
         });
-        return;
+        return null;
       }
 
       if (!parsed.data.category?.trim()) {
         alert('CRITICAL ERROR: Category is missing from metadata. Cannot save to prevent data loss.');
         logger.error('BLOCKED SAVE: Missing category', { parsedData: parsed.data, metadata });
-        return;
+        return null;
       }
 
       if (!Array.isArray(parsed.data.tags) || parsed.data.tags.length === 0) {
         alert('CRITICAL ERROR: Tags are missing from metadata. Cannot save to prevent data loss.');
         logger.error('BLOCKED SAVE: Missing tags', { parsedData: parsed.data, metadata });
-        return;
+        return null;
       }
 
       logger.debug('Final metadata validation passed', { parsedData: parsed.data });
     } catch (err) {
       alert('CRITICAL ERROR: Failed to parse frontmatter. Cannot save to prevent data loss.');
       logger.error('BLOCKED SAVE: Frontmatter parsing failed', { error: err });
-      return;
+      return null;
     }
 
     // Clean content before saving: trim the body but preserve frontmatter structure
@@ -937,7 +933,21 @@ const PageEditor = ({
       // If parsing fails, save the original content
     }
 
-    onSave?.(cleanedContent, editSummary);
+    return cleanedContent;
+  };
+
+  const handleSave = (stayInEditMode = false) => {
+    logger.info('Save clicked', {
+      stayInEditMode,
+      metadata,
+      contentLength: content.length,
+      contentPreview: content.substring(0, 500)
+    });
+
+    const cleanedContent = performSaveValidation();
+    if (!cleanedContent) return;
+
+    onSave?.(cleanedContent, editSummary, stayInEditMode);
   };
 
   // Handle cancel with confirmation if there are unsaved changes
@@ -1352,6 +1362,13 @@ const PageEditor = ({
         }
         break;
 
+      case 'save':
+        // Ctrl+S - Quick save if available (editing existing PR), otherwise regular save
+        // Quick save only available when: not in anonymous mode AND editing existing PR
+        const canQuickSave = !isAnonymousMode && editingExistingPR;
+        handleSave(canQuickSave); // true = stay in edit mode, false = exit after save
+        break;
+
       default:
         return;
     }
@@ -1726,10 +1743,29 @@ const PageEditor = ({
             <Button variant="secondary" size="sm" onClick={handleCancel} disabled={isSaving}>
               Cancel
             </Button>
+            {!isAnonymousMode && editingExistingPR && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSave(true)}
+                disabled={isSaving || !hasUnsavedChanges}
+                title={
+                  !hasUnsavedChanges
+                    ? 'No changes to save'
+                    : validationErrors.length > 0
+                      ? 'Click to view validation errors'
+                      : 'Save changes and continue editing (Ctrl+S)'
+                }
+                className="hidden sm:flex"
+              >
+                <Save className="w-4 h-4 mr-1.5" />
+                Quick Save
+              </Button>
+            )}
             <Button
               variant="primary"
               size="sm"
-              onClick={handleSave}
+              onClick={() => handleSave(false)}
               disabled={isSaving || !hasUnsavedChanges}
               title={
                 isConfiguringPR
@@ -1738,7 +1774,7 @@ const PageEditor = ({
                   ? 'No changes to save'
                   : validationErrors.length > 0
                     ? 'Click to view validation errors'
-                    : 'Save changes'
+                    : 'Save & Exit'
               }
             >
               {isConfiguringPR ? 'Configuring...' : isSaving ? 'Saving...' : 'Save Changes'}
@@ -2005,7 +2041,7 @@ const PageEditor = ({
 
             <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 ${
               viewMode === 'preview' ? 'p-6 md:p-8' : 'p-6'
-            }`}>
+            } ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
                   content={content}
