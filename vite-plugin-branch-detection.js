@@ -76,16 +76,26 @@ export function branchDetectionPlugin() {
           // If git returns "HEAD" (detached state), try to get the actual branch
           if (branch === 'HEAD') {
             try {
-              // Try to get branch from git symbolic-ref
-              branch = execSync('git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --abbrev-ref HEAD', {
+              // Try to get branch from git symbolic-ref (suppress errors via Node.js)
+              branch = execSync('git symbolic-ref --short HEAD', {
                 encoding: 'utf-8',
                 cwd: join(__dirname, '..'),
+                stdio: ['pipe', 'pipe', 'ignore'], // Ignore stderr (cross-platform)
               }).trim();
             } catch (e) {
-              // Still HEAD, use a default
-              console.warn('[Branch Detection] Git in detached HEAD state, defaulting to "main"');
-              branch = 'main';
-              source = 'default-fallback';
+              // Fallback to rev-parse if symbolic-ref fails
+              try {
+                branch = execSync('git rev-parse --abbrev-ref HEAD', {
+                  encoding: 'utf-8',
+                  cwd: join(__dirname, '..'),
+                  stdio: ['pipe', 'pipe', 'ignore'], // Ignore stderr (cross-platform)
+                }).trim();
+              } catch (e2) {
+                // Still HEAD, use a default
+                console.warn('[Branch Detection] Git in detached HEAD state, defaulting to "main"');
+                branch = 'main';
+                source = 'default-fallback';
+              }
             }
           }
         }

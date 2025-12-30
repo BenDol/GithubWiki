@@ -40,3 +40,6 @@ public/search-index.json
 Thumbs.db
 coverage/
 *.log
+
+# Windows null file (created by incorrect shell redirects)
+nul
