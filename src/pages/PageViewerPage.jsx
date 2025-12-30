@@ -481,8 +481,8 @@ const PageViewerPage = ({ sectionId }) => {
         {/* Main content */}
         <div className="flex-1 min-w-0 space-y-12">
           <div className="relative">
-            {/* Page ID display - top right corner */}
-            {metadata?.id && (
+            {/* Page ID display - top right corner (dev mode only) */}
+            {metadata?.id && import.meta.env.DEV && (
               <div className="absolute top-0 right-0 z-10 hidden md:block">
                 <span className="inline-block px-2 py-1 text-xs text-gray-400 dark:text-gray-600 font-mono bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700">
                   {metadata.id}
