@@ -138,6 +138,10 @@ export default {
                 color: '#e5e7eb',
               },
             },
+            // Underline styling
+            u: {
+              textDecoration: 'underline',
+            },
           },
         },
         dark: {
@@ -204,6 +208,10 @@ export default {
             blockquote: {
               color: '#d1d5db',
               borderLeftColor: '#4b5563',
+            },
+            // Underline styling
+            u: {
+              textDecoration: 'underline',
             },
           },
         },

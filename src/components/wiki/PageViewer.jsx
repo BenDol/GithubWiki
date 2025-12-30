@@ -102,6 +102,7 @@ const sanitizeSchema = {
     ...(defaultSchema.tagNames || []),
     'span',
     'div',
+    'u', // Allow underline tags
   ],
 };
 
