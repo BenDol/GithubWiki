@@ -77,6 +77,15 @@ html {
   /* No default styles - let images render naturally */
 }
 
+.markdown-content u {
+  text-decoration: underline;
+}
+
+/* Underline support for prose content */
+.prose u {
+  text-decoration: underline;
+}
+
 /* Toast animations */
 @keyframes slide-in {
   from {

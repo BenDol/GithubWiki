@@ -594,6 +594,24 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     setWidgetVisible(false);
   };
 
+  // Delete image entirely
+  const handleDeleteImage = () => {
+    if (!viewRef.current || !currentImageInfo) return;
+
+    const view = viewRef.current;
+
+    // Delete the image by replacing it with empty string
+    view.dispatch({
+      changes: {
+        from: currentImageInfo.start,
+        to: currentImageInfo.end,
+        insert: ''
+      }
+    });
+
+    setWidgetVisible(false);
+  };
+
   // Update image dimensions
   const handleUpdateDimensions = (width, height) => {
     if (!viewRef.current || !currentImageInfo) return;
@@ -718,6 +736,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           currentHeight={currentImageInfo?.height}
           onUpdate={handleUpdateDimensions}
           onClose={() => setWidgetVisible(false)}
+          onDelete={handleDeleteImage}
         />,
         document.body
       )}

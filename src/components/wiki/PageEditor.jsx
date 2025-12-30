@@ -141,6 +141,7 @@ const PageEditor = ({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [boldActive, setBoldActive] = useState(false);
   const [italicActive, setItalicActive] = useState(false);
+  const [underlineActive, setUnderlineActive] = useState(false);
   const [savedSelection, setSavedSelection] = useState(null);
 
   // Debug: Track showColorPicker state changes
@@ -1179,6 +1180,35 @@ const PageEditor = ({
         }
         break;
 
+      case 'underline':
+        // Handle HTML underline tags
+        {
+          const content = api.getContent();
+          const { from, to, empty } = selection;
+
+          // Check if selection is already wrapped with <u> tags
+          const beforeStart = Math.max(0, from - 3);
+          const afterEnd = Math.min(content.length, to + 4);
+          const before = content.substring(beforeStart, from);
+          const after = content.substring(to, afterEnd);
+
+          if (before.endsWith('<u>') && after.startsWith('</u>')) {
+            // Remove the tags
+            api.replaceRange(afterEnd - 4, afterEnd, '');
+            api.replaceRange(beforeStart, from, '');
+          } else if (empty) {
+            // Toggle mode - insert empty tags
+            setUnderlineActive(!underlineActive);
+            if (!underlineActive) {
+              api.insertAtCursor('<u></u>');
+            }
+          } else {
+            // Wrap selection
+            api.replaceSelection(`<u>${selection.text}</u>`);
+          }
+        }
+        break;
+
       case 'h1':
         {
           const line = api.getCurrentLine();
@@ -1867,6 +1897,7 @@ const PageEditor = ({
             colorButtonRef={colorButtonRef}
             boldActive={boldActive}
             italicActive={italicActive}
+            underlineActive={underlineActive}
             emoticonMap={emoticonMap}
             shortcutDisplayMap={shortcutDisplayMap}
           />

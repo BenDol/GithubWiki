@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote, Table, Palette, AlignLeft, AlignCenter, AlignRight, X, Smile, Plus } from 'lucide-react';
+import { Bold, Italic, Underline, Link, List, ListOrdered, Code, Heading1, Heading2, Quote, Table, Palette, AlignLeft, AlignCenter, AlignRight, X, Smile, Plus } from 'lucide-react';
 
 /**
  * MarkdownFormatToolbar - Toolbar for markdown formatting and content insertion
@@ -20,7 +20,7 @@ import { Bold, Italic, Link, List, ListOrdered, Code, Heading1, Heading2, Quote,
  * - emoticonMap: Map of emoticon IDs to names (optional, for custom emoticons)
  * - shortcutDisplayMap: Map of action -> shortcut display string (e.g., "Ctrl+B")
  */
-const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false, emoticonMap = null, shortcutDisplayMap = {} }) => {
+const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, colorButtonRef, boldActive = false, italicActive = false, underlineActive = false, emoticonMap = null, shortcutDisplayMap = {} }) => {
   const internalColorButtonRef = useRef(null);
   const alignButtonRef = useRef(null);
   const alignDropdownRef = useRef(null);
@@ -62,6 +62,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
   const formatButtons = [
     { icon: Bold, label: 'Bold', action: 'bold', active: boldActive },
     { icon: Italic, label: 'Italic', action: 'italic', active: italicActive },
+    { icon: Underline, label: 'Underline', action: 'underline', active: underlineActive },
     { icon: Heading1, label: 'Heading 1', action: 'h1' },
     { icon: Heading2, label: 'Heading 2', action: 'h2' },
     { icon: List, label: 'Bullet List', action: 'ul' },
