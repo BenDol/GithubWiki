@@ -106,7 +106,7 @@ export default function AchievementUnlockedToast() {
   if (!definitions) return null;
 
   return (
-    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
+    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-[10000] pointer-events-none">
       <div className="flex flex-col-reverse gap-3 items-center">
         {toasts.map((achievement) => {
           const definition = definitions.achievements.find(a => a.id === achievement.id);
