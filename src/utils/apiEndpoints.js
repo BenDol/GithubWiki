@@ -15,6 +15,12 @@
  * @returns {'netlify' | 'cloudflare' | 'dev'} - Current platform
  */
 function detectPlatform() {
+  // Serverless context detection (no import.meta in Workers/Functions)
+  if (typeof import.meta === 'undefined' || !import.meta.env) {
+    // In serverless context, default to cloudflare (can be overridden)
+    return 'cloudflare';
+  }
+
   // Development mode
   if (import.meta.env.DEV) {
     return 'dev';
@@ -169,7 +175,7 @@ export function isDevelopment() {
 // ===== DEBUG =====
 
 // Log platform detection in development
-if (import.meta.env.DEV) {
+if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
   console.log('[Framework API Endpoints] Platform detected:', detectPlatform());
   console.log('[Framework API Endpoints] Functions base URL:', getFunctionsBaseUrl());
   console.log('[Framework API Endpoints] OAuth base URL:', getOAuthBaseUrl());

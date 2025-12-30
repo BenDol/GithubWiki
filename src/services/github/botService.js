@@ -12,9 +12,21 @@ import { retryPlugin } from './octokitRetryPlugin.js';
 import { getGithubBotEndpoint, getCreateCommentIssueEndpoint } from '../../utils/apiEndpoints.js';
 import { createUserIdLabel } from '../../utils/githubLabelUtils.js';
 
+// Helper to safely check environment (works in both browser and serverless contexts)
+const isDev = () => {
+  return typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
+};
+
+const getEnv = (key) => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
+
 // Development-only imports - tree-shaken in production builds
 let Octokit;
-if (import.meta.env.DEV) {
+if (isDev()) {
   // Only import Octokit in development mode
   const module = await import('octokit');
   Octokit = module.Octokit;
@@ -26,11 +38,11 @@ if (import.meta.env.DEV) {
  */
 const createIssueDirectly = async (owner, repo, title, body, labels, preventDuplicates = false) => {
   // This entire function is removed from production builds by Vite
-  if (!import.meta.env.DEV) {
+  if (!isDev()) {
     throw new Error('Direct API calls are disabled in production builds');
   }
 
-  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
 
   if (!botToken) {
     throw new Error('Bot token not configured. Add VITE_WIKI_BOT_TOKEN to .env.local for local development.');
@@ -56,7 +68,7 @@ const createIssueDirectly = async (owner, repo, title, body, labels, preventDupl
     });
 
     // Filter to only bot-created issues
-    const botLogin = import.meta.env.VITE_WIKI_BOT_USERNAME;
+    const botLogin = getEnv("VITE_WIKI_BOT_USERNAME");
     const botIssues = existingIssues.filter(issue => issue.user.login === botLogin);
 
     // If issue already exists, return it instead of creating duplicate
@@ -118,8 +130,8 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
     const requestedByUserId = currentUser?.id || null;
 
     // Development mode: Try direct API call first (if token available), then fall back to function
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call');
@@ -169,11 +181,11 @@ export const createCommentIssueWithBot = async (owner, repo, title, body, labels
  * Update issue directly with bot token (DEVELOPMENT ONLY - TREE-SHAKEN IN PRODUCTION)
  */
 const updateIssueDirectly = async (owner, repo, issueNumber, body) => {
-  if (!import.meta.env.DEV) {
+  if (!isDev()) {
     throw new Error('Direct API calls are disabled in production builds');
   }
 
-  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
 
   if (!botToken) {
     throw new Error('Bot token not configured. Add VITE_WIKI_BOT_TOKEN to .env.local for local development.');
@@ -210,11 +222,11 @@ const updateIssueDirectly = async (owner, repo, issueNumber, body) => {
  * Lock issue directly with bot token (DEVELOPMENT ONLY - TREE-SHAKEN IN PRODUCTION)
  */
 const lockIssueDirectly = async (owner, repo, issueNumber) => {
-  if (!import.meta.env.DEV) {
+  if (!isDev()) {
     throw new Error('Direct API calls are disabled in production builds');
   }
 
-  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
 
   if (!botToken) {
     throw new Error('Bot token not configured. Add VITE_WIKI_BOT_TOKEN to .env.local for local development.');
@@ -261,8 +273,8 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
     }
 
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for admin issue');
@@ -335,8 +347,8 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
     }
 
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for admin issue update');
@@ -391,13 +403,13 @@ export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) =>
 export const createCommentOnIssueWithBot = async (owner, repo, issueNumber, body) => {
   try {
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for comment');
 
-        const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+        const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
         const OctokitWithRetry = Octokit.plugin(retryPlugin);
         const octokit = new OctokitWithRetry({
           auth: botToken,
@@ -464,8 +476,8 @@ export const createCommentOnIssueWithBot = async (owner, repo, issueNumber, body
 export const updateIssueWithBot = async (owner, repo, issueNumber, body) => {
   try {
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for issue update');
@@ -576,11 +588,11 @@ export const isBotAvailable = async () => {
  * Save or update user snapshot issue with bot token (DEVELOPMENT ONLY)
  */
 const saveUserSnapshotDirectly = async (owner, repo, username, snapshotData, existingIssueNumber = null) => {
-  if (!import.meta.env.DEV) {
+  if (!isDev()) {
     throw new Error('Direct API calls are disabled in production builds');
   }
 
-  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
   if (!botToken) {
     throw new Error('Bot token not configured');
   }
@@ -673,8 +685,8 @@ export const saveUserSnapshotWithBot = async (owner, repo, username, snapshotDat
     }
 
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for user snapshot');
@@ -723,11 +735,11 @@ export const saveUserSnapshotWithBot = async (owner, repo, username, snapshotDat
  * Create issue report directly with bot token (DEVELOPMENT ONLY)
  */
 const createIssueReportDirectly = async (report) => {
-  if (!import.meta.env.DEV) {
+  if (!isDev()) {
     throw new Error('Direct API calls are disabled in production builds');
   }
 
-  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
   if (!botToken) {
     throw new Error('Bot token not configured');
   }
@@ -809,8 +821,8 @@ export const createIssueReport = async (report) => {
     };
 
     // Development mode: Try direct API call first
-    if (import.meta.env.DEV) {
-      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+    if (isDev()) {
+      const hasLocalToken = !!getEnv("VITE_WIKI_BOT_TOKEN");
 
       if (hasLocalToken) {
         console.log('[Bot Service] Development mode: Using direct API call for issue report');
