@@ -12,7 +12,8 @@ import {
   validateDisplayName,
   validateDisplayNameFormat,
   canChangeDisplayName,
-  getDaysUntilNextChange
+  getDaysUntilNextChange,
+  getDisplayNameData
 } from '../../services/displayNames';
 import {
   DISPLAY_NAME_MAX_LENGTH,
@@ -34,25 +35,22 @@ export function DisplayNameEditor({ currentDisplayName, onUpdate }) {
   const [canChange, setCanChange] = useState(true);
 
   useEffect(() => {
-    // Load current display name data
-    const loadDisplayNameData = async () => {
+    // Load current display name data (uses cached service)
+    const loadDisplayNameInfo = async () => {
       if (!user || !user.id) return;
 
       try {
-        const response = await fetch(`/api/display-name?userId=${user.id}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.displayName) {
-            setLastChangedInfo(data.displayName);
-            setCanChange(canChangeDisplayName(data.displayName.lastChanged));
-          }
+        const displayNameData = await getDisplayNameData(user.id);
+        if (displayNameData) {
+          setLastChangedInfo(displayNameData);
+          setCanChange(canChangeDisplayName(displayNameData.lastChanged));
         }
       } catch (error) {
         logger.error('Failed to load display name data', { error });
       }
     };
 
-    loadDisplayNameData();
+    loadDisplayNameInfo();
   }, [user]);
 
   const handleEditClick = () => {

@@ -25,34 +25,50 @@ const DISPLAY_NAME_CACHE_TTL = 86400000; // 24 hours
 const REGISTRY_CACHE_TTL = 60000; // 1 minute for full registry
 
 /**
- * Get display name for a user
+ * Get display name data with metadata for a user
  * @param {number} userId - GitHub user ID
- * @returns {Promise<string|null>} Display name or null if not set
+ * @returns {Promise<Object|null>} Display name data object (displayName, lastChanged, etc.) or null if not set
  */
-export async function getDisplayName(userId) {
+export async function getDisplayNameData(userId) {
   try {
     // Check cache first
-    const cacheKey = cacheName('display_name', userId);
+    const cacheKey = cacheName('display_name_data', userId);
     const cached = getCacheValue(cacheKey);
     if (cached !== null) {
-      logger.debug('Display name cache hit', { userId });
+      logger.debug('Display name data cache hit', { userId });
       return cached;
     }
 
     // Fetch from API
     const response = await fetch(`${getDisplayNameEndpoint()}?userId=${userId}`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch display name: ${response.status}`);
+      throw new Error(`Failed to fetch display name data: ${response.status}`);
     }
 
     const data = await response.json();
-    const displayName = data.displayName?.displayName || null;
+    const displayNameData = data.displayName || null;
 
-    // Cache result
-    setCacheValue(cacheKey, displayName, DISPLAY_NAME_CACHE_TTL);
+    // Cache result (full data object)
+    setCacheValue(cacheKey, displayNameData, DISPLAY_NAME_CACHE_TTL);
 
-    logger.debug('Fetched display name', { userId, displayName });
-    return displayName;
+    logger.debug('Fetched display name data', { userId, hasData: !!displayNameData });
+    return displayNameData;
+  } catch (error) {
+    logger.error('Failed to get display name data', { userId, error });
+    return null;
+  }
+}
+
+/**
+ * Get display name for a user
+ * @param {number} userId - GitHub user ID
+ * @returns {Promise<string|null>} Display name or null if not set
+ */
+export async function getDisplayName(userId) {
+  try {
+    // Use getDisplayNameData and extract just the display name string
+    const displayNameData = await getDisplayNameData(userId);
+    return displayNameData?.displayName || null;
   } catch (error) {
     logger.error('Failed to get display name', { userId, error });
     return null;
@@ -142,6 +158,7 @@ export async function setDisplayName(userId, username, displayName, token) {
 
     // Clear caches
     clearCacheValue(cacheName('display_name', userId));
+    clearCacheValue(cacheName('display_name_data', userId));
     clearCacheValue(cacheName('display_name_registry', 'all'));
 
     logger.info('Display name set successfully', { userId, displayName });
@@ -278,6 +295,7 @@ export async function resetDisplayName(userId, adminToken) {
 
     // Clear caches
     clearCacheValue(cacheName('display_name', userId));
+    clearCacheValue(cacheName('display_name_data', userId));
     clearCacheValue(cacheName('display_name_registry', 'all'));
 
     logger.info('Display name reset successfully', { userId });
@@ -321,6 +339,7 @@ export async function banDisplayName(userId, displayName, adminToken) {
 
     // Clear caches
     clearCacheValue(cacheName('display_name', userId));
+    clearCacheValue(cacheName('display_name_data', userId));
     clearCacheValue(cacheName('display_name_registry', 'all'));
 
     logger.info('Display name banned successfully', { userId, displayName });
