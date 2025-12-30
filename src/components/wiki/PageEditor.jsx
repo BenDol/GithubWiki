@@ -669,11 +669,9 @@ const PageEditor = ({
     // Extract only the body without frontmatter
     try {
       const parsed = matter(content);
-      // CRITICAL: Strip trailing newlines from body to match what matter.stringify() will produce
-      // This prevents the infinite newline-adding loop when typing at the end of the file
-      // We preserve internal empty lines and whitespace, just not trailing ones
-      const body = parsed.content.replace(/\n+$/, '');
-      return body;
+      // Return content as-is during editing - no trimming
+      // Trimming only happens on save
+      return parsed.content;
     } catch (err) {
       return content;
     }
@@ -707,11 +705,13 @@ const PageEditor = ({
           }
         }
 
-        // CRITICAL: Remove trailing newlines from body before stringify
-        // matter.stringify() adds its own trailing newline, which causes the editor
-        // to add a new line per character when typing at the end of the file
-        const cleanedBody = newContent.replace(/\n+$/, '');
-        const fullContent = matter.stringify(cleanedBody, mergedMetadata);
+        // CRITICAL FIX: Don't call matter.stringify() on every keystroke!
+        // matter.stringify() always adds a trailing newline, which causes the accumulation issue
+        // Instead, reconstruct the content manually by keeping the existing frontmatter
+        // and just updating the body content
+        const currentParsedContent = matter(content);
+        const frontmatterBlock = content.substring(0, content.indexOf('---', 4) + 3);
+        const fullContent = frontmatterBlock + '\n' + newContent;
 
         setContent(fullContent);
       } catch (err) {

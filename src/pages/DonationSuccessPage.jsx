@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, CheckCircle, Star, Users, Home, User } from 'lucide-react';
 import { useWikiConfig } from '../hooks/useWikiConfig';
@@ -9,6 +9,11 @@ const DonationSuccessPage = () => {
   const { config } = useWikiConfig();
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
+
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   if (!config) return null;
 
