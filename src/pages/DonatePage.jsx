@@ -1,17 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Heart, Coffee, Server, Zap, Users, ChevronRight } from 'lucide-react';
 import { useWikiConfig } from '../hooks/useWikiConfig';
+import { useAuthStore } from '../store/authStore';
 import { Helmet } from 'react-helmet-async';
 
 const DonatePage = () => {
   const { config } = useWikiConfig();
+  const { isAuthenticated, user } = useAuthStore();
+  const navigate = useNavigate();
   const [selectedAmount, setSelectedAmount] = useState(null);
   const [customAmount, setCustomAmount] = useState('');
+  const [githubUsername, setGithubUsername] = useState('');
+  const [paypalLoaded, setPaypalLoaded] = useState(false);
+  const [paypalError, setPaypalError] = useState(null);
+  const paypalButtonRef = useRef(null);
+
+  // Pre-fill GitHub username if authenticated
+  useEffect(() => {
+    if (isAuthenticated && user?.login) {
+      setGithubUsername(user.login);
+    }
+  }, [isAuthenticated, user]);
 
   if (!config) return null;
 
   const donationConfig = config.features?.donation || {};
   const donationMethods = donationConfig.methods || {};
+  const badgeEnabled = donationConfig.badge?.enabled;
+  const paypalConfig = donationMethods.paypal || {};
+
+  // Get PayPal Client ID from config or environment
+  const paypalClientId = paypalConfig.clientId || import.meta.env.VITE_PAYPAL_CLIENT_ID;
+  // Get fallback URL (paypal.me for when SDK fails)
+  const paypalFallbackUrl = paypalConfig.fallbackUrl || paypalConfig.url;
 
   // Preset donation amounts (configurable via wiki-config)
   const donationAmounts = donationConfig.amounts || [
@@ -58,6 +80,118 @@ const DonatePage = () => {
     Heart
   };
 
+  // Load PayPal SDK
+  useEffect(() => {
+    if (!paypalConfig.enabled || !paypalClientId) {
+      return;
+    }
+
+    // Check if PayPal SDK is already loaded
+    if (window.paypal) {
+      setPaypalLoaded(true);
+      return;
+    }
+
+    // Load PayPal SDK script
+    const script = document.createElement('script');
+    script.src = `https://www.paypal.com/sdk/js?client-id=${paypalClientId}&currency=USD`;
+    script.async = true;
+    script.onload = () => {
+      console.log('[Donate] PayPal SDK loaded');
+      setPaypalLoaded(true);
+    };
+    script.onerror = () => {
+      console.error('[Donate] Failed to load PayPal SDK');
+      setPaypalError('Failed to load PayPal. Please refresh the page.');
+    };
+
+    document.body.appendChild(script);
+
+    return () => {
+      // Cleanup script on unmount
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [paypalConfig.enabled, paypalClientId]);
+
+  // Render PayPal button when SDK is loaded
+  useEffect(() => {
+    if (!paypalLoaded || !window.paypal || !paypalButtonRef.current) {
+      return;
+    }
+
+    // Clear existing buttons
+    paypalButtonRef.current.innerHTML = '';
+
+    const amount = selectedAmount || parseFloat(customAmount) || 5;
+
+    // Check if username is required
+    if (badgeEnabled && !githubUsername.trim()) {
+      console.log('[Donate] Waiting for GitHub username');
+      return;
+    }
+
+    console.log('[Donate] Rendering PayPal button', { amount, username: githubUsername });
+
+    try {
+      window.paypal.Buttons({
+        style: {
+          layout: 'vertical',
+          color: 'gold',
+          shape: 'rect',
+          label: 'donate'
+        },
+
+        createOrder: async (data, actions) => {
+          console.log('[Donate] Creating PayPal order', { amount, username: githubUsername });
+
+          return actions.order.create({
+            purchase_units: [{
+              amount: {
+                value: amount.toFixed(2),
+                currency_code: 'USD'
+              },
+              description: `Donation to ${config.wiki.title}`,
+              custom_id: githubUsername.trim() || 'anonymous', // THIS is how we pass the username!
+            }],
+            application_context: {
+              brand_name: config.wiki.title || 'Wiki',
+              shipping_preference: 'NO_SHIPPING'
+            }
+          });
+        },
+
+        onApprove: async (data, actions) => {
+          console.log('[Donate] Payment approved', data);
+
+          // Capture the payment
+          const order = await actions.order.capture();
+          console.log('[Donate] Payment captured', order);
+
+          // Redirect to success page
+          navigate('/donation-success');
+        },
+
+        onError: (err) => {
+          console.error('[Donate] PayPal error', err);
+          alert('Payment failed. Please try again or contact support.');
+        },
+
+        onCancel: (data) => {
+          console.log('[Donate] Payment cancelled', data);
+          // User cancelled, do nothing
+        }
+      }).render(paypalButtonRef.current);
+
+      console.log('[Donate] PayPal button rendered successfully');
+    } catch (error) {
+      console.error('[Donate] Failed to render PayPal button', error);
+      setPaypalError('Failed to initialize PayPal button. Please refresh the page.');
+    }
+  }, [paypalLoaded, selectedAmount, customAmount, githubUsername, badgeEnabled, config, navigate]);
+
+  // Handle other payment methods (Stripe, Ko-fi)
   const handleDonate = (method) => {
     const methodConfig = donationMethods[method];
     if (!methodConfig || !methodConfig.enabled) {
@@ -70,44 +204,14 @@ const DonatePage = () => {
 
     // Handle different URL formats for amount pre-filling
     if (url.includes('{amount}')) {
-      // Generic placeholder format: https://example.com/donate?amount={amount}
       url = url.replace('{amount}', amount.toFixed(2));
-    } else if (method === 'paypal') {
-      if (url.includes('paypal.me/')) {
-        // PayPal.me format: https://paypal.me/username/10.00
-        url = url.replace(/\/$/, ''); // Remove trailing slash
-        url = `${url}/${amount.toFixed(2)}`;
-      } else if (url.includes('paypal.com/donate')) {
-        // PayPal Donate Button: https://www.paypal.com/donate/?hosted_button_id=XXX&amount=10.00
-        const separator = url.includes('?') ? '&' : '?';
-        url = `${url}${separator}amount=${amount.toFixed(2)}`;
-      }
     } else if (method === 'stripe') {
       if (url.includes('donate.stripe.com/')) {
-        // Stripe Payment Links don't support URL parameters for amount pre-filling
-        // Users must select amount on Stripe's page
-        // Keep URL as-is
         console.log('[Donate] Stripe Payment Links do not support pre-filled amounts');
-      } else if (url.includes('buy.stripe.com/')) {
-        // Stripe Checkout doesn't support URL amount parameters either
-        // Keep URL as-is
-        console.log('[Donate] Stripe Checkout links do not support pre-filled amounts');
-      } else if (url.includes('checkout.stripe.com/')) {
-        // Stripe Checkout Session - amount is pre-configured on the backend
-        // Keep URL as-is
-        console.log('[Donate] Stripe Checkout Session has pre-configured amount');
       }
     } else if (method === 'kofi') {
-      if (url.includes('ko-fi.com/')) {
-        // Ko-fi does not support amount pre-filling via URL parameters
-        // Users must select the amount on Ko-fi's donation page
-        // Keep URL as-is
-      } else if (url.includes('buymeacoffee.com/')) {
-        // Buy Me a Coffee supports amount parameter (in their currency unit)
-        // Format: https://buymeacoffee.com/username?amount=10
+      if (url.includes('buymeacoffee.com/')) {
         const separator = url.includes('?') ? '&' : '?';
-        // Buy Me a Coffee uses whole numbers representing their "coffee" units
-        // Default is 1 coffee = $5, so divide by 5 to get coffee count
         const coffeeCount = Math.max(1, Math.round(amount / 5));
         url = `${url}${separator}amount=${coffeeCount}`;
       }
@@ -210,7 +314,7 @@ const DonatePage = () => {
             </div>
 
             {/* Custom Amount */}
-            <div className="mb-8">
+            <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Or enter a custom amount:
               </label>
@@ -233,11 +337,106 @@ const DonatePage = () => {
               </div>
             </div>
 
+            {/* GitHub Username (for automatic badge assignment) */}
+            {badgeEnabled && (
+              <div className="mb-8">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  GitHub Username {badgeEnabled && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  placeholder="YourGitHubUsername"
+                  value={githubUsername}
+                  onChange={(e) => setGithubUsername(e.target.value)}
+                  disabled={isAuthenticated}
+                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:bg-gray-700 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {isAuthenticated ? (
+                    <>💎 Signed in as {githubUsername} - Your donator badge will be assigned automatically!</>
+                  ) : (
+                    <>💎 Required for automatic donator badge assignment. Don't have an account? You can still donate!</>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Payment Methods */}
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 Choose Payment Method:
               </h3>
+
+              {/* PayPal Smart Button (with fallback) */}
+              {paypalConfig.enabled && (
+                <div>
+                  {/* Show fallback button if SDK failed OR no clientId configured */}
+                  {(paypalError || !paypalClientId) && paypalFallbackUrl ? (
+                    <div>
+                      {paypalError && (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-yellow-800 dark:text-yellow-200 text-sm">
+                          <strong>Note:</strong> PayPal Smart Buttons unavailable. Using fallback donation link.
+                          {badgeEnabled && <span className="block mt-1">💎 Donator badges will be assigned manually by admins.</span>}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          const amount = selectedAmount || parseFloat(customAmount) || 5;
+                          let url = paypalFallbackUrl;
+
+                          // Add amount to paypal.me URL
+                          if (url.includes('paypal.me/')) {
+                            url = url.replace(/\/$/, '');
+                            url = `${url}/${amount.toFixed(2)}`;
+                          }
+
+                          window.open(url, '_blank');
+                        }}
+                        disabled={!selectedAmount && !customAmount}
+                        className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-4 px-6 rounded-xl shadow-lg transition-all transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-between group"
+                      >
+                        <span className="flex items-center space-x-3">
+                          <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/>
+                          </svg>
+                          <span>Donate with PayPal</span>
+                        </span>
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  ) : paypalClientId && !paypalError ? (
+                    /* Smart Buttons (when SDK loaded successfully) */
+                    <div>
+                      {!paypalLoaded && (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
+                          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading PayPal...</span>
+                        </div>
+                      )}
+
+                      {paypalLoaded && (!selectedAmount && !customAmount) && (
+                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-yellow-800 dark:text-yellow-200 text-sm text-center">
+                          Please select or enter a donation amount above
+                        </div>
+                      )}
+
+                      {paypalLoaded && badgeEnabled && !githubUsername.trim() && (selectedAmount || customAmount) && (
+                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-yellow-800 dark:text-yellow-200 text-sm text-center">
+                          Please enter your GitHub username above to continue
+                        </div>
+                      )}
+
+                      <div ref={paypalButtonRef} className="min-h-[150px]"></div>
+                    </div>
+                  ) : (
+                    /* No PayPal configured at all */
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-600 dark:text-gray-400 text-sm text-center">
+                      PayPal donations are not configured. Please contact the wiki admin.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Stripe */}
               {donationMethods.stripe?.enabled && (
@@ -251,23 +450,6 @@ const DonatePage = () => {
                       <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
                     </svg>
                     <span>Pay with Stripe</span>
-                  </span>
-                  <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              )}
-
-              {/* PayPal */}
-              {donationMethods.paypal?.enabled && (
-                <button
-                  onClick={() => handleDonate('paypal')}
-                  disabled={!selectedAmount && !customAmount}
-                  className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-4 px-6 rounded-xl shadow-lg transition-all transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-between group"
-                >
-                  <span className="flex items-center space-x-3">
-                    <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/>
-                    </svg>
-                    <span>Pay with PayPal</span>
                   </span>
                   <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>

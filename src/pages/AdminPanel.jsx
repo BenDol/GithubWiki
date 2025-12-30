@@ -11,6 +11,9 @@ import {
   removeAdmin,
   banUser,
   unbanUser,
+  getAllDonators,
+  assignDonatorBadge,
+  removeDonatorBadge,
 } from '../services/adminActions';
 
 /**
@@ -27,8 +30,10 @@ const AdminPanel = () => {
   const [adminStatus, setAdminStatus] = useState({ isOwner: false, isAdmin: false, username: null });
   const [admins, setAdmins] = useState([]);
   const [bannedUsers, setBannedUsers] = useState([]);
+  const [reportedIssues, setReportedIssues] = useState([]);
+  const [issuesLoading, setIssuesLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('banned-users'); // 'banned-users' or 'admins'
+  const [activeTab, setActiveTab] = useState('banned-users'); // 'banned-users', 'admins', 'reported-issues', or 'donators'
 
   // Ban user form
   const [banUsername, setBanUsername] = useState('');
@@ -38,6 +43,13 @@ const AdminPanel = () => {
   // Add admin form
   const [addAdminUsername, setAddAdminUsername] = useState('');
   const [addAdminLoading, setAddAdminLoading] = useState(false);
+
+  // Donator management
+  const [donators, setDonators] = useState([]);
+  const [donatorUsername, setDonatorUsername] = useState('');
+  const [donatorAmount, setDonatorAmount] = useState('');
+  const [donatorReason, setDonatorReason] = useState('');
+  const [donatorLoading, setDonatorLoading] = useState(false);
 
   useEffect(() => {
     // Wait for auth to finish loading before checking access
@@ -98,6 +110,20 @@ const AdminPanel = () => {
     checkAccess();
   }, [config, isAuthenticated, authLoading, navigate]);
 
+  // Load donators when tab is active
+  useEffect(() => {
+    if (activeTab === 'donators' && config) {
+      loadDonators();
+    }
+  }, [activeTab, config]);
+
+  // Load reported issues when tab is active
+  useEffect(() => {
+    if (activeTab === 'reported-issues' && config) {
+      loadReportedIssues();
+    }
+  }, [activeTab, config]);
+
   const loadData = async () => {
     try {
       const [adminsData, bannedData] = await Promise.all([
@@ -109,6 +135,86 @@ const AdminPanel = () => {
     } catch (error) {
       console.error('Failed to load admin data:', error);
       alert('❌ Failed to load data: ' + error.message);
+    }
+  };
+
+  const loadDonators = async () => {
+    try {
+      const donatorsData = await getAllDonators();
+      setDonators(donatorsData);
+    } catch (error) {
+      console.error('Failed to load donators:', error);
+      alert('❌ Failed to load donators: ' + error.message);
+    }
+  };
+
+  const loadReportedIssues = async () => {
+    if (!config?.wiki?.repository) return;
+
+    try {
+      setIssuesLoading(true);
+      const { owner, repo } = config.wiki.repository;
+
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues?labels=user-report&state=open&per_page=100`,
+        {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch issues: ${response.statusText}`);
+      }
+
+      const issues = await response.json();
+      setReportedIssues(issues);
+    } catch (error) {
+      console.error('Failed to load reported issues:', error);
+      alert('❌ Failed to load reported issues: ' + error.message);
+    } finally {
+      setIssuesLoading(false);
+    }
+  };
+
+  const handleAssignDonatorBadge = async (e) => {
+    e.preventDefault();
+    if (!donatorUsername.trim()) {
+      alert('Please enter a username');
+      return;
+    }
+
+    try {
+      setDonatorLoading(true);
+      const amount = donatorAmount.trim() ? parseFloat(donatorAmount.trim()) : null;
+      const result = await assignDonatorBadge(donatorUsername.trim(), amount, donatorReason.trim() || null);
+
+      alert(`✅ ${result.message}`);
+      setDonatorUsername('');
+      setDonatorAmount('');
+      setDonatorReason('');
+      await loadDonators();
+    } catch (error) {
+      console.error('Failed to assign donator badge:', error);
+      alert('❌ Failed to assign donator badge: ' + error.message);
+    } finally {
+      setDonatorLoading(false);
+    }
+  };
+
+  const handleRemoveDonatorBadge = async (username) => {
+    if (!confirm(`Are you sure you want to remove the donator badge from ${username}?`)) {
+      return;
+    }
+
+    try {
+      const result = await removeDonatorBadge(username);
+      alert(`✅ ${result.message}`);
+      await loadDonators();
+    } catch (error) {
+      console.error('Failed to remove donator badge:', error);
+      alert('❌ Failed to remove donator badge: ' + error.message);
     }
   };
 
@@ -252,6 +358,26 @@ const AdminPanel = () => {
             }`}
           >
             🚫 Banned Users ({bannedUsers.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('reported-issues')}
+            className={`pb-3 px-4 font-medium border-b-2 transition-colors ${
+              activeTab === 'reported-issues'
+                ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            🐛 Reported Issues ({reportedIssues.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('donators')}
+            className={`pb-3 px-4 font-medium border-b-2 transition-colors ${
+              activeTab === 'donators'
+                ? 'border-cyan-500 text-cyan-600 dark:text-cyan-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            💎 Donators ({donators.length})
           </button>
           {adminStatus.isOwner && (
             <button
@@ -446,6 +572,269 @@ const AdminPanel = () => {
             <p className="text-sm text-yellow-900 dark:text-yellow-200">
               <strong>👑 Repository Owner:</strong> The repository owner (you) always has admin access and cannot be removed.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Reported Issues Tab */}
+      {activeTab === 'reported-issues' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Reported Issues
+              </h2>
+              <button
+                onClick={loadReportedIssues}
+                disabled={issuesLoading}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
+              >
+                {issuesLoading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {issuesLoading ? (
+              <div className="text-center py-12">
+                <LoadingSpinner />
+                <p className="mt-4 text-gray-500 dark:text-gray-400">Loading reported issues...</p>
+              </div>
+            ) : reportedIssues.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 dark:text-gray-400 text-lg">
+                  🎉 No open reported issues
+                </p>
+                <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
+                  All user reports have been resolved or there are no reports yet.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reportedIssues.map((issue) => {
+                  // Extract category from labels
+                  const categoryLabel = issue.labels?.find(label =>
+                    ['bug-report', 'suggestion', 'content-issue', 'other'].includes(label.name)
+                  );
+                  const categoryColors = {
+                    'bug-report': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200',
+                    'suggestion': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200',
+                    'content-issue': 'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200',
+                    'other': 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                  };
+
+                  // Extract reporter from title (format: [Issue Report] Username - Title)
+                  const titleMatch = issue.title.match(/\[Issue Report\]\s*(.+?)\s*-\s*(.+)/);
+                  const reporter = titleMatch ? titleMatch[1] : 'Unknown';
+                  const issueTitle = titleMatch ? titleMatch[2] : issue.title;
+
+                  return (
+                    <div
+                      key={issue.id}
+                      className="p-4 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg"
+                    >
+                      {/* Header: Category, Issue Number, Date */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {categoryLabel && (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${categoryColors[categoryLabel.name]}`}>
+                              {categoryLabel.name.split('-').map(w =>
+                                w.charAt(0).toUpperCase() + w.slice(1)
+                              ).join(' ')}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            #{issue.number}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(issue.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        {issueTitle}
+                      </h3>
+
+                      {/* Body Preview */}
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-3">
+                        {issue.body ? issue.body.split('\n').slice(0, 3).join(' ') : 'No description provided.'}
+                      </p>
+
+                      {/* Reporter Info */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          Reported by:
+                        </span>
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {reporter}
+                        </span>
+                      </div>
+
+                      {/* Labels */}
+                      {issue.labels && issue.labels.length > 0 && (
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
+                          {issue.labels
+                            .filter(label => label.name !== 'user-report') // Hide user-report label (redundant)
+                            .map((label) => (
+                              <span
+                                key={label.id}
+                                className="px-2 py-0.5 rounded-full text-xs"
+                                style={{
+                                  backgroundColor: `#${label.color}20`,
+                                  color: `#${label.color}`,
+                                  border: `1px solid #${label.color}40`
+                                }}
+                              >
+                                {label.name}
+                              </span>
+                            ))}
+                        </div>
+                      )}
+
+                      {/* View on GitHub Link */}
+                      <a
+                        href={issue.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        View on GitHub
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Donators Tab */}
+      {activeTab === 'donators' && (
+        <div className="space-y-6">
+          {/* Info Box */}
+          <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
+            <p className="text-sm text-cyan-900 dark:text-cyan-200">
+              <strong>💎 Donator Badge:</strong> Manually assign donator badges to users who have supported the wiki.
+              Badges are permanent and display alongside prestige badges on user profiles.
+            </p>
+          </div>
+
+          {/* Assign Donator Badge Form */}
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Assign Donator Badge
+            </h2>
+            <form onSubmit={handleAssignDonatorBadge} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  GitHub Username *
+                </label>
+                <input
+                  type="text"
+                  value={donatorUsername}
+                  onChange={(e) => setDonatorUsername(e.target.value)}
+                  placeholder="username"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  disabled={donatorLoading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Donation Amount (optional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={donatorAmount}
+                  onChange={(e) => setDonatorAmount(e.target.value)}
+                  placeholder="25.00"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  disabled={donatorLoading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Reason / Notes (optional)
+                </label>
+                <textarea
+                  value={donatorReason}
+                  onChange={(e) => setDonatorReason(e.target.value)}
+                  placeholder="e.g., Ko-fi donation, PayPal donation, etc."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
+                  disabled={donatorLoading}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={donatorLoading || !donatorUsername.trim()}
+                className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                {donatorLoading ? 'Assigning...' : 'Assign Badge'}
+              </button>
+            </form>
+          </div>
+
+          {/* Donators List */}
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
+              Donators List
+            </h2>
+            {donators.length === 0 ? (
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                No donators yet
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {donators.map((donator) => (
+                  <div
+                    key={donator.username}
+                    className="flex items-start justify-between p-4 bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <a
+                          href={`https://github.com/${donator.username}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-gray-900 dark:text-white hover:underline"
+                        >
+                          @{donator.username}
+                        </a>
+                        <span className="text-xl animate-glow-pulse" title="Donator">
+                          💎
+                        </span>
+                      </div>
+                      {donator.amount && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                          <strong>Amount:</strong> ${donator.amount.toFixed(2)}
+                        </p>
+                      )}
+                      {donator.reason && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                          <strong>Notes:</strong> {donator.reason}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 dark:text-gray-500">
+                        Assigned by {donator.assignedBy} on{' '}
+                        {new Date(donator.donatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveDonatorBadge(donator.username)}
+                      className="ml-4 px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-sm font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

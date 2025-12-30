@@ -718,3 +718,133 @@ export const saveUserSnapshotWithBot = async (owner, repo, username, snapshotDat
     throw error;
   }
 };
+
+/**
+ * Create issue report directly with bot token (DEVELOPMENT ONLY)
+ */
+const createIssueReportDirectly = async (report) => {
+  if (!import.meta.env.DEV) {
+    throw new Error('Direct API calls are disabled in production builds');
+  }
+
+  const botToken = import.meta.env.VITE_WIKI_BOT_TOKEN;
+  if (!botToken) {
+    throw new Error('Bot token not configured');
+  }
+
+  const OctokitWithRetry = Octokit.plugin(retryPlugin);
+  const octokit = new OctokitWithRetry({
+    auth: botToken,
+    userAgent: 'GitHub-Wiki-Bot/1.0',
+    throttle: { enabled: false },
+  });
+
+  const { owner, repo, category, title, description, email, pageUrl, includeSystemInfo, systemInfo, requestedBy } = report;
+
+  // Build issue title
+  const reporterName = requestedBy || 'Anonymous';
+  const issueTitle = `[Issue Report] ${reporterName} - ${title}`;
+
+  // Build issue body
+  const categoryDisplay = category.split('-').map(w =>
+    w.charAt(0).toUpperCase() + w.slice(1)
+  ).join(' ');
+
+  let issueBody = `**Category**: ${categoryDisplay}\n`;
+  issueBody += `**Submitted by**: ${reporterName}\n`;
+  if (email) {
+    issueBody += `**Email**: ${email}\n`;
+  }
+  issueBody += `**Page URL**: ${pageUrl}\n\n`;
+  issueBody += `## Description\n\n${description}\n\n`;
+
+  if (includeSystemInfo && systemInfo) {
+    issueBody += `---\n\n**System Information**\n`;
+    issueBody += `- **Browser**: ${systemInfo.browser}\n`;
+    issueBody += `- **OS**: ${systemInfo.os}\n`;
+    issueBody += `- **Screen**: ${systemInfo.screen}\n`;
+    issueBody += `- **Timestamp**: ${systemInfo.timestamp}\n`;
+  }
+
+  // Create issue
+  const { data: issue } = await octokit.rest.issues.create({
+    owner,
+    repo,
+    title: issueTitle,
+    body: issueBody,
+    labels: ['user-report', category],
+  });
+
+  console.log(`[Bot Service] Created issue report #${issue.number}`);
+
+  return {
+    success: true,
+    issue: {
+      number: issue.number,
+      url: issue.html_url,
+      title: issue.title,
+    },
+  };
+};
+
+/**
+ * Creates an issue report (anonymous or authenticated)
+ * @param {Object} report - Issue report data
+ * @returns {Promise<Object>} Created issue details with URL
+ */
+export const createIssueReport = async (report) => {
+  try {
+    const authStore = useAuthStore.getState();
+    const requestedBy = authStore.user?.login || null;
+
+    // Get repository info from report or use defaults
+    const owner = report.owner;
+    const repo = report.repo;
+
+    const requestBody = {
+      ...report,
+      owner,
+      repo,
+      requestedBy,
+    };
+
+    // Development mode: Try direct API call first
+    if (import.meta.env.DEV) {
+      const hasLocalToken = !!import.meta.env.VITE_WIKI_BOT_TOKEN;
+
+      if (hasLocalToken) {
+        console.log('[Bot Service] Development mode: Using direct API call for issue report');
+        return await createIssueReportDirectly(requestBody);
+      } else {
+        console.log('[Bot Service] Development mode: No local token, trying Netlify Dev function...');
+      }
+    }
+
+    // Production mode OR development without local token: Use serverless function
+    console.log('[Bot Service] Creating issue report via serverless function...');
+
+    const response = await fetch(getGithubBotEndpoint(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'create-issue-report',
+        ...requestBody,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('[Bot Service] Failed to create issue report:', data);
+      throw new Error(data.error || 'Failed to create issue report');
+    }
+
+    console.log('[Bot Service] ✓ Issue report created:', data.issue);
+    return data;
+  } catch (error) {
+    console.error('[Bot Service] Error creating issue report:', error);
+    throw error;
+  }
+};

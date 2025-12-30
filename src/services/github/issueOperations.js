@@ -60,3 +60,43 @@ export const issueExists = async (owner, repo, issueNumber) => {
     return false;
   }
 };
+
+/**
+ * Create a new issue with the authenticated user's token
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} title - Issue title
+ * @param {string} body - Issue body
+ * @param {string[]} labels - Array of label names
+ * @returns {Promise<Object>} Created issue object
+ */
+export const createIssue = async (owner, repo, title, body, labels = []) => {
+  const octokit = getOctokit();
+
+  try {
+    const { data: issue } = await octokit.rest.issues.create({
+      owner,
+      repo,
+      title,
+      body,
+      labels,
+    });
+
+    console.log(`[Issue] Created issue #${issue.number}: ${issue.title}`);
+
+    return {
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      state: issue.state,
+      html_url: issue.html_url,
+      created_at: issue.created_at,
+      updated_at: issue.updated_at,
+      labels: issue.labels,
+      user: issue.user,
+    };
+  } catch (error) {
+    console.error('[Issue] Failed to create issue:', error);
+    throw error;
+  }
+};

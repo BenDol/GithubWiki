@@ -6,7 +6,29 @@
 
 import { useAuthStore } from '../store/authStore';
 
-const API_BASE = '/api/admin-actions';
+/**
+ * Get admin-actions endpoint with platform detection
+ * @returns {string} - Endpoint URL
+ */
+function getAdminActionsEndpoint() {
+  // Development mode - use Netlify dev server path
+  if (import.meta.env.DEV) {
+    return '/.netlify/functions/admin-actions';
+  }
+
+  // Check for explicit platform configuration
+  const platform = import.meta.env.VITE_PLATFORM;
+
+  // Cloudflare Pages or explicit cloudflare
+  if (platform === 'cloudflare' || import.meta.env.VITE_CF_PAGES === '1') {
+    return '/api/admin-actions';
+  }
+
+  // Netlify (default)
+  return '/.netlify/functions/admin-actions';
+}
+
+const API_BASE = getAdminActionsEndpoint();
 
 /**
  * Make authenticated request to admin actions API
@@ -122,6 +144,51 @@ export async function unbanUser(username) {
     body: JSON.stringify({
       action: 'unban-user',
       username
+    })
+  });
+}
+
+/**
+ * Get all donators
+ * @returns {Promise<Array>} Array of donator objects
+ */
+export async function getAllDonators() {
+  const data = await makeRequest(`${API_BASE}?action=get-all-donators`);
+  return data.donators;
+}
+
+/**
+ * Assign donator badge to a user (owner or admin)
+ * @param {string} username - Username to assign badge to
+ * @param {number} amount - Optional donation amount
+ * @param {string} reason - Optional reason for assignment
+ * @returns {Promise<Object>} Response with success message and donator data
+ */
+export async function assignDonatorBadge(username, amount = null, reason = null) {
+  return await makeRequest(API_BASE, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'assign-donator-badge',
+      username,
+      amount,
+      reason
+    })
+  });
+}
+
+/**
+ * Remove donator badge from a user (owner or admin)
+ * @param {string} username - Username to remove badge from
+ * @param {string} reason - Optional reason for removal
+ * @returns {Promise<Object>} Response with success message
+ */
+export async function removeDonatorBadge(username, reason = null) {
+  return await makeRequest(API_BASE, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'remove-donator-badge',
+      username,
+      reason
     })
   });
 }

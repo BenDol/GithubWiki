@@ -267,7 +267,9 @@ const StarContributor = ({ sectionId, pageId }) => {
             username={topContributor.username}
             userId={topContributor.userId}
             size="sm"
-            showBadge={false}
+            showBadge={true}
+            showPrestigeBadge={false}
+            showDonatorBadge={true}
             onClick={handleAvatarClick}
           />
         )}

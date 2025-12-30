@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Bug } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useDisplayName } from '../../hooks/useDisplayName';
 import PrestigeAvatar from '../common/PrestigeAvatar';
@@ -8,6 +8,7 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useUserPrestige } from '../../hooks/usePrestige';
 import { getCurrentUserAdminStatus } from '../../services/github/admin';
 import { createLogger } from '../../utils/logger';
+import { IssueReportModal } from '../common/IssueReportModal';
 
 const logger = createLogger('UserMenu');
 
@@ -22,6 +23,7 @@ const UserMenu = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminCheckLoading, setAdminCheckLoading] = useState(true);
+  const [showReportModal, setShowReportModal] = useState(false);
   const menuRef = useRef(null);
 
   // Load display name for current user
@@ -230,6 +232,17 @@ const UserMenu = () => {
               </svg>
               View GitHub Profile
             </a>
+
+            <button
+              onClick={() => {
+                setShowReportModal(true);
+                setIsOpen(false);
+              }}
+              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <Bug className="w-4 h-4 mr-3" />
+              Report an Issue
+            </button>
           </div>
 
           {/* Logout */}
@@ -255,6 +268,12 @@ const UserMenu = () => {
           </div>
         </div>
       )}
+
+      {/* Issue Report Modal */}
+      <IssueReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+      />
     </div>
   );
 };

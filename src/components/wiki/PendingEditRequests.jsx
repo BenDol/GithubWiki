@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useDisplayNames } from '../../hooks/useDisplayName';
 import { getOctokit } from '../../services/github/api';
 import { useGitHubDataStore } from '../../store/githubDataStore';
+import PrestigeAvatar from '../common/PrestigeAvatar';
 
 /**
  * PendingEditRequests component
@@ -262,11 +263,16 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
                     A
                   </div>
                 ) : (
-                  <img
-                    src={pr.authorAvatar}
-                    alt={pr.author}
-                    className="w-5 h-5 rounded-full flex-shrink-0 mt-0.5"
-                  />
+                  <div className="flex-shrink-0 mt-0.5">
+                    <PrestigeAvatar
+                      src={pr.authorAvatar}
+                      alt={pr.author}
+                      username={pr.author}
+                      userId={pr.authorId}
+                      size="sm"
+                      showBadge={true}
+                    />
+                  </div>
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline space-x-2">
