@@ -126,13 +126,7 @@ const DonatePage = () => {
 
     const amount = selectedAmount || parseFloat(customAmount) || 5;
 
-    // Check if username is required
-    if (badgeEnabled && !githubUsername.trim()) {
-      console.log('[Donate] Waiting for GitHub username');
-      return;
-    }
-
-    console.log('[Donate] Rendering PayPal button', { amount, username: githubUsername });
+    console.log('[Donate] Rendering PayPal button', { amount, username: githubUsername || 'anonymous' });
 
     try {
       window.paypal.Buttons({
@@ -341,7 +335,7 @@ const DonatePage = () => {
             {badgeEnabled && (
               <div className="mb-8">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  GitHub Username {badgeEnabled && <span className="text-red-500">*</span>}
+                  GitHub Username <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -355,7 +349,7 @@ const DonatePage = () => {
                   {isAuthenticated ? (
                     <>💎 Signed in as {githubUsername} - Your donator badge will be assigned automatically!</>
                   ) : (
-                    <>💎 Required for automatic donator badge assignment. Don't have an account? You can still donate!</>
+                    <>💎 Enter your GitHub username to receive an automatic donator badge. You can donate anonymously by leaving this blank!</>
                   )}
                 </p>
               </div>
