@@ -180,6 +180,7 @@ export function isDevelopment() {
 
 // Log platform detection in development
 if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV) {
+  console.log('[Framework API Endpoints] VITE_DEV_PLATFORM:', import.meta.env.VITE_DEV_PLATFORM);
   console.log('[Framework API Endpoints] Platform detected:', detectPlatform());
   console.log('[Framework API Endpoints] Functions base URL:', getFunctionsBaseUrl());
   console.log('[Framework API Endpoints] OAuth base URL:', getOAuthBaseUrl());

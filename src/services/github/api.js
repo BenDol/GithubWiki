@@ -68,7 +68,7 @@ export const initializeOctokit = (token) => {
  * Automatically includes retry plugin for rate limit handling
  */
 export const getOctokit = () => {
-  // Check if user is authenticated via global auth store
+  // Check if user is authenticated via global auth store (client-side)
   let userToken = null;
   if (typeof window !== 'undefined' && window.__authStore__?.getState) {
     try {
@@ -83,19 +83,47 @@ export const getOctokit = () => {
     }
   }
 
-  // If we have a token but no instance OR instance is unauthenticated, reinitialize
-  const instanceHasAuth = octokitInstance?.auth !== undefined;
-  if (userToken && !instanceHasAuth) {
-    logger.warn('User authenticated but Octokit unauthenticated - reinitializing');
-    octokitInstance = new OctokitWithRetry({
-      auth: userToken,
-      userAgent: 'GitHub-Wiki-Framework/1.0',
-      throttle: {
-        enabled: false,
-      },
-    });
-    logger.info('Authenticated Octokit reinitialized');
-  } else if (!octokitInstance) {
+  // Server-side: Check for token in environment (for serverless functions)
+  if (!userToken && typeof process !== 'undefined' && process.env?.GITHUB_TOKEN) {
+    userToken = process.env.GITHUB_TOKEN;
+  }
+
+  // SECURITY: On server-side, ALWAYS create a new instance per-request
+  // to prevent token leakage between requests in serverless environments
+  const isServerSide = typeof window === 'undefined';
+
+  // If we have a token, always create an authenticated instance
+  if (userToken) {
+    if (isServerSide) {
+      // Server-side: NEVER cache - create fresh instance per request
+      logger.debug('Creating server-side authenticated Octokit instance (no cache)');
+      return new OctokitWithRetry({
+        auth: userToken,
+        userAgent: 'GitHub-Wiki-Framework/1.0',
+        throttle: {
+          enabled: false,
+        },
+      });
+    } else {
+      // Client-side: Can safely cache
+      const instanceHasAuth = octokitInstance?.auth !== undefined;
+      if (!instanceHasAuth) {
+        logger.debug('Creating client-side authenticated Octokit instance');
+        octokitInstance = new OctokitWithRetry({
+          auth: userToken,
+          userAgent: 'GitHub-Wiki-Framework/1.0',
+          throttle: {
+            enabled: false,
+          },
+        });
+        logger.info('Authenticated Octokit initialized');
+      }
+      return octokitInstance;
+    }
+  }
+
+  // No token - return unauthenticated instance
+  if (!octokitInstance) {
     // Create unauthenticated instance for public repo read-only access
     octokitInstance = new OctokitWithRetry({
       userAgent: 'GitHub-Wiki-Framework/1.0',
@@ -105,10 +133,6 @@ export const getOctokit = () => {
     });
     logger.info('Unauthenticated Octokit created with automatic retry');
   }
-
-  // Log authentication status for debugging
-  const hasAuth = octokitInstance.auth !== undefined;
-  logger.debug('getOctokit returning instance', { hasAuth });
 
   return octokitInstance;
 };
@@ -251,7 +275,13 @@ export const deduplicatedRequest = async (key, requestFn) => {
  * Check if user is authenticated (has token)
  */
 export const isAuthenticated = () => {
-  // Check if we have an authenticated instance with a token
+  // Server-side: Check process.env directly since we don't cache instances
+  const isServerSide = typeof window === 'undefined';
+  if (isServerSide && typeof process !== 'undefined' && process.env?.GITHUB_TOKEN) {
+    return true;
+  }
+
+  // Client-side: Check if we have an authenticated instance with a token
   return octokitInstance !== null &&
          octokitInstance.auth !== undefined &&
          (typeof octokitInstance.auth === 'string' || typeof octokitInstance.auth === 'function');
@@ -263,23 +293,33 @@ export const isAuthenticated = () => {
  * @returns {Promise<Object>} User data from GitHub API
  */
 export const getAuthenticatedUser = async () => {
+  // Call getOctokit() first to ensure instance is created (especially on server-side)
+  const octokit = getOctokit();
+
+  // Now check if we're authenticated
   if (!isAuthenticated()) {
     throw new Error('Authentication required. Please login first.');
   }
 
-  // Check cache first
-  const now = Date.now();
-  if (authenticatedUserCache && (now - authenticatedUserCacheTime) < AUTHENTICATED_USER_CACHE_TTL) {
-    return authenticatedUserCache;
+  // SECURITY: On server-side, NEVER cache user data - each request could be from different users
+  const isServerSide = typeof window === 'undefined';
+
+  // Check cache first (client-side only)
+  if (!isServerSide) {
+    const now = Date.now();
+    if (authenticatedUserCache && (now - authenticatedUserCacheTime) < AUTHENTICATED_USER_CACHE_TTL) {
+      return authenticatedUserCache;
+    }
   }
 
   // Fetch from GitHub API
-  const octokit = getOctokit();
   const { data } = await octokit.rest.users.getAuthenticated();
 
-  // Cache the result
-  authenticatedUserCache = data;
-  authenticatedUserCacheTime = now;
+  // Cache the result (client-side only)
+  if (!isServerSide) {
+    authenticatedUserCache = data;
+    authenticatedUserCacheTime = Date.now();
+  }
 
   return data;
 };

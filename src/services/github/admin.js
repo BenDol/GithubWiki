@@ -769,7 +769,9 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
  */
 export const getCurrentUserAdminStatus = async (owner, repo, config) => {
   try {
+    console.log('[Admin] Getting authenticated user...');
     const user = await getAuthenticatedUser();
+    console.log('[Admin] Got user:', { login: user?.login, id: user?.id });
     const username = user.login;
     const userId = user.id;
 
@@ -782,6 +784,7 @@ export const getCurrentUserAdminStatus = async (owner, repo, config) => {
       username,
     };
   } catch (error) {
+    console.error('[Admin] Error getting admin status:', error.message, error.stack);
     return {
       isOwner: false,
       isAdmin: false,

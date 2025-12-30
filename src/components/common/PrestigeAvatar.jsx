@@ -64,6 +64,24 @@ const PrestigeAvatar = ({
     '2xl': 'w-8 h-8 text-base',
   };
 
+  // Explicit font sizes for emoji scaling (emojis don't scale well with Tailwind text classes)
+  // sm is base at 11px, others scale proportionally
+  const donatorBadgeFontSize = {
+    sm: '11px',
+    md: '13px',
+    lg: '16px',
+    xl: '20px',
+    '2xl': '26px',
+  };
+
+  const donatorBadgeBottomPosition = {
+    sm: '-3.5px',
+    md: '-5px',
+    lg: '-5.5px',
+    xl: '-6.5px',
+    '2xl': '-8px',
+  };
+
   // Use loaded tier if available, otherwise calculate from stats
   const finalStats = stats || loadedStats;
   const prestigeTier =
@@ -73,10 +91,6 @@ const PrestigeAvatar = ({
           ? getPrestigeTier(finalStats, config.prestige.tiers)
           : null)
       : null;
-
-  // Debug logging disabled for performance
-  // Uncomment if debugging prestige issues:
-  // console.log('PrestigeAvatar Debug:', { prestigeTier, finalStats });
 
   const handleClick = (e) => {
     if (onClick) {
@@ -109,21 +123,27 @@ const PrestigeAvatar = ({
           }}
           title={formatPrestigeTitle(prestigeTier)}
         >
-          <span className="leading-none select-none">{prestigeTier.badge}</span>
+          <span className="leading-none select-none" data-badge-type="prestige" data-badge-size={size}>{prestigeTier.badge}</span>
         </div>
       )}
 
       {/* Donator badge overlay (bottom-center) */}
       {isDonator && donatorData && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center z-10"
+          className="absolute left-1/2 flex items-center justify-center z-10"
           style={{
-            bottom: '-3.5px',
+            bottom: donatorBadgeBottomPosition[size],
             transform: `translateX(-50%) scale(${badgeScale})`,
           }}
           title={`${donatorData.badge} Donator - Thank you for your support!`}
         >
-          <span className="leading-none select-none text-[11px] animate-glow-pulse">
+          <span
+            className="leading-none select-none animate-glow-pulse"
+            style={{ fontSize: donatorBadgeFontSize[size] }}
+            data-badge-type="donator"
+            data-badge-size={size}
+            data-font-size={donatorBadgeFontSize[size]}
+          >
             {donatorData.badge}
           </span>
         </div>
