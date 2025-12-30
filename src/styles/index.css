@@ -74,7 +74,7 @@ html {
 }
 
 .markdown-content img {
-  @apply rounded-lg shadow-md;
+  /* No default styles - let images render naturally */
 }
 
 /* Toast animations */
