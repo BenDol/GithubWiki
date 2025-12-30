@@ -24,6 +24,79 @@ import { createLogger } from '../../utils/logger';
 const logger = createLogger('PageEditor');
 
 /**
+ * Fixes duplicate YAML keys in frontmatter by keeping only the last occurrence
+ * @param {string} content - Markdown content with frontmatter
+ * @returns {string} - Content with fixed frontmatter
+ */
+const fixDuplicateYAMLKeys = (content) => {
+  if (!content) return content;
+
+  try {
+    // Try to parse normally first
+    matter(content);
+    return content; // No issues, return as-is
+  } catch (err) {
+    if (err.reason === 'duplicated mapping key') {
+      console.warn('[PageEditor] Detected duplicate YAML keys in frontmatter, attempting to fix');
+
+      // Extract frontmatter block
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!frontmatterMatch) return content;
+
+      const frontmatterText = frontmatterMatch[1];
+      const bodyContent = content.substring(frontmatterMatch[0].length);
+
+      // Parse frontmatter line by line and keep only last occurrence of each key
+      const lines = frontmatterText.split('\n');
+      const keyMap = new Map();
+      const keyOrder = [];
+
+      let currentKey = null;
+      let currentValue = [];
+
+      for (const line of lines) {
+        // Check if this is a new key (not indented and has colon)
+        if (line.trim() && !line.startsWith(' ') && !line.startsWith('-') && line.includes(':')) {
+          // Save previous key if exists
+          if (currentKey) {
+            keyMap.set(currentKey, currentValue.join('\n'));
+            if (!keyOrder.includes(currentKey)) {
+              keyOrder.push(currentKey);
+            }
+          }
+
+          // Start new key
+          currentKey = line.split(':')[0].trim();
+          currentValue = [line];
+        } else if (currentKey) {
+          // Continuation of current key (multiline value or array)
+          currentValue.push(line);
+        }
+      }
+
+      // Save last key
+      if (currentKey) {
+        keyMap.set(currentKey, currentValue.join('\n'));
+        if (!keyOrder.includes(currentKey)) {
+          keyOrder.push(currentKey);
+        }
+      }
+
+      // Reconstruct frontmatter with only unique keys (last occurrence wins)
+      const fixedFrontmatter = Array.from(keyMap.entries())
+        .sort((a, b) => keyOrder.indexOf(a[0]) - keyOrder.indexOf(b[0]))
+        .map(([, value]) => value)
+        .join('\n');
+
+      const fixedContent = `---\n${fixedFrontmatter}\n---${bodyContent}`;
+      console.log('[PageEditor] Fixed duplicate YAML keys in frontmatter');
+      return fixedContent;
+    }
+    return content; // Other errors, return as-is
+  }
+};
+
+/**
  * PageEditor component with live preview
  * Provides markdown editing with real-time preview
  */
@@ -46,7 +119,10 @@ const PageEditor = ({
   onDraftLoaded = null,
   onGetClearDraft = null
 }) => {
-  const [content, setContent] = useState(initialContent || '');
+  // Fix any duplicate YAML keys before processing
+  const fixedInitialContent = fixDuplicateYAMLKeys(initialContent || '');
+
+  const [content, setContent] = useState(fixedInitialContent);
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
   const [editSummary, setEditSummary] = useState('');
   const [metadataExpanded, setMetadataExpanded] = useState(true);
@@ -249,18 +325,21 @@ const PageEditor = ({
       // Ensure content has the metadata in frontmatter
       if (initialContent) {
         try {
-          const parsed = matter(initialContent);
-          const contentWithMetadata = matter.stringify(parsed.content, newMetadata);
+          const fixedContent = fixDuplicateYAMLKeys(initialContent);
+          const parsed = matter(fixedContent);
+          // Use lineWidth: -1 to prevent multiline format (description: >-)
+          const contentWithMetadata = matter.stringify(parsed.content, newMetadata, { lineWidth: -1 });
           // console.log('[PageEditor] Reconstructed content with metadata');
           setContent(contentWithMetadata);
         } catch (err) {
           logger.error('Failed to reconstruct content with metadata', { error: err });
-          setContent(initialContent);
+          setContent(fixDuplicateYAMLKeys(initialContent));
         }
       }
     } else if (initialContent) {
       try {
-        const parsed = matter(initialContent);
+        const fixedContent = fixDuplicateYAMLKeys(initialContent);
+        const parsed = matter(fixedContent);
         const newMetadata = {
           ...parsed.data, // Preserve all existing fields
           id: parsed.data.id || '',
@@ -277,9 +356,10 @@ const PageEditor = ({
         metadataRef.current = newMetadata; // Keep ref in sync
 
         // Also ensure content is set (in case it wasn't set yet)
-        if (!content || content !== initialContent) {
+        const fixedInitial = fixDuplicateYAMLKeys(initialContent);
+        if (!content || content !== fixedInitial) {
           // console.log('[PageEditor] Setting content from initialContent');
-          setContent(initialContent);
+          setContent(fixedInitial);
         }
       } catch (err) {
         logger.error('Failed to parse frontmatter', { error: err });
@@ -443,7 +523,8 @@ const PageEditor = ({
         return; // Don't update content if metadata would be invalid
       }
 
-      const updatedContent = matter.stringify(parsed.content, safeMetadata);
+      // Use lineWidth: -1 to prevent multiline format (description: >-)
+      const updatedContent = matter.stringify(parsed.content, safeMetadata, { lineWidth: -1 });
       // console.log('[PageEditor] Content updated with metadata, new length:', updatedContent.length);
 
       // Verify the updated content
@@ -625,14 +706,14 @@ const PageEditor = ({
 
     // Validate that frontmatter can be properly serialized
     try {
-      matter.stringify('', metadata);
+      matter.stringify('', metadata, { lineWidth: -1 });
     } catch (err) {
       errors.push(`Frontmatter serialization error: ${err.message}`);
     }
 
     // Validate that content with metadata can be parsed back
     try {
-      const testContent = matter.stringify(content.split('---').slice(2).join('---').trim() || '', metadata);
+      const testContent = matter.stringify(content.split('---').slice(2).join('---').trim() || '', metadata, { lineWidth: -1 });
       const parsed = matter(testContent);
 
       // Verify critical fields are preserved
@@ -710,10 +791,20 @@ const PageEditor = ({
         // Instead, reconstruct the content manually by keeping the existing frontmatter
         // and just updating the body content
         const currentParsedContent = matter(content);
-        const frontmatterBlock = content.substring(0, content.indexOf('---', 4) + 3);
-        const fullContent = frontmatterBlock + '\n' + newContent;
 
-        setContent(fullContent);
+        // Find the end of frontmatter block (second '---')
+        const frontmatterEnd = content.indexOf('---', 4);
+
+        // Safety check: if we can't find the closing '---', fall back to matter.stringify
+        if (frontmatterEnd === -1) {
+          logger.warn('Could not find closing frontmatter delimiter, using matter.stringify');
+          const fullContent = matter.stringify(newContent, mergedMetadata, { lineWidth: -1 });
+          setContent(fullContent);
+        } else {
+          const frontmatterBlock = content.substring(0, frontmatterEnd + 3);
+          const fullContent = frontmatterBlock + '\n' + newContent;
+          setContent(fullContent);
+        }
       } catch (err) {
         logger.error('Failed to reconstruct content with metadata', { error: err });
         setContent(newContent);
@@ -837,8 +928,8 @@ const PageEditor = ({
       const parsed = matter(content);
       // Trim the body content (not the entire document) to remove trailing whitespace
       const trimmedBody = parsed.content.trim();
-      // Reconstruct with cleaned body
-      cleanedContent = matter.stringify(trimmedBody, parsed.data);
+      // Reconstruct with cleaned body, use lineWidth: -1 to prevent multiline format
+      cleanedContent = matter.stringify(trimmedBody, parsed.data, { lineWidth: -1 });
       logger.debug('Content cleaned for save');
     } catch (err) {
       logger.warn('Could not clean content, saving as-is', { error: err });

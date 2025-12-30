@@ -36,8 +36,20 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
       throw new Error('Path is not a file');
     }
 
+    // Decode base64 content with proper UTF-8 handling for emojis and special characters
+    const base64Content = data.content.replace(/\n/g, '');
+    const binaryString = atob(base64Content);
+
+    // Convert binary string to UTF-8 using TextDecoder (modern approach)
+    // This properly handles multi-byte UTF-8 characters like emojis
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const utf8Content = new TextDecoder('utf-8').decode(bytes);
+
     return {
-      content: atob(data.content.replace(/\n/g, '')),
+      content: utf8Content,
       sha: data.sha,
       path: data.path,
       size: data.size,
@@ -65,8 +77,14 @@ export const updateFileContent = async (
 ) => {
   const octokit = getOctokit();
 
-  // Encode content to base64
-  const encodedContent = btoa(unescape(encodeURIComponent(content)));
+  // Encode content to base64 with proper UTF-8 handling
+  // Use TextEncoder for proper multi-byte UTF-8 character handling (emojis, etc.)
+  const utf8Bytes = new TextEncoder().encode(content);
+  let binaryString = '';
+  for (let i = 0; i < utf8Bytes.length; i++) {
+    binaryString += String.fromCharCode(utf8Bytes[i]);
+  }
+  const encodedContent = btoa(binaryString);
 
   const params = {
     owner,

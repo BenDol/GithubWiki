@@ -103,6 +103,7 @@ const PageViewerPage = ({ sectionId }) => {
       try {
         setLoading(true);
         setError(null);
+        setExistsOnGitHub(false); // Reset GitHub existence state on each page load
 
         // Check cache first
         const cacheKey = `${sectionId}/${pageId}`;
