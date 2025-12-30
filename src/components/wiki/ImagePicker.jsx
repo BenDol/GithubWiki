@@ -180,13 +180,18 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
     if (!selectedImage) return;
 
     let markdown;
-    // If custom dimensions are specified, use HTML img tag
-    if (customWidth || customHeight) {
-      const widthAttr = customWidth ? ` width="${customWidth}"` : '';
-      const heightAttr = customHeight ? ` height="${customHeight}"` : '';
+
+    // Determine which dimensions to use (custom or original)
+    const finalWidth = customWidth || selectedImage.dimensions?.width;
+    const finalHeight = customHeight || selectedImage.dimensions?.height;
+
+    // Always use HTML img tag if dimensions are available
+    if (finalWidth || finalHeight) {
+      const widthAttr = finalWidth ? ` width="${finalWidth}"` : '';
+      const heightAttr = finalHeight ? ` height="${finalHeight}"` : '';
       markdown = `<img src="${selectedImage.path}" alt=""${widthAttr}${heightAttr} />`;
     } else {
-      // Otherwise use standard markdown syntax
+      // Fallback to standard markdown syntax if no dimensions available
       markdown = `![](${selectedImage.path})`;
     }
 

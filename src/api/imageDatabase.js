@@ -545,6 +545,106 @@ export async function deleteOrphanEntries(paths) {
 }
 
 /**
+ * Scan for and fix missing dimension data in image entries
+ */
+export async function fixMissingDimensions() {
+  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const imagesWithMissingData = [];
+  const fixedImages = [];
+  const failedImages = [];
+
+  // Find images with missing dimensions
+  for (const image of mainIndex.images) {
+    if (!image.dimensions || !image.dimensions.width || !image.dimensions.height) {
+      imagesWithMissingData.push(image);
+    }
+  }
+
+  // Fix each image with missing dimensions
+  for (const image of imagesWithMissingData) {
+    try {
+      const fullPath = path.join(PUBLIC_DIR, image.path.replace(/^\//, ''));
+
+      // Check if file exists
+      if (!await fileExists(fullPath)) {
+        failedImages.push({
+          path: image.path,
+          error: 'File not found'
+        });
+        continue;
+      }
+
+      // Get file extension
+      const ext = path.extname(fullPath).toLowerCase();
+
+      if (ext === '.svg') {
+        // For SVG files, we can't easily get dimensions without parsing XML
+        // Set default dimensions or skip
+        fixedImages.push({
+          path: image.path,
+          skipped: true,
+          reason: 'SVG dimensions require XML parsing'
+        });
+        continue;
+      }
+
+      // Use sharp to get image metadata
+      const metadata = await sharp(fullPath).metadata();
+
+      if (metadata.width && metadata.height) {
+        // Update dimensions in image entry
+        image.dimensions = {
+          width: metadata.width,
+          height: metadata.height
+        };
+
+        // Also update in search index
+        const searchEntry = Object.values(searchIndex.images).find(img => img.path === image.path);
+        if (searchEntry) {
+          searchEntry.dimensions = {
+            width: metadata.width,
+            height: metadata.height
+          };
+        }
+
+        fixedImages.push({
+          path: image.path,
+          dimensions: {
+            width: metadata.width,
+            height: metadata.height
+          }
+        });
+      } else {
+        failedImages.push({
+          path: image.path,
+          error: 'Could not read dimensions from image'
+        });
+      }
+
+    } catch (error) {
+      failedImages.push({
+        path: image.path,
+        error: error.message
+      });
+    }
+  }
+
+  // Save updated indexes if any images were fixed
+  if (fixedImages.length > 0) {
+    await saveImageIndexes(mainIndex, searchIndex);
+  }
+
+  return {
+    total: mainIndex.images.length,
+    missingData: imagesWithMissingData.length,
+    fixed: fixedImages.length,
+    failed: failedImages.length,
+    fixedImages,
+    failedImages
+  };
+}
+
+/**
  * Add missing database entries for files that exist but aren't in the index
  */
 export async function addMissingEntries(paths) {
@@ -574,6 +674,23 @@ export async function addMissingEntries(paths) {
         category = pathParts[1];
       }
 
+      // Get dimensions for raster images
+      let dimensions = null;
+      const ext = path.extname(fullPath).toLowerCase();
+      if (!['.svg'].includes(ext)) {
+        try {
+          const metadata = await sharp(fullPath).metadata();
+          if (metadata.width && metadata.height) {
+            dimensions = {
+              width: metadata.width,
+              height: metadata.height
+            };
+          }
+        } catch (error) {
+          console.warn(`Could not read dimensions for ${imagePath}:`, error.message);
+        }
+      }
+
       // Create new entry
       const newEntry = {
         path: imagePath,
@@ -583,6 +700,11 @@ export async function addMissingEntries(paths) {
         keywords: [filename.replace(/\.[^/.]+$/, ''), category], // filename without extension + category
         lastModified: stats.mtime.toISOString()
       };
+
+      // Add dimensions if available
+      if (dimensions) {
+        newEntry.dimensions = dimensions;
+      }
 
       // Add to main index
       mainIndex.images.push(newEntry);
@@ -946,6 +1068,19 @@ export const imageDbHandlers = {
       res.end(JSON.stringify(result));
     } catch (error) {
       console.error('[Image DB] Add missing entries error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+    }
+  },
+
+  // POST /api/image-db/fix-missing-dimensions
+  fixMissingDimensions: async (req, res) => {
+    try {
+      const result = await fixMissingDimensions();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      console.error('[Image DB] Fix missing dimensions error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
     }

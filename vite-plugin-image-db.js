@@ -237,6 +237,31 @@ export function imageDbPlugin() {
           res.end(JSON.stringify({ error: 'Method not allowed' }));
         }
       });
+
+      // POST /api/image-db/fix-missing-dimensions
+      server.middlewares.use('/api/image-db/fix-missing-dimensions', async (req, res) => {
+        if (req.method === 'POST') {
+          let body = '';
+
+          req.on('data', (chunk) => {
+            body += chunk.toString();
+          });
+
+          req.on('end', async () => {
+            try {
+              req.body = body ? JSON.parse(body) : {};
+              await imageDbHandlers.fixMissingDimensions(req, res);
+            } catch (error) {
+              console.error('[Image DB] Fix missing dimensions error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: error.message }));
+            }
+          });
+        } else {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+        }
+      });
     },
   };
 }

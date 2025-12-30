@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File, Eye, Copy, CheckSquare, Square } from 'lucide-react';
+import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File, Eye, Copy, CheckSquare, Square, Wrench } from 'lucide-react';
 
 /**
  * Image Database Manager - Dev Tool
@@ -58,6 +58,10 @@ const ImageDatabaseManager = () => {
 
   // Track if initial search has been performed
   const [initialSearchDone, setInitialSearchDone] = useState(false);
+
+  // Fix missing data state
+  const [fixingDimensions, setFixingDimensions] = useState(false);
+  const [dimensionFixResult, setDimensionFixResult] = useState(null);
 
   // Load image indexes
   useEffect(() => {
@@ -1020,6 +1024,49 @@ const ImageDatabaseManager = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // Fix missing dimensions
+  const fixMissingDimensions = async () => {
+    if (!confirm('Scan all images and fix missing dimension data?\n\nThis will read image files and update the database with width and height information.')) {
+      return;
+    }
+
+    setFixingDimensions(true);
+    setDimensionFixResult(null);
+
+    try {
+      const response = await fetch('/api/image-db/fix-missing-dimensions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('API response error:', response.status, text);
+        throw new Error(`API returned ${response.status}: ${text || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      setDimensionFixResult(result);
+
+      if (result.fixed > 0) {
+        alert(`Success! Fixed ${result.fixed} images with missing dimensions.`);
+
+        // Reload the image indexes to reflect changes
+        await loadImageIndexes();
+      } else {
+        alert('No images with missing dimensions found. All images have dimension data!');
+      }
+
+    } catch (error) {
+      console.error('Failed to fix missing dimensions:', error);
+      alert(`Failed to fix missing dimensions: ${error.message}`);
+    } finally {
+      setFixingDimensions(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1661,6 +1708,122 @@ const ImageDatabaseManager = () => {
                 <p className="text-xs text-gray-600 mt-3">
                   Originals backed up to: <code className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-gray-900 dark:text-white">external/image-backup/</code>
                 </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Fix Missing Data */}
+        <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-6">
+          <div className="flex items-center gap-2 mb-3 sm:mb-4">
+            <Wrench className="w-5 h-5 text-orange-600 flex-shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Fix Missing Data</h2>
+          </div>
+
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Scan the image database for entries with missing metadata (like dimensions) and automatically fix them by reading the actual image files.
+          </p>
+
+          <div className="space-y-4">
+            {/* Fix Dimensions Button */}
+            <button
+              onClick={fixMissingDimensions}
+              disabled={fixingDimensions}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {fixingDimensions ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Scanning and fixing...
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-4 h-4" />
+                  Fix Missing Dimensions
+                </>
+              )}
+            </button>
+
+            {/* Results */}
+            {dimensionFixResult && (
+              <div className={`border rounded-lg p-4 ${
+                dimensionFixResult.failed > 0
+                  ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className={`w-5 h-5 ${
+                    dimensionFixResult.failed > 0 ? 'text-orange-600' : 'text-green-600'
+                  }`} />
+                  <h3 className={`font-semibold ${
+                    dimensionFixResult.failed > 0
+                      ? 'text-orange-900 dark:text-orange-100'
+                      : 'text-green-900 dark:text-green-100'
+                  }`}>
+                    Scan Complete
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Total Images:</span>
+                    <p className="font-semibold text-gray-900 dark:text-white">{dimensionFixResult.total}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Missing Dimensions:</span>
+                    <p className="font-semibold text-orange-600 dark:text-orange-400">{dimensionFixResult.missingData}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Fixed:</span>
+                    <p className="font-semibold text-green-600 dark:text-green-400">{dimensionFixResult.fixed}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600 dark:text-gray-400">Failed:</span>
+                    <p className="font-semibold text-red-600 dark:text-red-400">{dimensionFixResult.failed}</p>
+                  </div>
+                </div>
+
+                {/* Show failed images if any */}
+                {dimensionFixResult.failedImages && dimensionFixResult.failedImages.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-orange-200 dark:border-orange-700">
+                    <p className="text-xs font-semibold text-orange-900 dark:text-orange-100 mb-2">
+                      Failed to fix ({dimensionFixResult.failedImages.length}):
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {dimensionFixResult.failedImages.slice(0, 5).map((failed, idx) => (
+                        <div key={idx} className="text-xs font-mono text-orange-700 dark:text-orange-300 bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded p-2">
+                          <div className="font-semibold">{failed.path}</div>
+                          <div className="text-orange-600 dark:text-orange-400">{failed.error || failed.reason}</div>
+                        </div>
+                      ))}
+                      {dimensionFixResult.failedImages.length > 5 && (
+                        <div className="text-xs text-orange-600 dark:text-orange-400">
+                          ... and {dimensionFixResult.failedImages.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Show sample of fixed images */}
+                {dimensionFixResult.fixedImages && dimensionFixResult.fixedImages.filter(f => !f.skipped).length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
+                    <p className="text-xs font-semibold text-green-900 dark:text-green-100 mb-2">
+                      Sample of fixed images:
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {dimensionFixResult.fixedImages.filter(f => !f.skipped).slice(0, 5).map((fixed, idx) => (
+                        <div key={idx} className="text-xs font-mono text-green-700 dark:text-green-300 bg-white dark:bg-gray-800 border border-green-200 dark:border-green-700 rounded p-2">
+                          <div className="font-semibold">{fixed.path}</div>
+                          {fixed.dimensions && (
+                            <div className="text-green-600 dark:text-green-400">
+                              {fixed.dimensions.width} × {fixed.dimensions.height}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
