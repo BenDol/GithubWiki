@@ -23,7 +23,7 @@ import { createLogger } from '../../utils/logger';
 const logger = createLogger('DisplayNameEditor');
 
 export function DisplayNameEditor({ currentDisplayName, onUpdate }) {
-  const { user, getToken } = useAuthStore();
+  const { user } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState(currentDisplayName || '');
   const [validationError, setValidationError] = useState(null);
@@ -114,7 +114,7 @@ export function DisplayNameEditor({ currentDisplayName, onUpdate }) {
 
     // Already verified - now save
     setIsSaving(true);
-    const token = getToken();
+    const token = useAuthStore.getState().getToken();
     const result = await setDisplayName(user.id, user.login, inputValue, token);
     setIsSaving(false);
 

@@ -4,7 +4,7 @@
  * All actions are authenticated and authorized server-side
  */
 
-import { getToken } from '../store/authStore';
+import { useAuthStore } from '../store/authStore';
 
 const API_BASE = '/api/admin-actions';
 
@@ -15,7 +15,7 @@ const API_BASE = '/api/admin-actions';
  * @returns {Promise<Object>} API response
  */
 async function makeRequest(endpoint, options = {}) {
-  const token = getToken();
+  const token = useAuthStore.getState().getToken();
   if (!token) {
     throw new Error('Authentication required');
   }

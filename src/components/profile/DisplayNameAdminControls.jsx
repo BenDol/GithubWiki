@@ -14,7 +14,6 @@ import { createLogger } from '../../utils/logger';
 const logger = createLogger('DisplayNameAdminControls');
 
 export function DisplayNameAdminControls({ targetUserId, currentDisplayName, onUpdate }) {
-  const { getToken } = useAuthStore();
   const [isResetting, setIsResetting] = useState(false);
   const [isBanning, setIsBanning] = useState(false);
   const [showBanModal, setShowBanModal] = useState(false);
@@ -31,7 +30,7 @@ export function DisplayNameAdminControls({ targetUserId, currentDisplayName, onU
     setError(null);
     setSuccess(null);
 
-    const token = getToken();
+    const token = useAuthStore.getState().getToken();
     const result = await resetDisplayName(targetUserId, token);
 
     setIsResetting(false);
@@ -59,7 +58,7 @@ export function DisplayNameAdminControls({ targetUserId, currentDisplayName, onU
     setError(null);
     setSuccess(null);
 
-    const token = getToken();
+    const token = useAuthStore.getState().getToken();
     const result = await banDisplayName(targetUserId, banDisplayNameInput, token);
 
     setIsBanning(false);
