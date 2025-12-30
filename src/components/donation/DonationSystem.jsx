@@ -81,6 +81,7 @@ const DonationSystem = ({ MascotComponent = null }) => {
       onDonate={handleDonateClick}
       messages={messages}
       MascotComponent={MascotComponent}
+      showCard={true}
     />
   );
 };

@@ -41,12 +41,11 @@ export class ConfigAdapter {
       return this._configCache;
     }
 
-    if (this.platform === 'netlify') {
-      // Netlify - load from filesystem
-      this._configCache = this._loadFromFilesystem();
-    } else {
-      // Cloudflare - config must be embedded at build time or use defaults
-      // For now, return default config with runtime overrides
+    // Try to load from filesystem first (works for both platforms in dev/build)
+    this._configCache = this._loadFromFilesystem();
+
+    // If filesystem load failed, use defaults
+    if (!this._configCache || Object.keys(this._configCache).length === 1) {
       this._configCache = this._getDefaultConfig();
     }
 
@@ -54,12 +53,27 @@ export class ConfigAdapter {
   }
 
   /**
-   * Load config from filesystem (Netlify)
+   * Load config from filesystem (Netlify) or import it (Cloudflare)
    * @private
    * @returns {Object} Configuration object
    */
   _loadFromFilesystem() {
     try {
+      if (this.platform === 'cloudflare') {
+        // Cloudflare: Import from functions/_shared/wiki-config.json
+        // This file should be copied during build from root wiki-config.json
+        try {
+          // Dynamic import won't work in Workers, so we need to use require or static import
+          // For now, we'll need to handle this at the handler level
+          const configPath = join(process.cwd(), 'functions', '_shared', 'wiki-config.json');
+          return JSON.parse(readFileSync(configPath, 'utf-8'));
+        } catch (cfError) {
+          console.warn('[ConfigAdapter] Cloudflare config load failed, using defaults:', cfError.message);
+          return this._getDefaultConfig();
+        }
+      }
+
+      // Netlify: Load from filesystem
       const configPath = join(process.cwd(), 'wiki-config.json');
       return JSON.parse(readFileSync(configPath, 'utf-8'));
     } catch (error) {

@@ -22,6 +22,8 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const [categories, setCategories] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImageList, setSelectedImageList] = useState([]); // For multiselect
+  const [multiselectMode, setMultiselectMode] = useState(false);
   const [customWidth, setCustomWidth] = useState('');
   const [customHeight, setCustomHeight] = useState('');
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
@@ -106,15 +108,41 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const currentImages = filteredImages.slice(startIndex, endIndex);
 
   // Handle image selection
-  const handleImageSelect = (image) => {
-    setSelectedImage(image);
-    // Reset dimensions when selecting new image
-    setCustomWidth('');
-    setCustomHeight('');
-    setMaintainAspectRatio(true);
-    setScalePercentage(100);
-    setAlignment('none');
-    setDisplayMode('block');
+  const handleImageSelect = (image, event) => {
+    const isCtrlClick = event?.ctrlKey || event?.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+
+    // Enable multiselect mode automatically on Ctrl+Click
+    if (isCtrlClick && !multiselectMode) {
+      setMultiselectMode(true);
+    }
+
+    if (multiselectMode || isCtrlClick) {
+      // Multiselect mode: toggle selection in array
+      setSelectedImageList(prev => {
+        const existing = prev.find(img => img.path === image.path);
+        if (existing) {
+          // Remove from selection
+          return prev.filter(img => img.path !== image.path);
+        } else {
+          // Add to selection
+          return [...prev, image];
+        }
+      });
+
+      // Update primary selection for preview
+      setSelectedImage(image);
+    } else {
+      // Single select mode
+      setSelectedImage(image);
+      setSelectedImageList([image]);
+      // Reset dimensions when selecting new image
+      setCustomWidth('');
+      setCustomHeight('');
+      setMaintainAspectRatio(true);
+      setScalePercentage(100);
+      setAlignment('none');
+      setDisplayMode('block');
+    }
   };
 
   // Handle width change with aspect ratio
@@ -179,6 +207,78 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
 
   // Insert image markdown
   const handleInsert = () => {
+    // Handle multiselect mode with multiple images
+    if (multiselectMode && selectedImageList.length > 0) {
+      // For multiselect, insert all images with scaled dimensions
+      const markdownArray = selectedImageList.map(img => {
+        let markdown;
+
+        // Calculate scaled dimensions from original dimensions and scale percentage
+        const originalWidth = img.dimensions?.width;
+        const originalHeight = img.dimensions?.height;
+        const scaledWidth = originalWidth ? Math.round(originalWidth * scalePercentage / 100) : null;
+        const scaledHeight = originalHeight ? Math.round(originalHeight * scalePercentage / 100) : null;
+
+        // Build inline style and attributes
+        if (displayMode === 'inline') {
+          const inlineClass = ' class="inline-image"';
+          const dataAttr = ' data-inline="true"';
+
+          if (scaledWidth || scaledHeight) {
+            // Has dimensions: include them in style
+            const widthStyle = scaledWidth ? `width: ${scaledWidth}px; ` : '';
+            const heightStyle = scaledHeight ? `height: ${scaledHeight}px; ` : '';
+            const inlineStyle = ` style="display: inline-block; vertical-align: middle; ${widthStyle}${heightStyle}margin: 0 0.25em;"`;
+            markdown = `<img src="${img.path}" alt=""${inlineClass}${inlineStyle}${dataAttr} />`;
+          } else {
+            // No dimensions: auto-size to text height
+            const inlineStyle = ' style="display: inline-block; vertical-align: middle; max-height: 1.5em; width: auto; margin: 0 0.25em;"';
+            markdown = `<img src="${img.path}" alt=""${inlineClass}${inlineStyle}${dataAttr} />`;
+          }
+        } else if (scaledWidth || scaledHeight) {
+          // Block mode with dimensions
+          const widthAttr = scaledWidth ? ` width="${scaledWidth}"` : '';
+          const heightAttr = scaledHeight ? ` height="${scaledHeight}"` : '';
+          markdown = `<img src="${img.path}" alt=""${widthAttr}${heightAttr} />`;
+        } else {
+          // Block mode without dimensions - use standard markdown
+          markdown = `![](${img.path})`;
+        }
+
+        // Apply alignment wrapper if needed (only for block mode)
+        if (alignment !== 'none' && displayMode === 'block') {
+          let style;
+          if (alignment === 'center') {
+            style = 'display: flex; justify-content: center;';
+          } else if (alignment === 'left') {
+            style = 'display: flex; justify-content: flex-start;';
+          } else if (alignment === 'right') {
+            style = 'display: flex; justify-content: flex-end;';
+          }
+          markdown = `<div style="${style}">\n${markdown}\n</div>`;
+        }
+
+        return markdown;
+      });
+
+      const combinedMarkdown = markdownArray.join('\n\n');
+      onSelect?.(combinedMarkdown, selectedImageList, { mode: displayMode, alignment, multiselect: true });
+
+      // Reset and close
+      setSelectedImage(null);
+      setSelectedImageList([]);
+      setMultiselectMode(false);
+      setCustomWidth('');
+      setCustomHeight('');
+      setAlignment('none');
+      setDisplayMode('block');
+      setSearchQuery('');
+      setSelectedCategory('all');
+      onClose?.();
+      return;
+    }
+
+    // Single select mode
     if (!selectedImage) return;
 
     let markdown;
@@ -234,6 +334,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
 
     // Reset and close
     setSelectedImage(null);
+    setSelectedImageList([]);
     setCustomWidth('');
     setCustomHeight('');
     setAlignment('none');
@@ -362,73 +463,121 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
           )}
 
           {!loading && !error && currentImages.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {currentImages.map(image => (
-                <button
-                  key={image.path}
-                  onClick={() => handleImageSelect(image)}
-                  className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${
-                    selectedImage?.path === image.path
-                      ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                  }`}
-                  title={image.filename}
-                >
-                  <img
-                    src={image.path}
-                    alt={image.filename}
-                    className="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
-                    loading="lazy"
-                  />
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-opacity flex items-end p-2">
-                    <p className="text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                      {image.filename}
-                    </p>
+            <>
+              {/* Multiselect Toggle - Above Grid - Compact */}
+              <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-gray-600 dark:text-gray-400">Mode:</span>
+                  <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+                    <button
+                      onClick={() => {
+                        setMultiselectMode(false);
+                        setSelectedImageList(selectedImage ? [selectedImage] : []);
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                        !multiselectMode
+                          ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      Single
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMultiselectMode(true);
+                        setSelectedImageList(selectedImage ? [selectedImage] : []);
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                        multiselectMode
+                          ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      Multi
+                    </button>
                   </div>
-                  {/* Selected checkmark */}
-                  {selectedImage?.path === image.path && (
-                    <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
+                </div>
+                {multiselectMode && selectedImageList.length > 0 && (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-blue-600 dark:text-blue-400">{selectedImageList.length}</span> selected
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {currentImages.map(image => {
+                  const isSelected = multiselectMode
+                    ? selectedImageList.some(img => img.path === image.path)
+                    : selectedImage?.path === image.path;
+
+                  return (
+                    <button
+                      key={image.path}
+                      onClick={(e) => handleImageSelect(image, e)}
+                      className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${
+                        isSelected
+                          ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                      title={image.filename}
+                    >
+                      <img
+                        src={image.path}
+                        alt={image.filename}
+                        className="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
+                        loading="lazy"
+                      />
+                      {/* Hover overlay */}
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-opacity flex items-end p-2">
+                        <p className="text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                          {image.filename}
+                        </p>
+                      </div>
+                      {/* Selected checkmark */}
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
+                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
-        {/* Image Details (if selected) */}
+        {/* Image Details (if selected) - Compact */}
         {selectedImage && (
-          <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
+          <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-2">
             {/* Mobile: Stack vertically, Desktop: Side-by-side */}
-            <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-col lg:flex-row gap-2">
               {/* Left: Image Preview and Info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2">
                   <img
                     src={selectedImage.path}
                     alt={selectedImage.filename}
-                    className="w-16 h-16 flex-shrink-0 object-contain bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700"
+                    className="w-12 h-12 flex-shrink-0 object-contain bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700"
                   />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 dark:text-white text-sm truncate">
+                    <h3 className="font-semibold text-gray-900 dark:text-white text-xs truncate">
                       {selectedImage.filename}
                     </h3>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate">
+                    <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5 truncate">
                       <span className="font-medium">Path:</span> {selectedImage.path}
                     </p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                    <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">
                       <span className="font-medium">Size:</span> {selectedImage.dimensions ? `${selectedImage.dimensions.width}×${selectedImage.dimensions.height} • ` : ''}{Math.round(selectedImage.filesize / 1024)}KB
                     </p>
                   </div>
                 </div>
                 {selectedImage.keywords && selectedImage.keywords.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1 mt-1.5">
                     {selectedImage.keywords.map((kw, idx) => (
-                      <span key={idx} className="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
+                      <span key={idx} className="px-1.5 py-0.5 text-[10px] bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded">
                         {kw}
                       </span>
                     ))}
@@ -436,8 +585,104 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                 )}
               </div>
 
-              {/* Right: Dimensions Configuration */}
-              <div className="lg:w-52 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-gray-700 pt-2 lg:pt-0 lg:pl-3">
+              {/* Right: Dimensions Configuration - Scrollable */}
+              <div className="lg:w-52 border-t lg:border-t-0 lg:border-l border-gray-200 dark:border-gray-700 pt-2 lg:pt-0 lg:pl-2 pr-2 max-h-32 overflow-y-auto">
+                {/* Display Mode */}
+                <div className="mb-2">
+                  <label className="block text-[10px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1">
+                    Display
+                  </label>
+                  <div className="flex gap-0.5">
+                    {[
+                      { value: 'inline', label: 'Inline' },
+                      { value: 'block', label: 'Block' }
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        onClick={() => setDisplayMode(mode.value)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-all ${
+                          displayMode === mode.value
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                        }`}
+                        title={mode.value === 'inline' ? 'Small image that flows with text' : 'Full-size block image'}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Alignment Options (only for block mode) */}
+                <div className="mb-2">
+                  <label className={`block text-[10px] font-semibold uppercase tracking-wide mb-1 ${
+                    displayMode === 'inline'
+                      ? 'text-gray-400 dark:text-gray-600'
+                      : 'text-gray-700 dark:text-gray-300'
+                  }`}>
+                    Align {displayMode === 'inline' && '(Block only)'}
+                  </label>
+                  <div className="grid grid-cols-4 gap-0.5">
+                    <button
+                      onClick={() => displayMode === 'block' && setAlignment('none')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'No Alignment'}
+                      className={`px-1.5 py-1 rounded transition-all flex items-center justify-center ${
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'none'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => displayMode === 'block' && setAlignment('left')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Left'}
+                      className={`px-1.5 py-1 rounded transition-all flex items-center justify-center ${
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'left'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => displayMode === 'block' && setAlignment('center')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Center'}
+                      className={`px-1.5 py-1 rounded transition-all flex items-center justify-center ${
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'center'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignCenter className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => displayMode === 'block' && setAlignment('right')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Right'}
+                      className={`px-1.5 py-1 rounded transition-all flex items-center justify-center ${
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'right'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                      }`}
+                    >
+                      <AlignRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dimensions Header */}
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[10px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
                     Dimensions
@@ -461,98 +706,30 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                   </button>
                 </div>
 
-                {/* Display Mode */}
-                <div className="mb-3">
-                  <label className="block text-[10px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1.5">
-                    Display
-                  </label>
-                  <div className="flex gap-1">
-                    {[
-                      { value: 'inline', label: 'Inline' },
-                      { value: 'block', label: 'Block' }
-                    ].map(mode => (
-                      <button
-                        key={mode.value}
-                        onClick={() => setDisplayMode(mode.value)}
-                        className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
-                          displayMode === mode.value
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                        }`}
-                        title={mode.value === 'inline' ? 'Small image that flows with text' : 'Full-size block image'}
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
+                <div className="space-y-1 mb-2">
+                  <div>
+                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
+                      Width {displayMode === 'inline' && '(auto if empty)'}
+                    </label>
+                    <input
+                      type="number"
+                      value={customWidth}
+                      onChange={(e) => handleWidthChange(e.target.value)}
+                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.width?.toString() || 'Width')}
+                      className="w-full px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
                   </div>
-                </div>
-
-                {/* Alignment Options (only for block mode) */}
-                <div className="mb-3">
-                  <label className={`block text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${
-                    displayMode === 'inline'
-                      ? 'text-gray-400 dark:text-gray-600'
-                      : 'text-gray-700 dark:text-gray-300'
-                  }`}>
-                    Align {displayMode === 'inline' && '(Block only)'}
-                  </label>
-                  <div className="grid grid-cols-4 gap-1">
-                    <button
-                      onClick={() => displayMode === 'block' && setAlignment('none')}
-                      disabled={displayMode === 'inline'}
-                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'No Alignment'}
-                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        displayMode === 'inline'
-                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                          : alignment === 'none'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => displayMode === 'block' && setAlignment('left')}
-                      disabled={displayMode === 'inline'}
-                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Left'}
-                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        displayMode === 'inline'
-                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                          : alignment === 'left'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      <AlignLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => displayMode === 'block' && setAlignment('center')}
-                      disabled={displayMode === 'inline'}
-                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Center'}
-                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        displayMode === 'inline'
-                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                          : alignment === 'center'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      <AlignCenter className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => displayMode === 'block' && setAlignment('right')}
-                      disabled={displayMode === 'inline'}
-                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Right'}
-                      className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        displayMode === 'inline'
-                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
-                          : alignment === 'right'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                      }`}
-                    >
-                      <AlignRight className="w-3.5 h-3.5" />
-                    </button>
+                  <div>
+                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
+                      Height {displayMode === 'inline' && '(auto if empty)'}
+                    </label>
+                    <input
+                      type="number"
+                      value={customHeight}
+                      onChange={(e) => handleHeightChange(e.target.value)}
+                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.height?.toString() || 'Height')}
+                      className="w-full px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
                   </div>
                 </div>
 
@@ -574,33 +751,6 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                     onChange={(e) => handleScaleChange(parseInt(e.target.value))}
                     className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                   />
-                </div>
-
-                <div className="space-y-1.5">
-                  <div>
-                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
-                      Width {displayMode === 'inline' && '(auto if empty)'}
-                    </label>
-                    <input
-                      type="number"
-                      value={customWidth}
-                      onChange={(e) => handleWidthChange(e.target.value)}
-                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.width?.toString() || 'Width')}
-                      className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
-                      Height {displayMode === 'inline' && '(auto if empty)'}
-                    </label>
-                    <input
-                      type="number"
-                      value={customHeight}
-                      onChange={(e) => handleHeightChange(e.target.value)}
-                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.height?.toString() || 'Height')}
-                      className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                    />
-                  </div>
                 </div>
               </div>
             </div>

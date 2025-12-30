@@ -118,6 +118,7 @@ const UserMenu = () => {
           alt={user.name || user.login}
           size="sm"
           username={user.login}
+          userId={user.id}
           showBadge={true}
           className="ring-2 ring-gray-200 dark:ring-gray-700 rounded-full"
         />
@@ -144,6 +145,7 @@ const UserMenu = () => {
                 alt={user.name || user.login}
                 size="md"
                 username={user.login}
+                userId={user.id}
                 showBadge={true}
               />
               <div className="flex-1 min-w-0">

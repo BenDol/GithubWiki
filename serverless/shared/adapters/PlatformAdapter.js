@@ -83,6 +83,14 @@ export class PlatformAdapter {
     throw new Error('Must implement getClientIP()');
   }
 
+  /**
+   * Parse multipart form data from request
+   * @returns {Promise<Object>} Parsed form data with fields and files
+   */
+  async parseMultipartFormData() {
+    throw new Error('Must implement parseMultipartFormData()');
+  }
+
   // ===== Response Creation =====
 
   /**
@@ -214,6 +222,59 @@ export class NetlifyAdapter extends PlatformAdapter {
     };
   }
 
+  async parseMultipartFormData() {
+    // For Netlify, we need to parse multipart form data manually
+    // Since Netlify provides the body as a string (possibly base64 encoded)
+    const busboy = require('busboy');
+    const parsed = {};
+
+    return new Promise((resolve, reject) => {
+      const bb = busboy({
+        headers: this.event.headers
+      });
+
+      bb.on('file', (fieldname, file, info) => {
+        const { filename, encoding, mimeType } = info;
+        const chunks = [];
+
+        file.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+
+        file.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          parsed[fieldname] = {
+            name: filename,
+            size: buffer.length,
+            type: mimeType,
+            buffer: buffer,
+            mimetype: mimeType
+          };
+        });
+      });
+
+      bb.on('field', (fieldname, value) => {
+        parsed[fieldname] = value;
+      });
+
+      bb.on('finish', () => {
+        resolve(parsed);
+      });
+
+      bb.on('error', (error) => {
+        reject(error);
+      });
+
+      // Handle base64 encoded body (Netlify sends binary data as base64)
+      const body = this.event.isBase64Encoded
+        ? Buffer.from(this.event.body, 'base64')
+        : this.event.body;
+
+      bb.write(body);
+      bb.end();
+    });
+  }
+
   getEnv(key) {
     return process.env[key];
   }
@@ -285,6 +346,30 @@ export class CloudflareAdapter extends PlatformAdapter {
         }
       }
     );
+  }
+
+  async parseMultipartFormData() {
+    const formData = await this.request.formData();
+    const parsed = {};
+
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        // Handle file upload
+        const arrayBuffer = await value.arrayBuffer();
+        parsed[key] = {
+          name: value.name,
+          size: value.size,
+          type: value.type,
+          buffer: Buffer.from(arrayBuffer),
+          mimetype: value.type
+        };
+      } else {
+        // Handle text field
+        parsed[key] = value;
+      }
+    }
+
+    return parsed;
   }
 
   getEnv(key) {

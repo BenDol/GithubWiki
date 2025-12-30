@@ -830,6 +830,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                 src={user.avatar_url}
                 alt={user.name || user.login}
                 username={user.login}
+                userId={user.id}
                 size="md"
                 showBadge={true}
                 onClick={handleAvatarClick}
@@ -881,6 +882,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                   src={comment.user.avatar_url}
                   alt={comment.user.login}
                   username={comment.user.login}
+                  userId={comment.user.id}
                   size="md"
                   showBadge={true}
                   onClick={handleAvatarClick}

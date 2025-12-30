@@ -24,6 +24,8 @@ const VideoGuidePicker = ({ isOpen, onClose, onSelect }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
   const [selectedGuide, setSelectedGuide] = useState(null);
+  const [selectedGuideList, setSelectedGuideList] = useState([]); // For multiselect
+  const [multiselectMode, setMultiselectMode] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isMobile, setIsMobile] = useState(false);
   const guidesPerPage = 9;
@@ -106,11 +108,49 @@ const VideoGuidePicker = ({ isOpen, onClose, onSelect }) => {
   const endIndex = startIndex + guidesPerPage;
   const currentGuides = filteredGuides.slice(startIndex, endIndex);
 
-  const handleGuideSelect = (guide) => {
-    setSelectedGuide(guide);
+  const handleGuideSelect = (guide, event) => {
+    const isCtrlClick = event?.ctrlKey || event?.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+
+    // Enable multiselect mode automatically on Ctrl+Click
+    if (isCtrlClick && !multiselectMode) {
+      setMultiselectMode(true);
+    }
+
+    if (multiselectMode || isCtrlClick) {
+      // Multiselect mode: toggle selection in array
+      setSelectedGuideList(prev => {
+        const existing = prev.find(g => g.id === guide.id);
+        if (existing) {
+          // Remove from selection
+          return prev.filter(g => g.id !== guide.id);
+        } else {
+          // Add to selection
+          return [...prev, guide];
+        }
+      });
+
+      // Update primary selection for preview
+      setSelectedGuide(guide);
+    } else {
+      // Single select mode
+      setSelectedGuide(guide);
+      setSelectedGuideList([guide]);
+    }
   };
 
   const handleInsert = () => {
+    // Handle multiselect mode with multiple guides
+    if (multiselectMode && selectedGuideList.length > 0) {
+      // For multiselect, insert all guides with spacing
+      const syntaxArray = selectedGuideList.map(g => `{{video-guide:${g.id}}}`);
+      const combinedSyntax = syntaxArray.join('\n\n');
+      logger.info('Inserting multiple video guides', { count: selectedGuideList.length, syntax: combinedSyntax });
+      onSelect(combinedSyntax);
+      onClose();
+      return;
+    }
+
+    // Single select mode
     if (!selectedGuide) return;
 
     // Insert using ID syntax: {{video-guide:ID}}
@@ -214,43 +254,99 @@ const VideoGuidePicker = ({ isOpen, onClose, onSelect }) => {
             )}
 
             {!loading && !error && currentGuides.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {currentGuides.map(guide => (
-                  <div
-                    key={guide.id}
-                    onClick={() => handleGuideSelect(guide)}
-                    className={`cursor-pointer rounded-lg overflow-hidden transition-all ${
-                      selectedGuide?.id === guide.id
-                        ? 'ring-2 ring-blue-500 shadow-lg'
-                        : 'hover:shadow-md'
-                    }`}
-                  >
-                    <div className="relative pb-[56.25%] bg-gray-200 dark:bg-gray-700">
-                      {guide.thumbnailUrl && (
-                        <img
-                          src={guide.thumbnailUrl}
-                          alt={guide.title}
-                          className="absolute top-0 left-0 w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      )}
-                    </div>
-                    <div className="p-3 bg-white dark:bg-gray-800">
-                      <h3 className="font-semibold text-sm text-gray-900 dark:text-white line-clamp-1">
-                        {guide.title}
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
-                        {guide.description}
-                      </p>
-                      {guide.creator && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          By {guide.creator}
-                        </p>
-                      )}
+              <>
+                {/* Multiselect Toggle - Above Grid - Compact */}
+                <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Mode:</span>
+                    <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-gray-700 rounded p-0.5">
+                      <button
+                        onClick={() => {
+                          setMultiselectMode(false);
+                          setSelectedGuideList(selectedGuide ? [selectedGuide] : []);
+                        }}
+                        className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                          !multiselectMode
+                            ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                            : 'text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        Single
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMultiselectMode(true);
+                          setSelectedGuideList(selectedGuide ? [selectedGuide] : []);
+                        }}
+                        className={`px-2 py-0.5 rounded text-xs font-medium transition-all ${
+                          multiselectMode
+                            ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow'
+                            : 'text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        Multi
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                  {multiselectMode && selectedGuideList.length > 0 && (
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      <span className="font-medium text-blue-600 dark:text-blue-400">{selectedGuideList.length}</span> selected
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {currentGuides.map(guide => {
+                    const isSelected = multiselectMode
+                      ? selectedGuideList.some(g => g.id === guide.id)
+                      : selectedGuide?.id === guide.id;
+
+                    return (
+                      <div
+                        key={guide.id}
+                        onClick={(e) => handleGuideSelect(guide, e)}
+                        className={`cursor-pointer rounded-lg overflow-hidden transition-all relative ${
+                          isSelected
+                            ? 'ring-2 ring-blue-500 shadow-lg'
+                            : 'hover:shadow-md'
+                        }`}
+                      >
+                        <div className="relative pb-[56.25%] bg-gray-200 dark:bg-gray-700">
+                          {guide.thumbnailUrl && (
+                            <img
+                              src={guide.thumbnailUrl}
+                              alt={guide.title}
+                              className="absolute top-0 left-0 w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          )}
+                          {/* Selected checkmark */}
+                          {isSelected && (
+                            <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
+                              <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 bg-white dark:bg-gray-800">
+                          <h3 className="font-semibold text-sm text-gray-900 dark:text-white line-clamp-1">
+                            {guide.title}
+                          </h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
+                            {guide.description}
+                          </p>
+                          {guide.creator && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                              By {guide.creator}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
 
             {/* Pagination */}

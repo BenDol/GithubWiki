@@ -15,6 +15,7 @@ const DonatePage = () => {
   const [paypalLoaded, setPaypalLoaded] = useState(false);
   const [paypalError, setPaypalError] = useState(null);
   const paypalButtonRef = useRef(null);
+  const customAmountRef = useRef(null);
 
   // Pre-fill GitHub username if authenticated
   useEffect(() => {
@@ -27,7 +28,8 @@ const DonatePage = () => {
 
   const donationConfig = config.features?.donation || {};
   const donationMethods = donationConfig.methods || {};
-  const badgeEnabled = donationConfig.badge?.enabled;
+  const badgeConfig = donationConfig.badge || {};
+  const badgeEnabled = badgeConfig.enabled;
   const paypalConfig = donationMethods.paypal || {};
 
   // Get PayPal Client ID from config or environment
@@ -230,47 +232,99 @@ const DonatePage = () => {
         <meta name="description" content={`Help keep ${config.wiki.title} online! This is a community-funded project.`} />
       </Helmet>
 
+      <style>{`
+        /* Override PayPal SDK's fixed height on mobile to prevent button cutoff */
+        @media (max-width: 640px) {
+          [id^="zoid-paypal-buttons-"] {
+            height: auto !important;
+            min-height: 130px !important;
+          }
+        }
+      `}</style>
+
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        <div className="max-w-4xl mx-auto px-4 py-12">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
           {/* Header with coffee cup */}
-          <div className="text-center mb-12">
-            <div className="inline-block mb-6 animate-bounce">
-              <div className="text-8xl filter drop-shadow-lg">☕</div>
+          <div className="text-center mb-8 sm:mb-12">
+            <div className="inline-block mb-4 sm:mb-6 animate-bounce">
+              <div className="text-5xl sm:text-6xl md:text-8xl filter drop-shadow-lg">☕</div>
             </div>
 
-            <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4 px-2">
               Support Our Wiki
             </h1>
 
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed px-2">
               This wiki is a <span className="font-semibold text-blue-600 dark:text-blue-400">community-funded project</span> created
               and maintained by volunteers. Every contribution helps keep the servers running and
               allows us to continue improving the wiki for everyone!
             </p>
           </div>
 
+          {/* Donator Badge Preview */}
+          {badgeEnabled && (
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/20 dark:to-amber-900/20 border-2 border-yellow-300 dark:border-yellow-700 rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 md:mb-12">
+              <div className="flex flex-col md:flex-row items-center gap-4 sm:gap-6">
+                <div className="flex-shrink-0">
+                  <div className="relative inline-block">
+                    <img
+                      src={user?.avatar_url || 'https://github.com/github.png'}
+                      alt="Avatar"
+                      className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full object-cover ring-4 ring-white dark:ring-gray-800"
+                    />
+                    {/* Sample donator badge */}
+                    <div
+                      className="absolute left-1/2 flex items-center justify-center z-10"
+                      style={{
+                        bottom: '-5px',
+                        transform: 'translateX(-50%)',
+                      }}
+                      title={`${badgeConfig.badge} ${badgeConfig.title}`}
+                    >
+                      <span
+                        className="leading-none select-none animate-glow-pulse text-base sm:text-lg md:text-xl"
+                      >
+                        {badgeConfig.badge}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 text-center md:text-left">
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 sm:mb-3">
+                    Get Your Exclusive Donator Badge
+                  </h2>
+                  <p className="text-sm sm:text-base text-gray-700 dark:text-gray-300 leading-relaxed">
+                    As a thank you for your support, you'll receive a <span className="font-semibold text-yellow-700 dark:text-yellow-400">permanent {badgeConfig.title} badge</span> that appears on your profile throughout the wiki!
+                    {user ? ' Your badge will be automatically added after your donation.' : ' Sign in with GitHub to receive your badge.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Stats/Impact Section */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 md:mb-12">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6 text-center">
               💖 Your Support Helps With
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
               {supportItems.map((item, index) => {
                 const IconComponent = iconMap[item.icon] || Heart;
                 return (
                   <div
                     key={index}
-                    className="flex items-start space-x-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    className="flex items-start space-x-3 sm:space-x-4 p-3 sm:p-4 rounded-lg sm:rounded-xl bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                   >
-                    <div className={`${item.color} mt-1`}>
-                      <IconComponent className="w-6 h-6" />
+                    <div className={`${item.color} mt-0.5 sm:mt-1 flex-shrink-0`}>
+                      <IconComponent className="w-5 h-5 sm:w-6 sm:h-6" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white mb-0.5 sm:mb-1">
                         {item.title}
                       </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">
                         {item.description}
                       </p>
                     </div>
@@ -281,34 +335,41 @@ const DonatePage = () => {
           </div>
 
           {/* Donation Amount Selection */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
               Choose Your Contribution
             </h2>
 
             {/* Preset Amounts */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
               {donationAmounts.map((option) => (
                 <button
                   key={option.amount}
                   onClick={() => {
                     setSelectedAmount(option.amount);
                     setCustomAmount('');
+                    // Scroll to custom amount field after brief delay
+                    setTimeout(() => {
+                      customAmountRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center'
+                      });
+                    }, 100);
                   }}
-                  className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
+                  className={`p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 transition-all transform active:scale-95 sm:hover:scale-105 ${
                     selectedAmount === option.amount
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg'
                       : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700'
                   }`}
                 >
                   <div className="text-left">
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-0.5 sm:mb-1">
                       ${option.amount}
                     </div>
-                    <div className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                    <div className="text-xs sm:text-sm font-semibold text-blue-600 dark:text-blue-400 mb-0.5 sm:mb-1">
                       {option.label}
                     </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                    <div className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">
                       {option.description}
                     </div>
                   </div>
@@ -317,7 +378,7 @@ const DonatePage = () => {
             </div>
 
             {/* Custom Amount */}
-            <div className="mb-6">
+            <div ref={customAmountRef} className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Or enter a custom amount:
               </label>
@@ -342,8 +403,8 @@ const DonatePage = () => {
 
             {/* GitHub Username (for automatic badge assignment) */}
             {badgeEnabled && (
-              <div className="mb-8">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <div className="mb-6 sm:mb-8">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   GitHub Username <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
                 </label>
                 <input
@@ -352,9 +413,9 @@ const DonatePage = () => {
                   value={githubUsername}
                   onChange={(e) => setGithubUsername(e.target.value)}
                   disabled={isAuthenticated}
-                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:bg-gray-700 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base border-2 border-gray-300 dark:border-gray-600 rounded-lg sm:rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:bg-gray-700 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                 />
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p className="mt-2 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                   {isAuthenticated ? (
                     <>💎 Signed in as {githubUsername} - Your donator badge will be assigned automatically!</>
                   ) : (
@@ -365,8 +426,8 @@ const DonatePage = () => {
             )}
 
             {/* Payment Methods */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <div className="space-y-3 sm:space-y-4">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4">
                 Choose Payment Method:
               </h3>
 
@@ -427,7 +488,7 @@ const DonatePage = () => {
 
                       {paypalLoaded && (selectedAmount || customAmount) && (
                         <div className="flex justify-center">
-                          <div ref={paypalButtonRef} className="min-h-[150px] w-full max-w-[750px]"></div>
+                          <div ref={paypalButtonRef} className="w-full max-w-[750px]"></div>
                         </div>
                       )}
                     </div>
@@ -474,19 +535,19 @@ const DonatePage = () => {
           </div>
 
           {/* Thank You Message */}
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl shadow-xl p-8 text-white text-center">
-            <Heart className="w-12 h-12 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold mb-2">
+          <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 text-white text-center">
+            <Heart className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-xl sm:text-2xl font-bold mb-2">
               Thank You for Your Support!
             </h3>
-            <p className="text-lg opacity-90">
+            <p className="text-sm sm:text-base md:text-lg opacity-90">
               Every contribution, big or small, helps keep this community resource alive and thriving.
               You're awesome! 🎉
             </p>
           </div>
 
           {/* Footer Info */}
-          <div className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
+          <div className="mt-6 sm:mt-8 text-center text-xs sm:text-sm text-gray-600 dark:text-gray-400 px-4">
             <p>
               All donations go directly towards server costs and development.
               This wiki is run by volunteers.

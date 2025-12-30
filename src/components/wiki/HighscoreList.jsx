@@ -110,6 +110,7 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
                       src={contributor.avatarUrl}
                       alt={contributor.login}
                       username={contributor.login}
+                      userId={contributor.userId}
                       size={window.innerWidth < 640 ? 'sm' : 'md'}
                       showBadge={true}
                       onClick={handleAvatarClick}

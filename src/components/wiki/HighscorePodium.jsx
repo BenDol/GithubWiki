@@ -89,6 +89,7 @@ const HighscorePodium = ({ topThree }) => {
                   src={second.avatarUrl}
                   alt={second.login}
                   username={second.login}
+                  userId={second.userId}
                   size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
                   showBadge={true}
                   onClick={handleAvatarClick}
@@ -155,6 +156,7 @@ const HighscorePodium = ({ topThree }) => {
                     src={first.avatarUrl}
                     alt={first.login}
                     username={first.login}
+                    userId={first.userId}
                     size={window.innerWidth < 640 ? 'xl' : window.innerWidth < 768 ? '2xl' : '2xl'}
                     showBadge={true}
                     badgeScale={0.85}
@@ -218,6 +220,7 @@ const HighscorePodium = ({ topThree }) => {
                   src={third.avatarUrl}
                   alt={third.login}
                   username={third.login}
+                  userId={third.userId}
                   size={window.innerWidth < 640 ? 'md' : window.innerWidth < 768 ? 'lg' : 'xl'}
                   showBadge={true}
                   onClick={handleAvatarClick}

@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { getPrestigeTier, formatPrestigeTitle } from '../../utils/prestige';
 import { useUserPrestige } from '../../hooks/usePrestige';
 import { useDonatorStatus } from '../../hooks/useDonatorStatus';
+import { useCustomAvatar } from '../../hooks/useCustomAvatar';
 
 /**
  * Avatar component with optional prestige badge overlay
@@ -30,6 +31,7 @@ const PrestigeAvatar = ({
   badgeScale = 1.0,
   onClick = null,
   enableUserActions = false,
+  avatarRefreshTrigger = null,
 }) => {
   const { config } = useWikiConfig();
   const { user } = useAuthStore();
@@ -46,6 +48,12 @@ const PrestigeAvatar = ({
   // Load donator status for this user
   const shouldLoadDonator = showBadge && showDonatorBadge && targetUsername && config?.features?.donation?.badge?.enabled;
   const { isDonator, donatorData } = useDonatorStatus(shouldLoadDonator ? targetUsername : null, userId);
+
+  // Load custom avatar if userId is provided, with optional refresh trigger
+  const { avatarUrl: customAvatarUrl } = useCustomAvatar(userId, src, avatarRefreshTrigger);
+
+  // Use custom avatar if available, otherwise use provided src
+  const finalAvatarUrl = customAvatarUrl || src;
 
   // Size classes
   const sizeClasses = {
@@ -108,7 +116,8 @@ const PrestigeAvatar = ({
       tabIndex={isClickable ? 0 : undefined}
     >
       <img
-        src={src}
+        key={finalAvatarUrl}
+        src={finalAvatarUrl}
         alt={alt}
         className={`${sizeClasses[size]} rounded-full object-cover ${isClickable ? 'transition-opacity hover:opacity-80' : ''}`}
       />

@@ -142,6 +142,14 @@ export function getDisplayNameEndpoint() {
   return `${getFunctionsBaseUrl()}/display-name`;
 }
 
+/**
+ * Get profile-picture endpoint
+ * @returns {string} - Endpoint URL
+ */
+export function getProfilePictureEndpoint() {
+  return `${getFunctionsBaseUrl()}/profile-picture`;
+}
+
 // ===== PLATFORM INFO =====
 
 /**
