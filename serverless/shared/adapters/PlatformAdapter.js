@@ -58,6 +58,24 @@ export class PlatformAdapter {
   }
 
   /**
+   * Get authentication token from Authorization header
+   * Extracts Bearer token from "Authorization: Bearer <token>" header
+   * @returns {string|null} Token string or null if not found
+   */
+  getAuthToken() {
+    const headers = this.getHeaders();
+    const authHeader = headers['authorization'] || headers['Authorization'];
+
+    if (!authHeader) {
+      return null;
+    }
+
+    // Extract token from "Bearer <token>" format
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1] : null;
+  }
+
+  /**
    * Get client IP address
    * @returns {string} Client IP
    */
