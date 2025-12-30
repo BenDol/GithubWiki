@@ -78,7 +78,7 @@ const DevelopmentBanner = () => {
   if (!bannerEnabled || !visible) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/90 dark:to-yellow-900/90 border-t-2 border-amber-500 dark:border-amber-400 shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/90 dark:to-yellow-900/90 border-t-2 border-amber-500 dark:border-amber-400 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-4">
         {/* Icon */}
         <div className="flex-shrink-0">

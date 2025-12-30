@@ -92,9 +92,18 @@ const DonatePage = () => {
       return;
     }
 
+    // Build SDK URL with optional funding sources to disable
+    let sdkUrl = `https://www.paypal.com/sdk/js?client-id=${paypalClientId}&currency=USD`;
+
+    // Disable Pay Later if configured (default: true)
+    const disablePayLater = paypalConfig.disablePayLater ?? true;
+    if (disablePayLater) {
+      sdkUrl += '&disable-funding=paylater,credit';
+    }
+
     // Load PayPal SDK script
     const script = document.createElement('script');
-    script.src = `https://www.paypal.com/sdk/js?client-id=${paypalClientId}&currency=USD`;
+    script.src = sdkUrl;
     script.async = true;
     script.onload = () => {
       console.log('[Donate] PayPal SDK loaded');
@@ -113,7 +122,7 @@ const DonatePage = () => {
         script.parentNode.removeChild(script);
       }
     };
-  }, [paypalConfig.enabled, paypalClientId]);
+  }, [paypalConfig.enabled, paypalClientId, paypalConfig.disablePayLater]);
 
   // Render PayPal button when SDK is loaded
   useEffect(() => {
@@ -402,6 +411,7 @@ const DonatePage = () => {
                   ) : paypalClientId && !paypalError ? (
                     /* Smart Buttons (when SDK loaded successfully) */
                     <div>
+
                       {!paypalLoaded && (
                         <div className="flex items-center justify-center py-8">
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500"></div>
@@ -410,18 +420,16 @@ const DonatePage = () => {
                       )}
 
                       {paypalLoaded && (!selectedAmount && !customAmount) && (
-                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-yellow-800 dark:text-yellow-200 text-sm text-center">
-                          Please select or enter a donation amount above
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-800 dark:text-blue-200 text-sm text-center">
+                          👆 Please select or enter a donation amount above to continue
                         </div>
                       )}
 
-                      {paypalLoaded && badgeEnabled && !githubUsername.trim() && (selectedAmount || customAmount) && (
-                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl text-yellow-800 dark:text-yellow-200 text-sm text-center">
-                          Please enter your GitHub username above to continue
+                      {paypalLoaded && (selectedAmount || customAmount) && (
+                        <div className="flex justify-center">
+                          <div ref={paypalButtonRef} className="min-h-[150px] w-full max-w-[750px]"></div>
                         </div>
                       )}
-
-                      <div ref={paypalButtonRef} className="min-h-[150px]"></div>
                     </div>
                   ) : (
                     /* No PayPal configured at all */
