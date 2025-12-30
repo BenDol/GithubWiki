@@ -329,7 +329,7 @@ const DonatePage = () => {
                   type="number"
                   min="1"
                   step="0.01"
-                  placeholder="25.00"
+                  placeholder={selectedAmount ? selectedAmount.toFixed(2) : "25.00"}
                   value={customAmount}
                   onChange={(e) => {
                     setCustomAmount(e.target.value);
