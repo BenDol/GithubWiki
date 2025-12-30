@@ -27,6 +27,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
   const [scalePercentage, setScalePercentage] = useState(100);
   const [alignment, setAlignment] = useState('none');
+  const [displayMode, setDisplayMode] = useState('block');
   const [isMobile, setIsMobile] = useState(false);
   const imagesPerPage = 24;
   const isScalingRef = useRef(false);
@@ -113,6 +114,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
     setMaintainAspectRatio(true);
     setScalePercentage(100);
     setAlignment('none');
+    setDisplayMode('block');
   };
 
   // Handle width change with aspect ratio
@@ -185,18 +187,38 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
     const finalWidth = customWidth || selectedImage.dimensions?.width;
     const finalHeight = customHeight || selectedImage.dimensions?.height;
 
-    // Always use HTML img tag if dimensions are available
-    if (finalWidth || finalHeight) {
+    // Build inline style and attributes
+    if (displayMode === 'inline') {
+      const inlineClass = ' class="inline-image"';
+      const dataAttr = ' data-inline="true"';
+
+      // Check if we have any dimensions (custom or original)
+      const width = customWidth || finalWidth;
+      const height = customHeight || finalHeight;
+
+      if (width || height) {
+        // Has dimensions: include them in style for higher specificity
+        const widthStyle = width ? `width: ${width}px; ` : '';
+        const heightStyle = height ? `height: ${height}px; ` : '';
+        const inlineStyle = ` style="display: inline-block; vertical-align: middle; ${widthStyle}${heightStyle}margin: 0 0.25em;"`;
+        markdown = `<img src="${selectedImage.path}" alt=""${inlineClass}${inlineStyle}${dataAttr} />`;
+      } else {
+        // No dimensions at all: auto-size to text height
+        const inlineStyle = ' style="display: inline-block; vertical-align: middle; max-height: 1.5em; width: auto; margin: 0 0.25em;"';
+        markdown = `<img src="${selectedImage.path}" alt=""${inlineClass}${inlineStyle}${dataAttr} />`;
+      }
+    } else if (finalWidth || finalHeight) {
+      // Block mode with dimensions
       const widthAttr = finalWidth ? ` width="${finalWidth}"` : '';
       const heightAttr = finalHeight ? ` height="${finalHeight}"` : '';
       markdown = `<img src="${selectedImage.path}" alt=""${widthAttr}${heightAttr} />`;
     } else {
-      // Fallback to standard markdown syntax if no dimensions available
+      // Block mode without dimensions - use standard markdown
       markdown = `![](${selectedImage.path})`;
     }
 
-    // Apply alignment wrapper if needed
-    if (alignment !== 'none') {
+    // Apply alignment wrapper if needed (only for block mode)
+    if (alignment !== 'none' && displayMode === 'block') {
       let style;
       if (alignment === 'center') {
         style = 'display: flex; justify-content: center;';
@@ -208,13 +230,14 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
       markdown = `<div style="${style}">\n${markdown}\n</div>`;
     }
 
-    onSelect?.(markdown, selectedImage);
+    onSelect?.(markdown, selectedImage, { mode: displayMode, alignment });
 
     // Reset and close
     setSelectedImage(null);
     setCustomWidth('');
     setCustomHeight('');
     setAlignment('none');
+    setDisplayMode('block');
     setSearchQuery('');
     setSelectedCategory('all');
     onClose?.();
@@ -342,10 +365,10 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {currentImages.map(image => (
                 <button
-                  key={image.id}
+                  key={image.path}
                   onClick={() => handleImageSelect(image)}
                   className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${
-                    selectedImage?.id === image.id
+                    selectedImage?.path === image.path
                       ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2'
                       : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
                   }`}
@@ -364,7 +387,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                     </p>
                   </div>
                   {/* Selected checkmark */}
-                  {selectedImage?.id === image.id && (
+                  {selectedImage?.path === image.path && (
                     <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
                       <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -438,17 +461,50 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                   </button>
                 </div>
 
-                {/* Alignment Options */}
+                {/* Display Mode */}
                 <div className="mb-3">
                   <label className="block text-[10px] font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-1.5">
-                    Align
+                    Display
+                  </label>
+                  <div className="flex gap-1">
+                    {[
+                      { value: 'inline', label: 'Inline' },
+                      { value: 'block', label: 'Block' }
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        onClick={() => setDisplayMode(mode.value)}
+                        className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                          displayMode === mode.value
+                            ? 'bg-blue-500 text-white'
+                            : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                        }`}
+                        title={mode.value === 'inline' ? 'Small image that flows with text' : 'Full-size block image'}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Alignment Options (only for block mode) */}
+                <div className="mb-3">
+                  <label className={`block text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${
+                    displayMode === 'inline'
+                      ? 'text-gray-400 dark:text-gray-600'
+                      : 'text-gray-700 dark:text-gray-300'
+                  }`}>
+                    Align {displayMode === 'inline' && '(Block only)'}
                   </label>
                   <div className="grid grid-cols-4 gap-1">
                     <button
-                      onClick={() => setAlignment('none')}
-                      title="No Alignment"
+                      onClick={() => displayMode === 'block' && setAlignment('none')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'No Alignment'}
                       className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        alignment === 'none'
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'none'
                           ? 'bg-blue-500 text-white'
                           : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
                       }`}
@@ -456,10 +512,13 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       <X className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => setAlignment('left')}
-                      title="Align Left"
+                      onClick={() => displayMode === 'block' && setAlignment('left')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Left'}
                       className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        alignment === 'left'
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'left'
                           ? 'bg-blue-500 text-white'
                           : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
                       }`}
@@ -467,10 +526,13 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       <AlignLeft className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => setAlignment('center')}
-                      title="Align Center"
+                      onClick={() => displayMode === 'block' && setAlignment('center')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Center'}
                       className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        alignment === 'center'
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'center'
                           ? 'bg-blue-500 text-white'
                           : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
                       }`}
@@ -478,10 +540,13 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       <AlignCenter className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => setAlignment('right')}
-                      title="Align Right"
+                      onClick={() => displayMode === 'block' && setAlignment('right')}
+                      disabled={displayMode === 'inline'}
+                      title={displayMode === 'inline' ? 'Only available in Block mode' : 'Align Right'}
                       className={`px-2.5 py-1.5 rounded transition-all flex items-center justify-center ${
-                        alignment === 'right'
+                        displayMode === 'inline'
+                          ? 'opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                          : alignment === 'right'
                           ? 'bg-blue-500 text-white'
                           : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
                       }`}
@@ -513,26 +578,26 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
 
                 <div className="space-y-1.5">
                   <div>
-                    <label className="block text-[10px] text-gray-600 dark:text-gray-400 mb-0.5">
-                      Width
+                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
+                      Width {displayMode === 'inline' && '(auto if empty)'}
                     </label>
                     <input
                       type="number"
                       value={customWidth}
                       onChange={(e) => handleWidthChange(e.target.value)}
-                      placeholder={selectedImage.dimensions?.width?.toString() || 'Width'}
+                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.width?.toString() || 'Width')}
                       className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-gray-600 dark:text-gray-400 mb-0.5">
-                      Height
+                    <label className="block text-[10px] mb-0.5 text-gray-600 dark:text-gray-400">
+                      Height {displayMode === 'inline' && '(auto if empty)'}
                     </label>
                     <input
                       type="number"
                       value={customHeight}
                       onChange={(e) => handleHeightChange(e.target.value)}
-                      placeholder={selectedImage.dimensions?.height?.toString() || 'Height'}
+                      placeholder={displayMode === 'inline' ? 'Auto' : (selectedImage.dimensions?.height?.toString() || 'Height')}
                       className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>

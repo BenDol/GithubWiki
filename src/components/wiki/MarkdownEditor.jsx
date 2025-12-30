@@ -539,9 +539,30 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       const end = start + match[0].length;
 
       if (posInLine >= start && posInLine < end) {
-        // Extract width and height attributes
-        const widthMatch = match[0].match(/width=["'](\d+)["']/);
-        const heightMatch = match[0].match(/height=["'](\d+)["']/);
+        // Check if this is an inline image
+        const isInline = /class=["']inline-image["']/.test(match[0]) || /data-inline=["']true["']/.test(match[0]);
+
+        let width = '';
+        let height = '';
+
+        if (isInline) {
+          // For inline images, extract dimensions from style attribute
+          const styleMatch = match[0].match(/style=["']([^"']*)["']/);
+          if (styleMatch) {
+            const styleContent = styleMatch[1];
+            const widthStyleMatch = styleContent.match(/width:\s*(\d+)px/);
+            const heightStyleMatch = styleContent.match(/height:\s*(\d+)px/);
+            width = widthStyleMatch ? widthStyleMatch[1] : '';
+            height = heightStyleMatch ? heightStyleMatch[1] : '';
+          }
+        } else {
+          // For regular images, extract from width/height attributes
+          const widthMatch = match[0].match(/width=["'](\d+)["']/);
+          const heightMatch = match[0].match(/height=["'](\d+)["']/);
+          width = widthMatch ? widthMatch[1] : '';
+          height = heightMatch ? heightMatch[1] : '';
+        }
+
         const altMatch = match[0].match(/alt=["']([^"']*)["']/);
 
         // Position widget at end of line
@@ -557,8 +578,8 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             type: 'html',
             src: match[1],
             alt: altMatch ? altMatch[1] : '',
-            width: widthMatch ? widthMatch[1] : '',
-            height: heightMatch ? heightMatch[1] : '',
+            width: width,
+            height: height,
             start: line.from + start,
             end: line.from + end,
             fullMatch: match[0]
@@ -595,26 +616,58 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       if (width || height) {
         let newTag = currentImageInfo.fullMatch;
 
-        // Update or add width
-        if (width) {
-          if (/width=["']\d+["']/.test(newTag)) {
-            newTag = newTag.replace(/width=["']\d+["']/, `width="${width}"`);
-          } else {
-            newTag = newTag.replace(/<img\s+/, `<img width="${width}" `);
-          }
-        } else {
-          newTag = newTag.replace(/\s*width=["']\d+["']/, '');
-        }
+        // Check if this is an inline image
+        const isInline = /class=["']inline-image["']/.test(newTag) || /data-inline=["']true["']/.test(newTag);
 
-        // Update or add height
-        if (height) {
-          if (/height=["']\d+["']/.test(newTag)) {
-            newTag = newTag.replace(/height=["']\d+["']/, `height="${height}"`);
+        if (isInline) {
+          // For inline images, update dimensions in the style attribute
+          const widthStyle = width ? `width: ${width}px; ` : '';
+          const heightStyle = height ? `height: ${height}px; ` : '';
+
+          // Update existing style attribute or add new one
+          if (/style=["'][^"']*["']/.test(newTag)) {
+            // Has style attribute - update width/height within it
+            newTag = newTag.replace(/style=["']([^"']*)["']/, (match, styleContent) => {
+              // Remove existing width/height from style
+              let updatedStyle = styleContent.replace(/\s*width:\s*\d+px;\s*/g, '').replace(/\s*height:\s*\d+px;\s*/g, '');
+
+              // Add new width/height (insert before margin or at start)
+              if (/margin:/.test(updatedStyle)) {
+                updatedStyle = updatedStyle.replace(/margin:/, `${widthStyle}${heightStyle}margin:`);
+              } else {
+                updatedStyle = `${widthStyle}${heightStyle}${updatedStyle}`;
+              }
+
+              return `style="${updatedStyle}"`;
+            });
           } else {
-            newTag = newTag.replace(/<img\s+/, `<img height="${height}" `);
+            // No style attribute - add one with dimensions
+            const baseStyle = `display: inline-block; vertical-align: middle; ${widthStyle}${heightStyle}margin: 0 0.25em;`;
+            newTag = newTag.replace(/<img\s+/, `<img style="${baseStyle}" `);
           }
         } else {
-          newTag = newTag.replace(/\s*height=["']\d+["']/, '');
+          // For regular block images, update width/height attributes
+          // Update or add width
+          if (width) {
+            if (/width=["']\d+["']/.test(newTag)) {
+              newTag = newTag.replace(/width=["']\d+["']/, `width="${width}"`);
+            } else {
+              newTag = newTag.replace(/<img\s+/, `<img width="${width}" `);
+            }
+          } else {
+            newTag = newTag.replace(/\s*width=["']\d+["']/, '');
+          }
+
+          // Update or add height
+          if (height) {
+            if (/height=["']\d+["']/.test(newTag)) {
+              newTag = newTag.replace(/height=["']\d+["']/, `height="${height}"`);
+            } else {
+              newTag = newTag.replace(/<img\s+/, `<img height="${height}" `);
+            }
+          } else {
+            newTag = newTag.replace(/\s*height=["']\d+["']/, '');
+          }
         }
 
         newImageSyntax = newTag;

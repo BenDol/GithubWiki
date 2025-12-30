@@ -77,10 +77,10 @@ const sanitizeSchema = {
     ...defaultSchema.attributes,
     // Allow class attribute on span for text colors (Tailwind CSS classes starting with 'text-')
     span: [...(defaultSchema.attributes.span || []), ['className', /^text-/]],
-    // Allow src and alt on img, but sanitize the src
-    img: ['src', 'alt', 'title', 'width', 'height'],
+    // Allow src, alt, style, and data attributes on img
+    img: ['src', 'alt', 'title', 'width', 'height', 'style', ['className', /^inline-image$/], ['dataInline', /^true$/]],
     // Allow align attribute on div for text alignment
-    div: [...(defaultSchema.attributes.div || []), ['align', /^(left|center|right)$/]],
+    div: [...(defaultSchema.attributes.div || []), ['align', /^(left|center|right)$/], 'style'],
     // Allow id on headings for anchor links
     h1: [...(defaultSchema.attributes.h1 || []), 'id'],
     h2: [...(defaultSchema.attributes.h2 || []), 'id'],
@@ -290,15 +290,33 @@ const PageViewer = ({
               );
             },
             // Custom image rendering with zoom and captions
-            img: ({ node, alt, src, width, height, ...props }) => {
-              // If width or height is specified, use them; otherwise default to full width
+            img: ({ node, alt, src, width, height, className, ...props }) => {
+              // Check if this is an inline image (has inline-image class or data-inline attribute)
+              const isInline = className === 'inline-image' ||
+                              props['data-inline'] === 'true' ||
+                              props.dataInline === 'true';
+
+              // If inline, render directly without figure wrapper
+              if (isInline) {
+                return (
+                  <img
+                    src={src}
+                    alt={alt}
+                    className={className}
+                    loading="lazy"
+                    {...props}
+                  />
+                );
+              }
+
+              // Block images: wrap in figure with styling
               const hasCustomSize = width || height;
               const imgClassName = hasCustomSize
-                ? "rounded-lg shadow-lg"
-                : "rounded-lg shadow-lg w-full";
+                ? ""
+                : "w-full";
 
               return (
-                <figure className="my-6">
+                <figure className="my-2">
                   <img
                     src={src}
                     alt={alt}
