@@ -212,7 +212,8 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       console.log(`[DonatorRegistry] Updating donator status for ${username}...`);
 
       // Update using bot token
-      const botToken = process.env.WIKI_BOT_TOKEN || import.meta.env.VITE_WIKI_BOT_TOKEN;
+      const botToken = process.env.WIKI_BOT_TOKEN ||
+        (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
       const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
 
       const { data: updatedIssue } = await botOctokit.rest.issues.update({
@@ -230,7 +231,8 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       console.log(`[DonatorRegistry] Creating donator status for ${username}...`);
 
       // Create using bot token
-      const botToken = process.env.WIKI_BOT_TOKEN || import.meta.env.VITE_WIKI_BOT_TOKEN;
+      const botToken = process.env.WIKI_BOT_TOKEN ||
+        (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
       const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
 
       const { data: createdIssue } = await botOctokit.rest.issues.create({
@@ -332,7 +334,8 @@ export async function removeDonatorStatus(owner, repo, username, userId = null) 
     }
 
     // Close the issue using bot token
-    const botToken = process.env.WIKI_BOT_TOKEN || import.meta.env.VITE_WIKI_BOT_TOKEN;
+    const botToken = process.env.WIKI_BOT_TOKEN ||
+      (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
     const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
 
     await botOctokit.rest.issues.update({

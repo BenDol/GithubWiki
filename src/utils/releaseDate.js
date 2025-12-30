@@ -35,8 +35,10 @@ export function getReleaseDate() {
     return cachedReleaseDate;
   }
 
-  // Read from environment variable
-  const envReleaseDateStr = import.meta.env.VITE_RELEASE_DATE;
+  // Read from environment variable (safe for both browser and serverless)
+  const envReleaseDateStr = typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env.VITE_RELEASE_DATE
+    : process.env.VITE_RELEASE_DATE;
   if (envReleaseDateStr && envReleaseDateStr.trim() !== '') {
     try {
       const date = new Date(envReleaseDateStr);

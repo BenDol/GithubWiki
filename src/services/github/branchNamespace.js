@@ -31,7 +31,8 @@ export async function detectCurrentBranch(config) {
   // Try runtime detection
   try {
     // Development mode - try dev server API endpoint
-    if (import.meta.env.DEV) {
+    const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
+    if (isDev) {
       try {
         const response = await fetch('/api/git-branch');
         if (response.ok) {
@@ -51,7 +52,10 @@ export async function detectCurrentBranch(config) {
 
     // Production mode - try build-time embedded file
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}runtime-branch.json`);
+      const baseUrl = typeof import.meta !== 'undefined' && import.meta.env
+        ? import.meta.env.BASE_URL
+        : '/';
+      const response = await fetch(`${baseUrl}runtime-branch.json`);
       if (response.ok) {
         const data = await response.json();
         if (data.branch && validateBranch(data.branch, allowedBranches)) {

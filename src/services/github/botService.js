@@ -7,10 +7,18 @@
  * Supports both Netlify and Cloudflare Pages platforms
  */
 
-import { useAuthStore } from '../../store/authStore';
 import { retryPlugin } from './octokitRetryPlugin.js';
 import { getGithubBotEndpoint, getCreateCommentIssueEndpoint } from '../../utils/apiEndpoints.js';
 import { createUserIdLabel } from '../../utils/githubLabelUtils.js';
+
+// Lazy-load authStore to avoid importing browser-only modules in serverless context
+let authStoreModule = null;
+const getAuthStore = async () => {
+  if (!authStoreModule) {
+    authStoreModule = await import('../../store/authStore.js');
+  }
+  return authStoreModule.useAuthStore;
+};
 
 // Helper to safely check environment (works in both browser and serverless contexts)
 const isDev = () => {
@@ -123,7 +131,8 @@ const createIssueDirectly = async (owner, repo, title, body, labels, preventDupl
  */
 export const createCommentIssueWithBot = async (owner, repo, title, body, labels, preventDuplicates = false) => {
   try {
-    // Get current user for server-side ban checking
+    // Get current user for server-side ban checking (lazy-load to avoid serverless issues)
+    const useAuthStore = await getAuthStore();
     const authStore = useAuthStore.getState();
     const currentUser = authStore.user;
     const requestedBy = currentUser?.login || null;
@@ -806,6 +815,8 @@ const createIssueReportDirectly = async (report) => {
  */
 export const createIssueReport = async (report) => {
   try {
+    // Lazy-load authStore to avoid serverless issues
+    const useAuthStore = await getAuthStore();
     const authStore = useAuthStore.getState();
     const requestedBy = authStore.user?.login || null;
 

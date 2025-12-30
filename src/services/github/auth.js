@@ -10,21 +10,31 @@ import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger('Auth');
 
-const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
+// Helper to safely access environment (works in both browser and serverless)
+const getEnv = (key) => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
+
+const GITHUB_CLIENT_ID = getEnv('VITE_GITHUB_CLIENT_ID');
 
 // Use platform-aware endpoints (supports Netlify, Cloudflare Pages, and Dev)
 const DEVICE_CODE_URL = getDeviceCodeEndpoint();
 const TOKEN_URL = getAccessTokenEndpoint();
 const USER_URL = 'https://api.github.com/user';
 
-// Debug: Log environment variables
-logger.debug('GitHub Auth Configuration', {
-  VITE_GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID,
-  PLATFORM: getPlatform(),
-  DEV_MODE: import.meta.env.DEV,
-  DEVICE_CODE_URL,
-  TOKEN_URL,
-});
+// Debug: Log environment variables (only in browser context)
+if (typeof import.meta !== 'undefined' && import.meta.env) {
+  logger.debug('GitHub Auth Configuration', {
+    VITE_GITHUB_CLIENT_ID: getEnv('VITE_GITHUB_CLIENT_ID'),
+    PLATFORM: getPlatform(),
+    DEV_MODE: getEnv('DEV'),
+    DEVICE_CODE_URL,
+    TOKEN_URL,
+  });
+}
 
 /**
  * Test GitHub connectivity
