@@ -150,9 +150,10 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
  * @param {string} username - GitHub username
  * @param {number} userId - GitHub user ID
  * @param {Object} donatorStatus - Donator status object
+ * @param {string} [botToken] - Optional bot token (required in serverless context)
  * @returns {Object} Created/updated issue
  */
-export async function saveDonatorStatus(owner, repo, username, userId, donatorStatus) {
+export async function saveDonatorStatus(owner, repo, username, userId, donatorStatus, botToken = null) {
   try {
     // Validate donator status
     validateDonatorStatus(donatorStatus);
@@ -211,10 +212,15 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
     if (existingIssue) {
       console.log(`[DonatorRegistry] Updating donator status for ${username}...`);
 
-      // Update using bot token
-      const botToken = process.env.WIKI_BOT_TOKEN ||
+      // Update using bot token (use parameter if provided, otherwise try environment)
+      const token = botToken || process.env.WIKI_BOT_TOKEN ||
         (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
-      const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
+
+      if (!token) {
+        throw new Error('Bot token not available. Cannot update donator status.');
+      }
+
+      const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: token });
 
       const { data: updatedIssue } = await botOctokit.rest.issues.update({
         owner,
@@ -230,10 +236,15 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
     } else {
       console.log(`[DonatorRegistry] Creating donator status for ${username}...`);
 
-      // Create using bot token
-      const botToken = process.env.WIKI_BOT_TOKEN ||
+      // Create using bot token (use parameter if provided, otherwise try environment)
+      const token = botToken || process.env.WIKI_BOT_TOKEN ||
         (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
-      const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
+
+      if (!token) {
+        throw new Error('Bot token not available. Cannot create donator status.');
+      }
+
+      const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: token });
 
       const { data: createdIssue } = await botOctokit.rest.issues.create({
         owner,
@@ -294,9 +305,10 @@ export async function getAllDonators(owner, repo) {
  * @param {string} repo - Repository name
  * @param {string} username - GitHub username
  * @param {number} [userId] - Optional GitHub user ID
+ * @param {string} [botToken] - Optional bot token (required in serverless context)
  * @returns {boolean} True if removed successfully
  */
-export async function removeDonatorStatus(owner, repo, username, userId = null) {
+export async function removeDonatorStatus(owner, repo, username, userId = null, botToken = null) {
   try {
     const octokit = getOctokit();
 
@@ -333,10 +345,15 @@ export async function removeDonatorStatus(owner, repo, username, userId = null) 
       return false;
     }
 
-    // Close the issue using bot token
-    const botToken = process.env.WIKI_BOT_TOKEN ||
+    // Close the issue using bot token (use parameter if provided, otherwise try environment)
+    const token = botToken || process.env.WIKI_BOT_TOKEN ||
       (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_TOKEN : undefined);
-    const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: botToken });
+
+    if (!token) {
+      throw new Error('Bot token not available. Cannot remove donator status.');
+    }
+
+    const botOctokit = new (await import('@octokit/rest')).Octokit({ auth: token });
 
     await botOctokit.rest.issues.update({
       owner,
