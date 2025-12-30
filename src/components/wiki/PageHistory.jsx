@@ -8,7 +8,7 @@ import { useDisplayNames } from '../../hooks/useDisplayName';
 import LoadingSpinner from '../common/LoadingSpinner';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import UserActionMenu from '../common/UserActionMenu';
-import { addAdmin } from '../../services/github/admin';
+import { addAdmin } from '../../services/adminActions';
 
 /**
  * PageHistory component
@@ -50,11 +50,9 @@ const PageHistory = ({ sectionId, pageId }) => {
   };
 
   const handleMakeAdmin = async (username) => {
-    if (!config?.wiki?.repository) return;
     try {
-      const { owner, repo} = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login, config);
-      alert(`✅ Successfully added ${username} as administrator`);
+      const result = await addAdmin(username);
+      alert(`✅ ${result.message}`);
     } catch (error) {
       console.error('Failed to add admin:', error);
       alert('❌ Failed to add admin: ' + error.message);

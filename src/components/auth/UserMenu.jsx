@@ -7,6 +7,9 @@ import PrestigeAvatar from '../common/PrestigeAvatar';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useUserPrestige } from '../../hooks/usePrestige';
 import { getCurrentUserAdminStatus } from '../../services/github/admin';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('UserMenu');
 
 /**
  * UserMenu component with profile dropdown
@@ -46,7 +49,7 @@ const UserMenu = () => {
         const status = await getCurrentUserAdminStatus(owner, repo, config);
         setIsAdmin(status.isAdmin);
       } catch (error) {
-        console.error('Failed to check admin status:', error);
+        logger.error('Failed to check admin status', { error });
         setIsAdmin(false);
       } finally {
         setAdminCheckLoading(false);
@@ -93,7 +96,7 @@ const UserMenu = () => {
         localStorage.removeItem(key);
       });
 
-      console.log(`[UserMenu] Cleared ${cacheKeys.length} cache entries`);
+      logger.info(`Cleared ${cacheKeys.length} cache entries`);
 
       // Then logout
       logout();

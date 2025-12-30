@@ -8,13 +8,13 @@ import PropTypes from 'prop-types';
  * Used on AI-generated pages to invite human input and corrections
  *
  * @param {Object} props
- * @param {string} props.type - Banner type (default: 'ai-generated')
+ * @param {string} props.type - Banner type (default: 'auto-generated')
  * @param {React.ReactNode} props.customTitle - Custom title override (string or JSX)
  * @param {React.ReactNode} props.customMessage - Custom message override (string or JSX)
  * @param {React.ReactNode} props.customFooter - Custom footer override (string or JSX)
  */
 const ContributionBanner = ({
-  type = 'ai-generated',
+  type = 'auto-generated',
   customTitle,
   customMessage,
   customFooter
@@ -54,14 +54,14 @@ const ContributionBanner = ({
   };
 
   const defaultMessages = {
-    'ai-generated': {
+    'auto-generated': {
       title: '🤖 Community Contribution Opportunity',
       message: 'This page was ready for your valuable insight are you ready to become a contributor to the wiki?! We need your help to build comprehensive information.',
       footer: 'Your contributions help make this wiki better for everyone.',
     },
   };
 
-  const content = defaultMessages[type] || defaultMessages['ai-generated'];
+  const content = defaultMessages[type] || defaultMessages['auto-generated'];
 
   return (
     <div style={bannerStyles.container}>

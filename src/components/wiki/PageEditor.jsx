@@ -19,6 +19,9 @@ import { getPicker, hasPicker, getAllPickers } from '../../utils/contentRenderer
 import { resolveShortcuts, getShortcutDisplayMap } from '../../utils/keyboardShortcutResolver';
 import { useEnhancedKeyboardShortcuts } from '../../hooks/useEnhancedKeyboardShortcuts';
 import { Image as ImageIcon, Database } from 'lucide-react';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('PageEditor');
 
 /**
  * PageEditor component with live preview
@@ -66,7 +69,7 @@ const PageEditor = ({
 
   // Debug: Track showColorPicker state changes
   useEffect(() => {
-    console.log('[PageEditor] showColorPicker state changed to:', showColorPicker);
+    logger.trace('showColorPicker state changed', { showColorPicker });
   }, [showColorPicker]);
 
   // Metadata fields
@@ -251,7 +254,7 @@ const PageEditor = ({
           // console.log('[PageEditor] Reconstructed content with metadata');
           setContent(contentWithMetadata);
         } catch (err) {
-          console.error('[PageEditor] Failed to reconstruct content with metadata:', err);
+          logger.error('Failed to reconstruct content with metadata', { error: err });
           setContent(initialContent);
         }
       }
@@ -279,7 +282,7 @@ const PageEditor = ({
           setContent(initialContent);
         }
       } catch (err) {
-        console.error('[PageEditor] Failed to parse frontmatter:', err);
+        logger.error('Failed to parse frontmatter', { error: err });
       }
     }
   }, [initialContent, initialMetadata]);
@@ -309,7 +312,7 @@ const PageEditor = ({
     try {
       const draft = loadDraft();
       if (draft && draft.content) {
-        console.log('[PageEditor] Loading draft from localStorage');
+        logger.info('Loading draft from localStorage');
 
         // Parse the draft content to get metadata
         const parsed = matter(draft.content);
@@ -324,10 +327,10 @@ const PageEditor = ({
           onDraftLoaded();
         }
 
-        console.log('[PageEditor] Draft loaded successfully');
+        logger.info('Draft loaded successfully');
       }
     } catch (error) {
-      console.error('[PageEditor] Failed to load draft:', error);
+      logger.error('Failed to load draft', { error });
     }
   }, [content, initialContent, isNewPage, draftLoaded, loadDraft, isDraftAvailable, onDraftLoaded]);
 
@@ -432,7 +435,7 @@ const PageEditor = ({
       // Extra safety: ensure required fields are never empty
       if (!safeMetadata.title?.trim() || !safeMetadata.category?.trim() ||
           !Array.isArray(safeMetadata.tags) || safeMetadata.tags.length === 0) {
-        console.error('[PageEditor] BLOCKED metadata update: required fields missing', {
+        logger.error('BLOCKED metadata update: required fields missing', {
           newMetadata,
           parsedData: parsed.data,
           safeMetadata
@@ -449,7 +452,7 @@ const PageEditor = ({
 
       setContent(updatedContent);
     } catch (err) {
-      console.error('[PageEditor] Failed to update frontmatter:', err);
+      logger.error('Failed to update frontmatter', { error: err });
     }
   };
 
@@ -712,7 +715,7 @@ const PageEditor = ({
 
         setContent(fullContent);
       } catch (err) {
-        console.error('[PageEditor] Failed to reconstruct content with metadata:', err);
+        logger.error('Failed to reconstruct content with metadata', { error: err });
         setContent(newContent);
       }
     } else {
@@ -743,16 +746,17 @@ const PageEditor = ({
         }
       } catch (err) {
         // If parsing fails, keep existing metadata
-        console.error('[PageEditor] Failed to sync metadata from content:', err);
+        logger.error('Failed to sync metadata from content', { error: err });
       }
     }
   };
 
   const handleSave = () => {
-    console.log('[PageEditor] ========== SAVE CLICKED ==========');
-    console.log('[PageEditor] Current metadata state:', metadata);
-    console.log('[PageEditor] Current content length:', content.length);
-    console.log('[PageEditor] Content preview (first 500 chars):', content.substring(0, 500));
+    logger.info('Save clicked', {
+      metadata,
+      contentLength: content.length,
+      contentPreview: content.substring(0, 500)
+    });
 
     if (!content.trim()) {
       alert('Content cannot be empty');
@@ -772,7 +776,7 @@ const PageEditor = ({
 
     // Run validation
     const validationErrors = validateMetadata();
-    console.log('[PageEditor] Validation errors:', validationErrors);
+    logger.debug('Validation errors', { validationErrors });
 
     if (validationErrors.length > 0) {
       // Trigger shake animation
@@ -782,22 +786,24 @@ const PageEditor = ({
     }
 
     // CRITICAL: Final safety check - ensure content has valid frontmatter with metadata
-    console.log('[PageEditor] Starting final safety check...');
+    logger.debug('Starting final safety check');
     try {
       const parsed = matter(content);
-      console.log('[PageEditor] Parsed content data:', parsed.data);
-      console.log('[PageEditor] Parsed content keys:', Object.keys(parsed.data || {}));
+      logger.debug('Parsed content', {
+        data: parsed.data,
+        keys: Object.keys(parsed.data || {})
+      });
 
       // Verify all required fields are present and non-empty
       if (!parsed.data || Object.keys(parsed.data).length === 0) {
         alert('CRITICAL ERROR: No metadata found in content. Cannot save to prevent data loss.');
-        console.error('[PageEditor] BLOCKED SAVE: No metadata in content', { content, metadata });
+        logger.error('BLOCKED SAVE: No metadata in content', { content, metadata });
         return;
       }
 
       if (!parsed.data.title?.trim()) {
         alert('CRITICAL ERROR: Title is missing from metadata. Cannot save to prevent data loss.');
-        console.error('[PageEditor] BLOCKED SAVE: Missing title', {
+        logger.error('BLOCKED SAVE: Missing title', {
           parsedData: parsed.data,
           metadata,
           contentPreview: content.substring(0, 1000)
@@ -807,20 +813,20 @@ const PageEditor = ({
 
       if (!parsed.data.category?.trim()) {
         alert('CRITICAL ERROR: Category is missing from metadata. Cannot save to prevent data loss.');
-        console.error('[PageEditor] BLOCKED SAVE: Missing category', { parsedData: parsed.data, metadata });
+        logger.error('BLOCKED SAVE: Missing category', { parsedData: parsed.data, metadata });
         return;
       }
 
       if (!Array.isArray(parsed.data.tags) || parsed.data.tags.length === 0) {
         alert('CRITICAL ERROR: Tags are missing from metadata. Cannot save to prevent data loss.');
-        console.error('[PageEditor] BLOCKED SAVE: Missing tags', { parsedData: parsed.data, metadata });
+        logger.error('BLOCKED SAVE: Missing tags', { parsedData: parsed.data, metadata });
         return;
       }
 
-      console.log('[PageEditor] Final metadata validation passed:', parsed.data);
+      logger.debug('Final metadata validation passed', { parsedData: parsed.data });
     } catch (err) {
       alert('CRITICAL ERROR: Failed to parse frontmatter. Cannot save to prevent data loss.');
-      console.error('[PageEditor] BLOCKED SAVE: Frontmatter parsing failed', err);
+      logger.error('BLOCKED SAVE: Frontmatter parsing failed', { error: err });
       return;
     }
 
@@ -833,9 +839,9 @@ const PageEditor = ({
       const trimmedBody = parsed.content.trim();
       // Reconstruct with cleaned body
       cleanedContent = matter.stringify(trimmedBody, parsed.data);
-      console.log('[PageEditor] Content cleaned for save');
+      logger.debug('Content cleaned for save');
     } catch (err) {
-      console.warn('[PageEditor] Could not clean content, saving as-is:', err);
+      logger.warn('Could not clean content, saving as-is', { error: err });
       // If parsing fails, save the original content
     }
 
@@ -878,7 +884,7 @@ const PageEditor = ({
       // Call the parent-specific handler with editor API
       pickerMeta.handler(data, editorApiRef.current);
     } else {
-      logger.warn(`No handler registered for picker: ${pickerName}`);
+      logger.warn('No handler registered for picker', { pickerName });
     }
 
     // Close the picker
@@ -1239,15 +1245,15 @@ const PageEditor = ({
 
   // Handle color picker open
   const handleOpenColorPicker = () => {
-    console.log('[PageEditor] Opening color picker');
-    console.log('  - colorButtonRef.current:', colorButtonRef.current);
-    console.log('  - showColorPicker before:', showColorPicker);
+    logger.trace('Opening color picker', {
+      hasColorButton: !!colorButtonRef.current,
+      showColorPicker
+    });
 
     // Save current selection before opening picker (selection may be lost when picker opens)
     if (editorApiRef.current) {
       const selection = editorApiRef.current.getSelection();
-      console.log('  - Saving selection:', selection);
-      console.log('  - Selection details:', {
+      logger.trace('Saving selection', {
         text: selection.text,
         from: selection.from,
         to: selection.to,
@@ -1269,17 +1275,18 @@ const PageEditor = ({
 
   // Handle color selection
   const handleColorSelect = (color) => {
-    console.log('[PageEditor] handleColorSelect called');
-    console.log('  - color:', color);
-    console.log('  - editorApiRef.current exists:', !!editorApiRef.current);
+    logger.trace('handleColorSelect called', {
+      color,
+      hasEditorApi: !!editorApiRef.current
+    });
 
     if (!editorApiRef.current) {
-      console.error('[PageEditor] Editor API not available!');
+      logger.error('Editor API not available');
       return;
     }
 
     const api = editorApiRef.current;
-    console.log('  - API methods available:', {
+    logger.trace('API methods available', {
       replaceRange: typeof api.replaceRange,
       replaceSelection: typeof api.replaceSelection,
       getSelection: typeof api.getSelection
@@ -1287,7 +1294,7 @@ const PageEditor = ({
 
     // Use saved selection instead of current selection (which may be empty)
     const selection = savedSelection || api.getSelection();
-    console.log('[PageEditor] Selection to use:', {
+    logger.trace('Selection to use', {
       source: savedSelection ? 'saved' : 'current',
       text: selection.text,
       from: selection.from,
@@ -1297,13 +1304,16 @@ const PageEditor = ({
 
     if (color === null) {
       // Clear color - detect and remove color span tags
-      console.log('[PageEditor] Clearing color');
+      logger.trace('Clearing color');
 
       // Get the full content and cursor position
       const content = api.getContent();
       const cursorPos = savedSelection?.from ?? api.getCursorPosition();
 
-      console.log('[PageEditor] Content length:', content.length, 'Cursor position:', cursorPos);
+      logger.trace('Color clear context', {
+        contentLength: content.length,
+        cursorPos
+      });
 
       // Find color span tags that contain the cursor position
       // Pattern: <span class="text-[color]-[shade]...">...</span>
@@ -1326,86 +1336,86 @@ const PageEditor = ({
             fullMatch: match[0],
             innerText: match[1]
           };
-          console.log('[PageEditor] Found color span containing cursor:', foundSpan);
+          logger.trace('Found color span containing cursor', { foundSpan });
           break;
         }
       }
 
       if (foundSpan) {
         // Remove the span wrapper, keep only inner text
-        console.log('[PageEditor] Removing span wrapper, keeping inner text:', foundSpan.innerText);
+        logger.trace('Removing span wrapper', { innerText: foundSpan.innerText });
         try {
           api.replaceRange(foundSpan.start, foundSpan.end, foundSpan.innerText);
-          console.log('[PageEditor] Color span removed successfully');
+          logger.trace('Color span removed successfully');
         } catch (error) {
-          console.error('[PageEditor] Failed to remove color span:', error);
+          logger.error('Failed to remove color span', { error });
         }
       } else if (!selection.empty && selection.text) {
         // Fallback: if no span found but there's a selection, just clear any potential wrapper
-        console.log('[PageEditor] No span found at cursor, clearing selection text:', selection.text);
+        logger.trace('No span found, clearing selection text', { text: selection.text });
         if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
-          console.log('[PageEditor] Using replaceRange with saved positions');
+          logger.trace('Using replaceRange with saved positions');
           try {
             api.replaceRange(savedSelection.from, savedSelection.to, selection.text);
-            console.log('[PageEditor] replaceRange succeeded');
+            logger.trace('replaceRange succeeded');
           } catch (error) {
-            console.error('[PageEditor] replaceRange failed:', error);
+            logger.error('replaceRange failed', { error });
           }
         } else {
-          console.log('[PageEditor] Using replaceSelection');
+          logger.trace('Using replaceSelection');
           try {
             api.replaceSelection(selection.text);
-            console.log('[PageEditor] replaceSelection succeeded');
+            logger.trace('replaceSelection succeeded');
           } catch (error) {
-            console.error('[PageEditor] replaceSelection failed:', error);
+            logger.error('replaceSelection failed', { error });
           }
         }
       } else {
-        console.warn('[PageEditor] No color span found at cursor position and no text selected');
+        logger.warn('No color span found at cursor position and no text selected');
       }
     } else {
       // Apply color using span with Tailwind class
       const text = selection.empty ? 'colored text' : selection.text;
       const coloredText = `<span class="${color.class}">${text}</span>`;
-      console.log('[PageEditor] Applying color:', {
+      logger.trace('Applying color', {
         originalText: text,
-        coloredText: coloredText,
+        coloredText,
         colorClass: color.class
       });
 
       // If we have a saved selection with positions, use direct replacement at those positions
       if (savedSelection && savedSelection.from !== undefined && savedSelection.to !== undefined) {
-        console.log('[PageEditor] Using replaceRange with positions:', {
+        logger.trace('Using replaceRange with positions', {
           from: savedSelection.from,
           to: savedSelection.to
         });
         try {
           api.replaceRange(savedSelection.from, savedSelection.to, coloredText);
-          console.log('[PageEditor] Color applied successfully via replaceRange');
+          logger.trace('Color applied successfully via replaceRange');
         } catch (error) {
-          console.error('[PageEditor] replaceRange failed:', error);
+          logger.error('replaceRange failed', { error });
           // Fallback to replaceSelection
-          console.log('[PageEditor] Falling back to replaceSelection');
+          logger.trace('Falling back to replaceSelection');
           try {
             api.replaceSelection(coloredText);
-            console.log('[PageEditor] Color applied successfully via replaceSelection fallback');
+            logger.trace('Color applied successfully via replaceSelection fallback');
           } catch (error2) {
-            console.error('[PageEditor] replaceSelection fallback also failed:', error2);
+            logger.error('replaceSelection fallback also failed', { error: error2 });
           }
         }
       } else {
-        console.log('[PageEditor] Using replaceSelection (no saved positions)');
+        logger.trace('Using replaceSelection (no saved positions)');
         try {
           api.replaceSelection(coloredText);
-          console.log('[PageEditor] Color applied successfully via replaceSelection');
+          logger.trace('Color applied successfully via replaceSelection');
         } catch (error) {
-          console.error('[PageEditor] replaceSelection failed:', error);
+          logger.error('replaceSelection failed', { error });
         }
       }
     }
 
     // Clear saved selection after use
-    console.log('[PageEditor] Clearing saved selection');
+    logger.trace('Clearing saved selection');
     setSavedSelection(null);
   };
 

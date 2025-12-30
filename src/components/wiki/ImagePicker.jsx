@@ -118,13 +118,13 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   // Handle width change with aspect ratio
   const handleWidthChange = (value) => {
     setCustomWidth(value);
-    if (maintainAspectRatio && selectedImage && value) {
+    if (maintainAspectRatio && selectedImage?.dimensions && value) {
       const aspectRatio = selectedImage.dimensions.height / selectedImage.dimensions.width;
       const newHeight = Math.round(parseInt(value) * aspectRatio);
       setCustomHeight(newHeight.toString());
     }
     // Update scale percentage based on width (but not if we're currently scaling)
-    if (selectedImage && !isScalingRef.current) {
+    if (selectedImage?.dimensions && !isScalingRef.current) {
       if (!value || value === '') {
         setScalePercentage(100);
       } else {
@@ -137,13 +137,13 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   // Handle height change with aspect ratio
   const handleHeightChange = (value) => {
     setCustomHeight(value);
-    if (maintainAspectRatio && selectedImage && value) {
+    if (maintainAspectRatio && selectedImage?.dimensions && value) {
       const aspectRatio = selectedImage.dimensions.width / selectedImage.dimensions.height;
       const newWidth = Math.round(parseInt(value) * aspectRatio);
       setCustomWidth(newWidth.toString());
     }
     // Update scale percentage based on height (but not if we're currently scaling)
-    if (selectedImage && !isScalingRef.current) {
+    if (selectedImage?.dimensions && !isScalingRef.current) {
       if (!value || value === '') {
         setScalePercentage(100);
       } else {
@@ -157,7 +157,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const handleScaleChange = (percentage) => {
     isScalingRef.current = true;
     setScalePercentage(percentage);
-    if (selectedImage) {
+    if (selectedImage?.dimensions) {
       if (percentage === 100) {
         // At 100%, clear the custom dimensions to use original
         setCustomWidth('');
@@ -393,7 +393,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       <span className="font-medium">Path:</span> {selectedImage.path}
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                      <span className="font-medium">Size:</span> {selectedImage.dimensions.width}×{selectedImage.dimensions.height} • {Math.round(selectedImage.filesize / 1024)}KB
+                      <span className="font-medium">Size:</span> {selectedImage.dimensions ? `${selectedImage.dimensions.width}×${selectedImage.dimensions.height} • ` : ''}{Math.round(selectedImage.filesize / 1024)}KB
                     </p>
                   </div>
                 </div>
@@ -515,7 +515,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       type="number"
                       value={customWidth}
                       onChange={(e) => handleWidthChange(e.target.value)}
-                      placeholder={selectedImage.dimensions.width.toString()}
+                      placeholder={selectedImage.dimensions?.width?.toString() || 'Width'}
                       className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>
@@ -527,7 +527,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                       type="number"
                       value={customHeight}
                       onChange={(e) => handleHeightChange(e.target.value)}
-                      placeholder={selectedImage.dimensions.height.toString()}
+                      placeholder={selectedImage.dimensions?.height?.toString() || 'Height'}
                       className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                     />
                   </div>

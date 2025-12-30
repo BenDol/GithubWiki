@@ -21,12 +21,28 @@ const pendingBanIssueRequests = new Map();
 
 /**
  * Check if a user is the repository owner
- * @param {string} username - Username to check
- * @param {string} owner - Repository owner
- * @returns {boolean} True if user is the owner
+ * @param {number} userId - User ID to check
+ * @param {string} owner - Repository owner username
+ * @param {string} repo - Repository name
+ * @returns {Promise<boolean>} True if user is the owner
  */
-export const isRepositoryOwner = (username, owner) => {
-  return username.toLowerCase() === owner.toLowerCase();
+export const isRepositoryOwner = async (userId, owner, repo) => {
+  try {
+    // Get repository info to get owner's user ID
+    const octokit = getOctokit();
+    const { data: repoData } = await octokit.rest.repos.get({
+      owner,
+      repo
+    });
+
+    const ownerUserId = repoData.owner.id;
+    console.log('[Admin] Owner check:', { userId, ownerUserId, match: userId === ownerUserId });
+    return userId === ownerUserId;
+  } catch (error) {
+    console.error('[Admin] Failed to fetch repository owner ID:', error);
+    // Fallback: return false for security
+    return false;
+  }
 };
 
 /**
@@ -327,11 +343,6 @@ export const getBannedUsers = async (owner, repo, config) => {
  * @returns {Promise<boolean>} True if user is admin or owner
  */
 export const isAdmin = async (username, owner, repo, config) => {
-  // Owner is always admin
-  if (isRepositoryOwner(username, owner)) {
-    return true;
-  }
-
   // Fetch user ID for comparison (cached)
   let userId;
   try {
@@ -339,6 +350,11 @@ export const isAdmin = async (username, owner, repo, config) => {
   } catch (error) {
     console.warn(`[Admin] Failed to fetch user ID for ${username}:`, error);
     // Continue without userId, will fallback to username comparison
+  }
+
+  // Owner is always admin (check by userId)
+  if (userId && await isRepositoryOwner(userId, owner, repo)) {
+    return true;
   }
 
   // Check admin list (prefer userId, fallback to username for backwards compatibility)
@@ -412,8 +428,17 @@ export const isBanned = async (username, owner, repo, config) => {
  * @returns {Promise<Object>} Updated admins list
  */
 export const addAdmin = async (username, owner, repo, addedBy, config) => {
+  // Fetch userId for addedBy to verify owner
+  let addedByUserId;
+  try {
+    addedByUserId = await getCachedUserId(addedBy);
+  } catch (error) {
+    console.error(`[Admin] Failed to fetch user ID for ${addedBy}:`, error);
+    throw new Error('Failed to verify user identity');
+  }
+
   // Verify the person adding is the owner
-  if (!isRepositoryOwner(addedBy, owner)) {
+  if (!await isRepositoryOwner(addedByUserId, owner, repo)) {
     throw new Error('Only the repository owner can add admins');
   }
 
@@ -483,8 +508,17 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
  * @returns {Promise<Object>} Updated admins list
  */
 export const removeAdmin = async (username, owner, repo, removedBy, config) => {
+  // Fetch userId for removedBy to verify owner
+  let removedByUserId;
+  try {
+    removedByUserId = await getCachedUserId(removedBy);
+  } catch (error) {
+    console.error(`[Admin] Failed to fetch user ID for ${removedBy}:`, error);
+    throw new Error('Failed to verify user identity');
+  }
+
   // Verify the person removing is the owner
-  if (!isRepositoryOwner(removedBy, owner)) {
+  if (!await isRepositoryOwner(removedByUserId, owner, repo)) {
     throw new Error('Only the repository owner can remove admins');
   }
 
@@ -549,18 +583,7 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
     throw new Error('Only repository owner or admins can ban users');
   }
 
-  // Cannot ban the owner
-  if (isRepositoryOwner(username, owner)) {
-    throw new Error('Cannot ban the repository owner');
-  }
-
-  // Cannot ban other admins (unless you're the owner)
-  const targetIsAdmin = await isAdmin(username, owner, repo, config);
-  if (targetIsAdmin && !isRepositoryOwner(bannedBy, owner)) {
-    throw new Error('Only the repository owner can ban admins');
-  }
-
-  // Fetch user info from GitHub to get their ID (cached)
+  // Fetch user IDs for both target and banner
   let userId;
   try {
     userId = await getCachedUserId(username);
@@ -570,8 +593,28 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
     throw new Error(`User ${username} not found on GitHub`);
   }
 
+  let bannedByUserId;
+  try {
+    bannedByUserId = await getCachedUserId(bannedBy);
+    console.log(`[Admin] Fetched userId ${bannedByUserId} for ${bannedBy}`);
+  } catch (error) {
+    console.error(`[Admin] Failed to fetch user ID for ${bannedBy}:`, error);
+    throw new Error(`Failed to verify banner identity`);
+  }
+
+  // Cannot ban the owner
+  if (await isRepositoryOwner(userId, owner, repo)) {
+    throw new Error('Cannot ban the repository owner');
+  }
+
+  // Cannot ban other admins (unless you're the owner)
+  const targetIsAdmin = await isAdmin(username, owner, repo, config);
+  if (targetIsAdmin && !await isRepositoryOwner(bannedByUserId, owner, repo)) {
+    throw new Error('Only the repository owner can ban admins');
+  }
+
   // If target is an admin and owner is banning them, remove them from admin list first
-  if (targetIsAdmin && isRepositoryOwner(bannedBy, owner)) {
+  if (targetIsAdmin && await isRepositoryOwner(bannedByUserId, owner, repo)) {
     console.log(`[Admin] Target is an admin, removing from admin list before banning...`);
     try {
       // Get admin list issue
@@ -728,8 +771,9 @@ export const getCurrentUserAdminStatus = async (owner, repo, config) => {
   try {
     const user = await getAuthenticatedUser();
     const username = user.login;
+    const userId = user.id;
 
-    const isOwner = isRepositoryOwner(username, owner);
+    const isOwner = await isRepositoryOwner(userId, owner, repo);
     const userIsAdmin = isOwner || await isAdmin(username, owner, repo, config);
 
     return {

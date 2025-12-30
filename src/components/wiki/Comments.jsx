@@ -16,7 +16,8 @@ import {
   getCommentReactions,
 } from '../../services/github/comments';
 import { detectCurrentBranch } from '../../services/github/branchNamespace';
-import { isBanned, addAdmin } from '../../services/github/admin';
+import { isBanned } from '../../services/github/admin';
+import { addAdmin } from '../../services/adminActions';
 
 /**
  * Comments component using GitHub Issues
@@ -759,12 +760,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   };
 
   const handleMakeAdmin = async (username) => {
-    if (!config?.wiki?.repository) return;
-
     try {
-      const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login, config);
-      alert(`✅ Successfully added ${username} as administrator`);
+      const result = await addAdmin(username);
+      alert(`✅ ${result.message}`);
     } catch (error) {
       console.error('Failed to add admin:', error);
       alert('❌ Failed to add admin: ' + error.message);

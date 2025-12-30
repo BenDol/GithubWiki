@@ -4,7 +4,7 @@ import UserActionMenu from '../common/UserActionMenu';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { useDisplayNames } from '../../hooks/useDisplayName';
-import { addAdmin } from '../../services/github/admin';
+import { addAdmin } from '../../services/adminActions';
 
 /**
  * HighscoreList Component
@@ -43,11 +43,9 @@ const HighscoreList = ({ contributors, startRank = 4 }) => {
   };
 
   const handleMakeAdmin = async (username) => {
-    if (!config?.wiki?.repository) return;
     try {
-      const { owner, repo } = config.wiki.repository;
-      await addAdmin(username, owner, repo, user.login, config);
-      alert(`✅ Successfully added ${username} as administrator`);
+      const result = await addAdmin(username);
+      alert(`✅ ${result.message}`);
     } catch (error) {
       console.error('Failed to add admin:', error);
       alert('❌ Failed to add admin: ' + error.message);

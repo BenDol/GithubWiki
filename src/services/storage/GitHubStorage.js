@@ -19,6 +19,9 @@
 import { Octokit } from '@octokit/rest';
 import StorageAdapter from './StorageAdapter.js';
 import { createUserIdLabel, createWeaponIdLabel } from '../../utils/githubLabelUtils.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('GitHubStorage');
 
 class GitHubStorage extends StorageAdapter {
   /**
@@ -91,7 +94,7 @@ class GitHubStorage extends StorageAdapter {
     try {
       return JSON.parse(text);
     } catch (error) {
-      console.warn('[GitHubStorage] Failed to parse JSON:', error);
+      logger.warn('Failed to parse JSON', { error });
       return null;
     }
   }
@@ -138,14 +141,14 @@ class GitHubStorage extends StorageAdapter {
       const legacyIssue = this._findIssueByLabel(legacyIssues, userLabel);
 
       if (legacyIssue) {
-        console.log(`[GitHubStorage] Found issue without version label for user ${userId}`);
+        logger.debug(`Found issue without version label for user ${userId}`);
         const data = this._parseJSON(legacyIssue.body);
         return Array.isArray(data) ? data : [];
       }
 
       return [];
     } catch (error) {
-      console.error('[GitHubStorage] Load error:', error);
+      logger.error('Load error', { error });
       throw new Error(`Failed to load ${type} for user ${userId}: ${error.message}`);
     }
   }
@@ -194,7 +197,7 @@ class GitHubStorage extends StorageAdapter {
 
       return allItems;
     } catch (error) {
-      console.error('[GitHubStorage] LoadPublic error:', error);
+      logger.error('LoadPublic error', { error });
       throw new Error(`Failed to load public ${type}: ${error.message}`);
     }
   }
@@ -219,7 +222,7 @@ class GitHubStorage extends StorageAdapter {
 
     // Check if there's already a save in progress for this user+type
     if (this._pendingSaveRequests.has(saveKey)) {
-      console.log(`[GitHubStorage] Waiting for in-flight save request for ${saveKey}...`);
+      logger.debug(`Waiting for in-flight save request for ${saveKey}...`);
       // Wait for the in-flight request to complete, then retry
       try {
         await this._pendingSaveRequests.get(saveKey);
@@ -282,7 +285,7 @@ class GitHubStorage extends StorageAdapter {
             labels: [typeLabel, userLabel, versionLabel],
           });
 
-          console.log(`[GitHubStorage] Updated issue for ${username}`);
+          logger.info(`Updated issue for ${username}`);
         } else {
           // Create new issue
           await this.octokit.rest.issues.create({
@@ -293,12 +296,12 @@ class GitHubStorage extends StorageAdapter {
             labels: [typeLabel, userLabel, versionLabel],
           });
 
-          console.log(`[GitHubStorage] Created issue for ${username}`);
+          logger.info(`Created issue for ${username}`);
         }
 
         return items;
       } catch (error) {
-        console.error('[GitHubStorage] Save error:', error);
+        logger.error('Save error', { error });
         throw new Error(`Failed to save ${type} for user ${userId}: ${error.message}`);
       } finally {
         // Clean up the pending request after a short delay to handle eventual consistency
@@ -358,7 +361,7 @@ class GitHubStorage extends StorageAdapter {
           state: 'closed',
         });
 
-        console.log(`[GitHubStorage] Closed empty issue for ${username}`);
+        logger.info(`Closed empty issue for ${username}`);
       } else {
         // Update issue with remaining items
         await this.octokit.rest.issues.update({
@@ -369,12 +372,12 @@ class GitHubStorage extends StorageAdapter {
           labels: [typeLabel, userLabel, versionLabel],
         });
 
-        console.log(`[GitHubStorage] Updated issue for ${username}`);
+        logger.info(`Updated issue for ${username}`);
       }
 
       return items;
     } catch (error) {
-      console.error('[GitHubStorage] Delete error:', error);
+      logger.error('Delete error', { error });
       throw new Error(`Failed to delete ${type} for user ${userId}: ${error.message}`);
     }
   }
@@ -413,7 +416,7 @@ class GitHubStorage extends StorageAdapter {
 
       return comments.map(comment => this._parseJSON(comment.body)).filter(Boolean);
     } catch (error) {
-      console.error('[GitHubStorage] Load comments error:', error);
+      logger.error('Load comments error', { error });
       throw new Error(`Failed to load comments for entity ${entityId}: ${error.message}`);
     }
   }
@@ -459,7 +462,7 @@ class GitHubStorage extends StorageAdapter {
         });
         entityIssue = newIssue;
 
-        console.log(`[GitHubStorage] Created entity issue for ${entityId}`);
+        logger.info(`Created entity issue for ${entityId}`);
       }
 
       const submissionData = {
@@ -494,7 +497,7 @@ class GitHubStorage extends StorageAdapter {
           body: JSON.stringify(submissionData, null, 2),
         });
 
-        console.log(`[GitHubStorage] Updated comment for ${username} on entity ${entityId}`);
+        logger.info(`Updated comment for ${username} on entity ${entityId}`);
       } else {
         // Create new comment
         await this.octokit.rest.issues.createComment({
@@ -504,12 +507,12 @@ class GitHubStorage extends StorageAdapter {
           body: JSON.stringify(submissionData, null, 2),
         });
 
-        console.log(`[GitHubStorage] Created comment for ${username} on entity ${entityId}`);
+        logger.info(`Created comment for ${username} on entity ${entityId}`);
       }
 
       return submissionData;
     } catch (error) {
-      console.error('[GitHubStorage] Save comment error:', error);
+      logger.error('Save comment error', { error });
       throw new Error(`Failed to save comment for entity ${entityId}: ${error.message}`);
     }
   }
@@ -534,7 +537,7 @@ class GitHubStorage extends StorageAdapter {
   async _getOrCreateVerificationIssue() {
     // Check if there's already a request in-flight
     if (this._pendingVerificationIssueRequest) {
-      console.log('[GitHubStorage] Waiting for in-flight verification issue request...');
+      logger.debug('Waiting for in-flight verification issue request...');
       return this._pendingVerificationIssueRequest;
     }
 
@@ -546,7 +549,7 @@ class GitHubStorage extends StorageAdapter {
         let verificationIssue = issues.find(issue => issue.title === issueTitle);
 
         if (!verificationIssue) {
-          console.log('[GitHubStorage] Creating email verification issue...');
+          logger.debug('Creating email verification issue...');
           const initialBody = `# Email Verification Codes
 
 This issue stores email verification codes as comments. Each comment is automatically purged after expiration.
@@ -577,7 +580,7 @@ This issue stores email verification codes as comments. Each comment is automati
               lock_reason: 'off-topic',
             });
           } catch (lockError) {
-            console.warn('[GitHubStorage] Failed to lock verification issue:', lockError.message);
+            logger.warn('Failed to lock verification issue', { error: lockError.message });
           }
 
           verificationIssue = newIssue;
@@ -585,7 +588,7 @@ This issue stores email verification codes as comments. Each comment is automati
 
         return verificationIssue;
       } catch (error) {
-        console.error('[GitHubStorage] Error getting/creating verification issue:', error);
+        logger.error('Error getting/creating verification issue', { error });
         throw error;
       } finally {
         // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
@@ -609,7 +612,7 @@ This issue stores email verification codes as comments. Each comment is automati
         return JSON.parse(match[1]);
       }
     } catch (error) {
-      console.warn('[GitHubStorage] Failed to parse index map:', error.message);
+      logger.warn('Failed to parse index map', { error: error.message });
     }
     return {};
   }
@@ -658,9 +661,9 @@ This issue stores email verification codes as comments. Each comment is automati
       indexMap[emailHash] = comment.id;
       await this._updateIndexMap(verificationIssue.number, verificationIssue.body, indexMap);
 
-      console.log(`[GitHubStorage] Stored verification code for ${emailHash.substring(0, 8)}...`);
+      logger.debug(`Stored verification code for ${emailHash.substring(0, 8)}...`);
     } catch (error) {
-      console.error('[GitHubStorage] Store verification code error:', error);
+      logger.error('Store verification code error', { error });
       throw new Error(`Failed to store verification code: ${error.message}`);
     }
   }
@@ -705,7 +708,7 @@ This issue stores email verification codes as comments. Each comment is automati
 
       return storedData;
     } catch (error) {
-      console.error('[GitHubStorage] Get verification code error:', error);
+      logger.error('Get verification code error', { error });
       throw new Error(`Failed to get verification code: ${error.message}`);
     }
   }
@@ -730,16 +733,16 @@ This issue stores email verification codes as comments. Each comment is automati
           comment_id: commentId,
         });
       } catch (error) {
-        console.warn('[GitHubStorage] Failed to delete comment:', error.message);
+        logger.warn('Failed to delete comment', { error: error.message });
       }
 
       // Remove from index map
       delete indexMap[emailHash];
       await this._updateIndexMap(verificationIssue.number, verificationIssue.body, indexMap);
 
-      console.log(`[GitHubStorage] Deleted verification code for ${emailHash.substring(0, 8)}...`);
+      logger.debug(`Deleted verification code for ${emailHash.substring(0, 8)}...`);
     } catch (error) {
-      console.error('[GitHubStorage] Delete verification code error:', error);
+      logger.error('Delete verification code error', { error });
       throw new Error(`Failed to delete verification code: ${error.message}`);
     }
   }
@@ -754,7 +757,7 @@ This issue stores email verification codes as comments. Each comment is automati
       });
       return true;
     } catch (error) {
-      console.error('[GitHubStorage] Health check failed:', error);
+      logger.error('Health check failed', { error });
       return false;
     }
   }

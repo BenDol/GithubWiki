@@ -13,6 +13,9 @@ import { configName, cacheName } from '../utils/storageManager';
 import { clearSessionCacheValue } from '../utils/timeCache';
 import { updateUserSnapshot, getUserSnapshot } from '../services/github/userSnapshots';
 import { eventBus, EventNames } from '../services/eventBus';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('AuthStore');
 
 /**
  * Track in-progress snapshot updates to prevent concurrent duplicates
@@ -33,7 +36,7 @@ const linkingCheckInProgress = new Set();
 const linkAnonymousEditsInBackground = async (user) => {
   // Check if linking is already in progress for this user
   if (linkingCheckInProgress.has(user.id)) {
-    console.log(`[AuthStore] Linking check already in progress for ${user.login}, skipping`);
+    logger.debug(`Linking check already in progress for ${user.login}, skipping`);
     return;
   }
 
@@ -47,7 +50,7 @@ const linkAnonymousEditsInBackground = async (user) => {
 
     // Check if already checked before
     if (hasBeenCheckedForLinking(user.id)) {
-      console.log(`[AuthStore] User ${user.login} already checked for linking, skipping`);
+      logger.debug(`User ${user.login} already checked for linking, skipping`);
       return;
     }
 
@@ -56,7 +59,7 @@ const linkAnonymousEditsInBackground = async (user) => {
     const config = useConfigStore.getState().config;
 
     if (!config?.wiki?.repository) {
-      console.log('[AuthStore] Skipping anonymous edit linking: no repository config');
+      logger.debug('Skipping anonymous edit linking: no repository config');
       return;
     }
 
@@ -67,22 +70,22 @@ const linkAnonymousEditsInBackground = async (user) => {
     const token = useAuthStore.getState().getToken();
 
     if (!token) {
-      console.log('[AuthStore] No token available for linking, skipping');
+      logger.debug('No token available for linking, skipping');
       return;
     }
 
-    console.log(`[AuthStore] Checking for linkable anonymous edits for ${user.login}...`);
+    logger.info(`Checking for linkable anonymous edits for ${user.login}...`);
     const result = await linkAnonymousEditsOnLogin(user, owner, repo, token);
 
     if (result.linked && result.linkedCount > 0) {
-      console.log(`[AuthStore] ✓ Linked ${result.linkedCount} anonymous edit(s) for ${user.login}`);
+      logger.info(`Linked ${result.linkedCount} anonymous edit(s) for ${user.login}`);
 
       // Rebuild snapshot to include newly-linked PRs
       // Wait for GitHub API to propagate label changes (eventual consistency)
-      console.log(`[AuthStore] Waiting for GitHub API to propagate label changes...`);
+      logger.debug('Waiting for GitHub API to propagate label changes...');
       await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
 
-      console.log(`[AuthStore] Rebuilding snapshot to include linked PRs...`);
+      logger.debug('Rebuilding snapshot to include linked PRs...');
       try {
         // Security: Only rebuild the authenticated user's own snapshot
         // Get current auth state to confirm user identity
@@ -90,28 +93,28 @@ const linkAnonymousEditsInBackground = async (user) => {
         const currentUser = useAuthStore.getState().user;
 
         if (!currentUser || currentUser.id !== user.id) {
-          console.warn(`[AuthStore] Snapshot rebuild skipped: user mismatch (current: ${currentUser?.id}, requested: ${user.id})`);
+          logger.warn(`Snapshot rebuild skipped: user mismatch (current: ${currentUser?.id}, requested: ${user.id})`);
           return;
         }
 
         const { updateUserSnapshot } = await import('../services/github/userSnapshots');
         await updateUserSnapshot(owner, repo, user.login);
-        console.log(`[AuthStore] ✓ Snapshot rebuilt with linked PRs`);
+        logger.info('Snapshot rebuilt with linked PRs');
       } catch (snapshotError) {
-        console.warn(`[AuthStore] Failed to rebuild snapshot after linking:`, snapshotError.message);
+        logger.warn('Failed to rebuild snapshot after linking', { error: snapshotError.message });
         // Non-critical - snapshot will be updated eventually
       }
     } else if (result.linked && result.linkedCount === 0) {
-      console.log(`[AuthStore] No linkable anonymous edits found for ${user.login}`);
+      logger.debug(`No linkable anonymous edits found for ${user.login}`);
     } else {
-      console.log(`[AuthStore] Could not link anonymous edits for ${user.login}:`, result.reason || result.error);
+      logger.debug(`Could not link anonymous edits for ${user.login}`, { reason: result.reason || result.error });
     }
 
     // Mark as checked (even if failed, to avoid repeated attempts)
     markAsCheckedForLinking(user.id);
   } catch (error) {
     // Silent failure - don't disrupt user experience
-    console.warn(`[AuthStore] Failed to link anonymous edits for ${user.login}:`, error.message);
+    logger.warn(`Failed to link anonymous edits for ${user.login}`, { error: error.message });
   } finally {
     // Always remove from in-progress set
     linkingCheckInProgress.delete(user.id);
@@ -127,7 +130,7 @@ const linkAnonymousEditsInBackground = async (user) => {
 const updateSnapshotInBackground = async (username) => {
   // Check if update is already in progress for this user
   if (snapshotUpdateInProgress.has(username)) {
-    console.log(`[AuthStore] Snapshot update already in progress for ${username}, skipping`);
+    logger.debug(`Snapshot update already in progress for ${username}, skipping`);
     return;
   }
 
@@ -140,7 +143,7 @@ const updateSnapshotInBackground = async (username) => {
     const config = useConfigStore.getState().config;
 
     if (!config?.wiki?.repository) {
-      console.log('[AuthStore] Skipping snapshot update: no repository config');
+      logger.debug('Skipping snapshot update: no repository config');
       return;
     }
 
@@ -149,16 +152,16 @@ const updateSnapshotInBackground = async (username) => {
     // Check if snapshot exists
     const existingSnapshot = await getUserSnapshot(owner, repo, username);
     if (existingSnapshot) {
-      console.log(`[AuthStore] Snapshot already exists for ${username}, skipping update`);
+      logger.debug(`Snapshot already exists for ${username}, skipping update`);
       return;
     }
 
-    console.log(`[AuthStore] Creating user snapshot for ${username} in background...`);
+    logger.debug(`Creating user snapshot for ${username} in background...`);
     await updateUserSnapshot(owner, repo, username);
-    console.log(`[AuthStore] ✓ User snapshot created for ${username}`);
+    logger.info(`User snapshot created for ${username}`);
   } catch (error) {
     // Silent failure - don't disrupt user experience
-    console.warn(`[AuthStore] Failed to create user snapshot for ${username}:`, error.message);
+    logger.warn(`Failed to create user snapshot for ${username}`, { error: error.message });
   } finally {
     // Always remove from in-progress set
     snapshotUpdateInProgress.delete(username);
@@ -230,24 +233,24 @@ export const useAuthStore = create(
           throw new Error('No device flow in progress');
         }
 
-        console.log('[AuthStore] Completing login flow...');
+        logger.debug('Completing login flow...');
         set({ isLoading: true, error: null });
 
         try {
           // Wait for user to authorize
-          console.log('[AuthStore] Waiting for user authorization...');
+          logger.debug('Waiting for user authorization...');
           const token = await waitForAuthorization(
             deviceFlow.deviceCode,
             deviceFlow.expiresIn,
             deviceFlow.interval
           );
 
-          console.log('[AuthStore] Authorization successful, fetching user info...');
+          logger.debug('Authorization successful, fetching user info...');
           // Fetch user information
           const user = await fetchGitHubUser(token);
 
-          console.log('[AuthStore] User info fetched:', user.login);
-          console.log('[AuthStore] Storing token and initializing Octokit...');
+          logger.debug('User info fetched', { username: user.login });
+          logger.debug('Storing token and initializing Octokit...');
 
           // Store encrypted token and user
           get().setToken(token);
@@ -258,24 +261,24 @@ export const useAuthStore = create(
             deviceFlow: null,
           });
 
-          console.log('[AuthStore] ✓ Login completed successfully for user:', user.login);
+          logger.info(`Login completed successfully for user: ${user.login}`);
 
           // Emit user login event for achievement system
           eventBus.emit(EventNames.USER_LOGIN, { user });
 
           // Update user snapshot in background (non-blocking)
           updateSnapshotInBackground(user.login).catch(err => {
-            console.warn('[AuthStore] Snapshot update failed (non-critical):', err);
+            logger.warn('Snapshot update failed (non-critical)', { error: err });
           });
 
           // Link anonymous edits in background (non-blocking)
           linkAnonymousEditsInBackground(user).catch(err => {
-            console.warn('[AuthStore] Anonymous edit linking failed (non-critical):', err);
+            logger.warn('Anonymous edit linking failed (non-critical)', { error: err });
           });
 
           return { user, token };
         } catch (error) {
-          console.error('[AuthStore] Login failed:', error.message);
+          logger.error('Login failed', { error: error.message });
           set({
             error: error.message,
             isLoading: false,
@@ -305,7 +308,7 @@ export const useAuthStore = create(
         // Clear GitHub user data from session cache
         const userCacheKey = cacheName('github_user_data', 'current');
         clearSessionCacheValue(userCacheKey);
-        console.log('[AuthStore] Cleared GitHub user data from sessionStorage on logout');
+        logger.info('Cleared GitHub user data from sessionStorage on logout');
 
         clearOctokit();
         set({
@@ -330,8 +333,8 @@ export const useAuthStore = create(
 
         // Detect stale session: authenticated but no token
         if (isAuthenticated && !encryptedToken) {
-          console.warn('[AuthStore] ⚠️  Stale session detected: authenticated but token missing');
-          console.log('[AuthStore] Clearing stale session - user needs to log in again');
+          logger.warn('Stale session detected: authenticated but token missing');
+          logger.info('Clearing stale session - user needs to log in again');
 
           // Clear the stale state
           get().logout();
@@ -350,11 +353,11 @@ export const useAuthStore = create(
         }
 
         if (!encryptedToken) {
-          console.log('[AuthStore] No stored token found, skipping session restore');
+          logger.debug('No stored token found, skipping session restore');
           return false;
         }
 
-        console.log('[AuthStore] Restoring session from stored token...');
+        logger.debug('Restoring session from stored token...');
         set({ isLoading: true });
 
         try {
@@ -362,11 +365,11 @@ export const useAuthStore = create(
           const token = decryptToken(encryptedToken);
 
           if (!token) {
-            console.error('[AuthStore] Token decryption failed');
+            logger.error('Token decryption failed');
             throw new Error('Invalid token');
           }
 
-          console.log('[AuthStore] Token decrypted successfully, validating with GitHub...');
+          logger.debug('Token decrypted successfully, validating with GitHub...');
 
           // Validate token with retries (handles network errors)
           const { valid, user: validatedUser, error } = await validateToken(token);
@@ -381,7 +384,7 @@ export const useAuthStore = create(
 
             if (isNetworkError) {
               // NETWORK ERROR: Don't log out, just mark as loading failed
-              console.warn('[AuthStore] ⚠️ Network error during session restore - keeping user logged in', {
+              logger.warn('Network error during session restore - keeping user logged in', {
                 error,
                 username: user?.login
               });
@@ -405,12 +408,12 @@ export const useAuthStore = create(
               return true; // Session kept alive
             } else {
               // AUTHENTICATION ERROR: Token is actually invalid, logout required
-              console.error('[AuthStore] Token validation failed - invalid token:', error);
+              logger.error('Token validation failed - invalid token', { error });
               throw new Error(error || 'Invalid token');
             }
           }
 
-          console.log('[AuthStore] Token validated successfully for user:', validatedUser.login);
+          logger.debug('Token validated successfully for user', { username: validatedUser.login });
 
           // Initialize Octokit
           initializeOctokit(token);
@@ -430,11 +433,11 @@ export const useAuthStore = create(
             }));
           }
 
-          console.log('[AuthStore] ✓ Session restored successfully');
+          logger.info('Session restored successfully');
 
           return true;
         } catch (error) {
-          console.error('[AuthStore] Session restore failed:', error.message);
+          logger.error('Session restore failed', { error: error.message });
           // Token is invalid, clear it
           get().logout();
           set({ isLoading: false });
@@ -457,7 +460,7 @@ export const useAuthStore = create(
           const user = await fetchGitHubUser(token);
           set({ user });
         } catch (error) {
-          console.error('Failed to refresh user:', error);
+          logger.error('Failed to refresh user', { error });
           // Don't throw, just log the error
         }
       },

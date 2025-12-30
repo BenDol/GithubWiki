@@ -1,6 +1,9 @@
 import { Octokit } from 'octokit';
 import { retryPlugin } from './octokitRetryPlugin.js';
 import { filterByReleaseDate } from '../../utils/releaseDate.js';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('GitHubAPI');
 
 /**
  * GitHub API client wrapper using Octokit
@@ -14,10 +17,9 @@ let octokitInstance = null;
 let botOctokitInstance = null;
 
 // Custom Octokit class with retry plugin
-console.log('[GitHub API] Loading module - creating OctokitWithRetry class');
-console.log('[GitHub API] retryPlugin type:', typeof retryPlugin);
+logger.debug('Loading module - creating OctokitWithRetry class', { retryPluginType: typeof retryPlugin });
 const OctokitWithRetry = Octokit.plugin(retryPlugin);
-console.log('[GitHub API] OctokitWithRetry class created:', !!OctokitWithRetry);
+logger.debug('OctokitWithRetry class created', { created: !!OctokitWithRetry });
 
 // Request de-duplication tracking
 // Prevents multiple concurrent requests for the same data
@@ -34,8 +36,10 @@ const AUTHENTICATED_USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
  * Automatically includes retry plugin for rate limit handling
  */
 export const initializeOctokit = (token) => {
-  console.log('[GitHub API] initializeOctokit() called with token:', token ? 'YES (length: ' + token.length + ')' : 'NO');
-  console.log('[GitHub API] Creating OctokitWithRetry instance...');
+  logger.debug('initializeOctokit called', {
+    hasToken: !!token,
+    tokenLength: token?.length
+  });
 
   // Clear authenticated user cache on reinitialize
   authenticatedUserCache = null;
@@ -50,9 +54,10 @@ export const initializeOctokit = (token) => {
     },
   });
 
-  console.log('[GitHub API] ✓ Octokit initialized with automatic retry on rate limits');
-  console.log('[GitHub API] Instance has auth:', !!octokitInstance.auth);
-  console.log('[GitHub API] Instance request type:', typeof octokitInstance.request);
+  logger.info('Octokit initialized with automatic retry on rate limits', {
+    hasAuth: !!octokitInstance.auth,
+    requestType: typeof octokitInstance.request
+  });
 
   return octokitInstance;
 };
@@ -81,7 +86,7 @@ export const getOctokit = () => {
   // If we have a token but no instance OR instance is unauthenticated, reinitialize
   const instanceHasAuth = octokitInstance?.auth !== undefined;
   if (userToken && !instanceHasAuth) {
-    console.log('[GitHub API] ⚠️ User authenticated but Octokit unauthenticated - reinitializing');
+    logger.warn('User authenticated but Octokit unauthenticated - reinitializing');
     octokitInstance = new OctokitWithRetry({
       auth: userToken,
       userAgent: 'GitHub-Wiki-Framework/1.0',
@@ -89,7 +94,7 @@ export const getOctokit = () => {
         enabled: false,
       },
     });
-    console.log('[GitHub API] ✓ Authenticated Octokit reinitialized');
+    logger.info('Authenticated Octokit reinitialized');
   } else if (!octokitInstance) {
     // Create unauthenticated instance for public repo read-only access
     octokitInstance = new OctokitWithRetry({
@@ -98,12 +103,12 @@ export const getOctokit = () => {
         enabled: false,
       },
     });
-    console.log('[GitHub API] ✓ Unauthenticated Octokit created with automatic retry');
+    logger.info('Unauthenticated Octokit created with automatic retry');
   }
 
   // Log authentication status for debugging
   const hasAuth = octokitInstance.auth !== undefined;
-  console.log('[GitHub API] getOctokit() returning instance with auth:', hasAuth);
+  logger.debug('getOctokit returning instance', { hasAuth });
 
   return octokitInstance;
 };
@@ -135,8 +140,7 @@ export const initializeBotOctokit = (botToken = null) => {
   // Bot token should only be passed explicitly from server-side code.
 
   if (!botToken) {
-    console.info('[Bot] Bot token not configured');
-    console.info('[Bot] Comment issues will be created by authenticated users.');
+    logger.info('Bot token not configured - comment issues will be created by authenticated users');
     return null;
   }
 
@@ -149,7 +153,7 @@ export const initializeBotOctokit = (botToken = null) => {
     },
   });
 
-  console.log('[Bot] ✓ Bot Octokit initialized with automatic retry');
+  logger.info('Bot Octokit initialized with automatic retry');
   return botOctokitInstance;
 };
 
@@ -165,7 +169,7 @@ export const getBotOctokit = (fallbackToUser = false) => {
   }
 
   if (fallbackToUser) {
-    console.warn('[Bot] Bot token not configured, falling back to user token');
+    logger.warn('Bot token not configured, falling back to user token');
     return getOctokit();
   }
 
@@ -206,11 +210,11 @@ export const clearBotOctokit = () => {
 export const deduplicatedRequest = async (key, requestFn) => {
   // Check if request already in flight
   if (pendingRequests.has(key)) {
-    console.log(`[Request Dedup] ⏳ Waiting for in-flight request: ${key}`);
+    logger.debug('Waiting for in-flight request', { key });
     return pendingRequests.get(key);
   }
 
-  console.log(`[Request Dedup] ▶️ Starting new request: ${key}`);
+  logger.debug('Starting new request', { key });
 
   // Create promise placeholder and track it IMMEDIATELY (before any async work)
   // This prevents race condition where multiple calls check pendingRequests
@@ -228,15 +232,15 @@ export const deduplicatedRequest = async (key, requestFn) => {
   (async () => {
     try {
       const result = await requestFn();
-      console.log(`[Request Dedup] ✓ Request completed: ${key}`);
+      logger.debug('Request completed', { key });
       resolvePromise(result);
     } catch (error) {
-      console.error(`[Request Dedup] ✗ Request failed: ${key}`, error);
+      logger.error('Request failed', { key, error });
       rejectPromise(error);
     } finally {
       // Clean up after completion (success or failure)
       pendingRequests.delete(key);
-      console.log(`[Request Dedup] 🧹 Cleaned up request: ${key}`);
+      logger.trace('Cleaned up request', { key });
     }
   })();
 
@@ -495,7 +499,7 @@ export const createPullRequest = async (owner, repo, title, body, head, base = '
   }
   const octokit = getOctokit();
 
-  console.log(`[API] Creating PR: ${head} -> ${base}`);
+  logger.debug('Creating PR', { head, base });
 
   const { data } = await octokit.rest.pulls.create({
     owner,
@@ -506,7 +510,7 @@ export const createPullRequest = async (owner, repo, title, body, head, base = '
     base,
   });
 
-  console.log(`[API] PR created #${data.number} targeting ${base}`);
+  logger.info('PR created', { number: data.number, base });
 
   return {
     number: data.number,
@@ -593,7 +597,7 @@ export const createGitHubIssue = async (owner, repo, title, body, labels = []) =
       },
     };
   } catch (error) {
-    console.error('Error creating GitHub issue:', error);
+    logger.error('Error creating GitHub issue', { error });
     if (error.status === 401) {
       throw new Error('Authentication failed. Please logout and login again.');
     }
@@ -638,7 +642,7 @@ export const searchGitHubIssues = async (owner, repo, query, perPage = 30, page 
       html_url: issue.html_url,
     }));
   } catch (error) {
-    console.error('Error searching GitHub issues:', error);
+    logger.error('Error searching GitHub issues', { error });
     throw error;
   }
 };

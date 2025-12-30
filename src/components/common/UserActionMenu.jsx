@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { useDisplayName } from '../../hooks/useDisplayName';
-import { getCurrentUserAdminStatus, banUser } from '../../services/github/admin';
+import { getCurrentUserAdminStatus, banUser } from '../../services/adminActions';
 
 /**
  * User Action Menu Component
@@ -35,8 +35,7 @@ const UserActionMenu = ({ username, userId, onClose, position, onBan, onMakeAdmi
 
     const checkStatus = async () => {
       try {
-        const { owner, repo } = config.wiki.repository;
-        const status = await getCurrentUserAdminStatus(owner, repo, config);
+        const status = await getCurrentUserAdminStatus();
         setAdminStatus(status);
       } catch (error) {
         console.error('Failed to check admin status:', error);
@@ -83,10 +82,9 @@ const UserActionMenu = ({ username, userId, onClose, position, onBan, onMakeAdmi
 
     try {
       setBanning(true);
-      const { owner, repo } = config.wiki.repository;
-      await banUser(username, banReason.trim(), owner, repo, adminStatus.username, config);
+      const result = await banUser(username, banReason.trim());
 
-      alert(`✅ Successfully banned ${username}`);
+      alert(`✅ ${result.message}`);
       setBanReason('');
       setShowBanModal(false);
       onClose();

@@ -11,7 +11,7 @@ import {
   removeAdmin,
   banUser,
   unbanUser,
-} from '../services/github/admin';
+} from '../services/adminActions';
 
 /**
  * Admin Panel Component
@@ -61,12 +61,24 @@ const AdminPanel = () => {
         setLoading(true);
         const { owner, repo } = config.wiki.repository;
 
+        console.log('[AdminPanel] Checking access', {
+          username: user?.login,
+          isAuthenticated
+        });
+
         // Check if user is admin or owner
-        const status = await getCurrentUserAdminStatus(owner, repo, config);
+        const status = await getCurrentUserAdminStatus();
+        console.log('[AdminPanel] Admin status result:', status);
         setAdminStatus(status);
 
         if (!status.isAdmin) {
           // Not authorized, redirect to home
+          console.error('[AdminPanel] Access denied:', {
+            username: status.username,
+            isOwner: status.isOwner,
+            isAdmin: status.isAdmin,
+            repoOwner: owner
+          });
           alert('❌ Access Denied\n\nYou must be a repository owner or admin to access this page.');
           navigate('/');
           return;
@@ -87,13 +99,10 @@ const AdminPanel = () => {
   }, [config, isAuthenticated, authLoading, navigate]);
 
   const loadData = async () => {
-    if (!config?.wiki?.repository) return;
-
     try {
-      const { owner, repo } = config.wiki.repository;
       const [adminsData, bannedData] = await Promise.all([
-        getAdmins(owner, repo, config),
-        getBannedUsers(owner, repo, config),
+        getAdmins(),
+        getBannedUsers(),
       ]);
       setAdmins(adminsData);
       setBannedUsers(bannedData);
@@ -110,17 +119,11 @@ const AdminPanel = () => {
       return;
     }
 
-    if (!config?.wiki?.repository) {
-      alert('❌ Configuration error');
-      return;
-    }
-
     try {
       setBanLoading(true);
-      const { owner, repo } = config.wiki.repository;
-      await banUser(banUsername.trim(), banReason.trim(), owner, repo, adminStatus.username, config);
+      const result = await banUser(banUsername.trim(), banReason.trim());
 
-      alert(`✅ Successfully banned ${banUsername}`);
+      alert(`✅ ${result.message}`);
       setBanUsername('');
       setBanReason('');
       await loadData();
@@ -137,16 +140,10 @@ const AdminPanel = () => {
       return;
     }
 
-    if (!config?.wiki?.repository) {
-      alert('❌ Configuration error');
-      return;
-    }
-
     try {
-      const { owner, repo } = config.wiki.repository;
-      await unbanUser(username, owner, repo, adminStatus.username, config);
+      const result = await unbanUser(username);
 
-      alert(`✅ Successfully unbanned ${username}`);
+      alert(`✅ ${result.message}`);
       await loadData();
     } catch (error) {
       console.error('Failed to unban user:', error);
@@ -166,17 +163,11 @@ const AdminPanel = () => {
       return;
     }
 
-    if (!config?.wiki?.repository) {
-      alert('❌ Configuration error');
-      return;
-    }
-
     try {
       setAddAdminLoading(true);
-      const { owner, repo } = config.wiki.repository;
-      await addAdmin(addAdminUsername.trim(), owner, repo, adminStatus.username, config);
+      const result = await addAdmin(addAdminUsername.trim());
 
-      alert(`✅ Successfully added ${addAdminUsername} as admin`);
+      alert(`✅ ${result.message}`);
       setAddAdminUsername('');
       await loadData();
     } catch (error) {
@@ -197,16 +188,10 @@ const AdminPanel = () => {
       return;
     }
 
-    if (!config?.wiki?.repository) {
-      alert('❌ Configuration error');
-      return;
-    }
-
     try {
-      const { owner, repo } = config.wiki.repository;
-      await removeAdmin(username, owner, repo, adminStatus.username, config);
+      const result = await removeAdmin(username);
 
-      alert(`✅ Successfully removed ${username} as admin`);
+      alert(`✅ ${result.message}`);
       await loadData();
     } catch (error) {
       console.error('Failed to remove admin:', error);

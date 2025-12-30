@@ -6,6 +6,9 @@
 import { getDeviceCodeEndpoint, getAccessTokenEndpoint, getPlatform } from '../../utils/apiEndpoints.js';
 import { getCacheValue, setCacheValue, getSessionCacheValue, setSessionCacheValue } from '../../utils/timeCache.js';
 import { cacheName } from '../../utils/storageManager.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('Auth');
 
 const GITHUB_CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID;
 
@@ -15,7 +18,7 @@ const TOKEN_URL = getAccessTokenEndpoint();
 const USER_URL = 'https://api.github.com/user';
 
 // Debug: Log environment variables
-console.log('GitHub Auth Configuration:', {
+logger.debug('GitHub Auth Configuration', {
   VITE_GITHUB_CLIENT_ID: import.meta.env.VITE_GITHUB_CLIENT_ID,
   PLATFORM: getPlatform(),
   DEV_MODE: import.meta.env.DEV,
@@ -28,13 +31,13 @@ console.log('GitHub Auth Configuration:', {
  */
 const testGitHubConnectivity = async () => {
   try {
-    console.log('Testing GitHub connectivity...');
+    logger.debug('Testing GitHub connectivity...');
     const response = await fetch('https://api.github.com/zen', { method: 'GET' });
     const text = await response.text();
-    console.log('GitHub connectivity test SUCCESS:', text);
+    logger.debug('GitHub connectivity test SUCCESS', { text });
     return true;
   } catch (error) {
-    console.error('GitHub connectivity test FAILED:', error);
+    logger.error('GitHub connectivity test FAILED', { error });
     return false;
   }
 };
@@ -44,11 +47,11 @@ const testGitHubConnectivity = async () => {
  * Returns device code and user verification URL
  */
 export const initiateDeviceFlow = async () => {
-  console.log('Attempting to initiate device flow with Client ID:', GITHUB_CLIENT_ID);
+  logger.debug('Attempting to initiate device flow with Client ID', { clientId: GITHUB_CLIENT_ID });
 
   if (!GITHUB_CLIENT_ID) {
-    console.error('GITHUB_CLIENT_ID is undefined or empty!');
-    console.error('All env vars:', import.meta.env);
+    logger.error('GITHUB_CLIENT_ID is undefined or empty!');
+    logger.error('All env vars', import.meta.env);
     throw new Error('GitHub Client ID not configured. Please set VITE_GITHUB_CLIENT_ID in .env.local');
   }
 
@@ -72,9 +75,11 @@ export const initiateDeviceFlow = async () => {
       }),
     });
   } catch (fetchError) {
-    console.error('Fetch error details:', fetchError);
-    console.error('Error name:', fetchError.name);
-    console.error('Error message:', fetchError.message);
+    logger.error('Fetch error details', {
+      error: fetchError,
+      name: fetchError.name,
+      message: fetchError.message
+    });
     throw new Error(
       `Network error: Unable to connect to GitHub. This could be due to:\n` +
       `1. CORS blocking (browser security)\n` +
@@ -87,14 +92,14 @@ export const initiateDeviceFlow = async () => {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('GitHub API Error:', errorText);
+    logger.error('GitHub API Error', { errorText });
     throw new Error(`Failed to initiate device flow: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
 
   // Log the response for debugging
-  console.log('Device flow initiated:', {
+  logger.debug('Device flow initiated', {
     userCode: data.user_code,
     verificationUri: data.verification_uri,
     expiresIn: data.expires_in,
@@ -215,7 +220,7 @@ const retryFetch = async (fn, maxRetries = 3) => {
 
       if (isNetworkError && attempt < maxRetries) {
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.warn(`[Auth] Network error, retrying in ${delay}ms... (${attempt}/${maxRetries})`);
+        logger.warn(`Network error, retrying in ${delay}ms...`, { attempt, maxRetries });
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -242,12 +247,12 @@ export const fetchGitHubUser = async (token) => {
   const cachedUser = getSessionCacheValue(cacheKey);
 
   if (cachedUser) {
-    console.log('[Auth] Using cached user data from sessionStorage (20min TTL)');
+    logger.debug('Using cached user data from sessionStorage (20min TTL)');
     return cachedUser;
   }
 
   // Cache miss - fetch from API
-  console.log('[Auth] Session cache miss - fetching user data from GitHub API');
+  logger.debug('Session cache miss - fetching user data from GitHub API');
 
   return retryFetch(async () => {
     const response = await fetch(USER_URL, {
@@ -272,7 +277,7 @@ export const fetchGitHubUser = async (token) => {
       const cachedEmail = getCacheValue(emailCacheKey);
       if (cachedEmail) {
         user.email = cachedEmail;
-        console.log('[Auth] Using cached primary email from localStorage');
+        logger.debug('Using cached primary email from localStorage');
       } else {
         // Cache miss - fetch from API
         const emailsResponse = await fetch('https://api.github.com/user/emails', {
@@ -294,16 +299,16 @@ export const fetchGitHubUser = async (token) => {
             const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
             setCacheValue(emailCacheKey, primaryEmail.email, thirtyDaysMs);
 
-            console.log('[Auth] Fetched and cached primary email from /user/emails (private email setting detected)');
+            logger.debug('Fetched and cached primary email from /user/emails (private email setting detected)');
           } else if (emails.length === 0) {
-            console.warn('[Auth] No emails found in /user/emails response (not caching)');
+            logger.warn('No emails found in /user/emails response (not caching)');
           } else {
-            console.warn('[Auth] No primary verified email found (not caching)');
+            logger.warn('No primary verified email found (not caching)');
           }
         }
       }
     } catch (error) {
-      console.warn('[Auth] Failed to fetch user emails:', error.message);
+      logger.warn('Failed to fetch user emails', { error: error.message });
     }
   }
 
@@ -311,7 +316,7 @@ export const fetchGitHubUser = async (token) => {
     const twentyMinutesMs = 20 * 60 * 1000;
     const userCacheKey = cacheName('github_user_data', 'current');
     setSessionCacheValue(userCacheKey, user, twentyMinutesMs);
-    console.log('[Auth] Cached user data in sessionStorage (20min TTL)');
+    logger.debug('Cached user data in sessionStorage (20min TTL)');
 
     return user;
   });
@@ -342,7 +347,7 @@ export const decryptToken = (encryptedToken) => {
 
     return token;
   } catch (error) {
-    console.error('Failed to decrypt token:', error);
+    logger.error('Failed to decrypt token', { error });
     return null;
   }
 };
@@ -359,9 +364,9 @@ export const validateToken = async (token, maxRetries = 3) => {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[Auth] Validating token (attempt ${attempt}/${maxRetries})...`);
+      logger.debug(`Validating token (attempt ${attempt}/${maxRetries})...`);
       const user = await fetchGitHubUser(token);
-      console.log('[Auth] ✓ Token validation successful');
+      logger.debug('Token validation successful');
       return { valid: true, user };
     } catch (error) {
       lastError = error;
@@ -377,7 +382,7 @@ export const validateToken = async (token, maxRetries = 3) => {
       const isAuthError = error.status === 401 || error.status === 403;
 
       if (isAuthError) {
-        console.error('[Auth] Token validation failed - authentication error', {
+        logger.error('Token validation failed - authentication error', {
           status: error.status,
           message: error.message
         });
@@ -387,7 +392,7 @@ export const validateToken = async (token, maxRetries = 3) => {
       if (isNetworkError && attempt < maxRetries) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.warn(`[Auth] Network error during token validation, retrying in ${delay}ms...`, {
+        logger.warn(`Network error during token validation, retrying in ${delay}ms...`, {
           attempt,
           maxRetries,
           error: error.message
@@ -397,7 +402,7 @@ export const validateToken = async (token, maxRetries = 3) => {
       }
 
       // Last attempt failed or non-retryable error
-      console.error('[Auth] Token validation failed after all retries', {
+      logger.error('Token validation failed after all retries', {
         attempts: attempt,
         error: error.message,
         isNetworkError

@@ -8,6 +8,9 @@ import { keymap } from '@codemirror/view';
 import { deleteCharBackward, deleteCharForward } from '@codemirror/commands';
 import ImageDimensionWidget from './ImageDimensionWidget';
 import DataAutocomplete from './DataAutocomplete';
+import { createLogger } from '../../utils/logger';
+
+const logger = createLogger('MarkdownEditor');
 
 /**
  * MarkdownEditor component using CodeMirror 6
@@ -31,7 +34,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
 
   // Expose editor API to parent - ensure it persists across renders
   useEffect(() => {
-    console.log('[MarkdownEditor] Setting up editor API', {
+    logger.trace('Setting up editor API', {
       hasEditorApi: !!editorApi,
       hasViewRef: !!viewRef.current
     });
@@ -42,7 +45,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       editorApi.current = {
         getSelection: () => {
           const view = viewRef.current;
-          console.log('[MarkdownEditor.getSelection] viewRef.current exists:', !!view);
+          logger.trace('getSelection called', { hasView: !!view });
           if (!view) return { text: '', from: 0, to: 0, empty: true };
           const selection = view.state.selection.main;
           const selectedText = view.state.doc.sliceString(selection.from, selection.to);
@@ -55,9 +58,9 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
         },
         replaceSelection: (text) => {
           const view = viewRef.current;
-          console.log('[MarkdownEditor.replaceSelection] viewRef.current exists:', !!view);
+          logger.trace('replaceSelection called', { hasView: !!view });
           if (!view) {
-            console.error('[MarkdownEditor.replaceSelection] View not available!');
+            logger.error('View not available for replaceSelection');
             return;
           }
           const selection = view.state.selection.main;
@@ -68,16 +71,16 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
         },
         replaceRange: (from, to, text) => {
           const view = viewRef.current;
-          console.log('[MarkdownEditor.replaceRange] viewRef.current exists:', !!view, {from, to, textLength: text.length});
+          logger.trace('replaceRange called', { hasView: !!view, from, to, textLength: text.length });
           if (!view) {
-            console.error('[MarkdownEditor.replaceRange] View not available!');
+            logger.error('View not available for replaceRange');
             return;
           }
           view.dispatch({
             changes: { from, to, insert: text },
             selection: { anchor: from + text.length }
           });
-          console.log('[MarkdownEditor.replaceRange] Dispatch complete');
+          logger.trace('replaceRange dispatch complete');
         },
         insertAtCursor: (text) => {
           const view = viewRef.current;
@@ -120,11 +123,11 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           return view.state.selection.main.head;
         }
       };
-      console.log('[MarkdownEditor] Editor API set up successfully');
+      logger.trace('Editor API set up successfully');
     }
 
     return () => {
-      console.log('[MarkdownEditor] Cleaning up editor API');
+      logger.trace('Cleaning up editor API');
     };
   }, [editorApi]); // Only depend on editorApi prop, not viewRef
 
@@ -338,7 +341,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           const content = lineText.substring(contentStart, contentEnd);
           const query = content.trimStart();
 
-          console.log('[MarkdownEditor] Ctrl+Space triggered autocomplete:', {
+          logger.debug('Ctrl+Space triggered autocomplete', {
             openIndex,
             closeIndex,
             content,
@@ -365,7 +368,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
                 setAutocompleteVisible(true);
               })
               .catch(err => {
-                console.error('[MarkdownEditor] Manual autocomplete search failed:', err);
+                logger.error('Manual autocomplete search failed', { error: err });
                 setAutocompleteVisible(false);
               });
           }
@@ -419,7 +422,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             setAutocompleteSuggestions(suggestions);
             setAutocompleteVisible(true);
           } catch (err) {
-            console.error('[MarkdownEditor] Autocomplete search failed:', err);
+            logger.error('Autocomplete search failed', { error: err });
             setAutocompleteVisible(false);
           }
         }, 150); // Debounce by 150ms

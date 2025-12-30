@@ -35,14 +35,20 @@ export const useAdminStatus = () => {
 
       const { owner, repo } = config.wiki.repository;
 
-      // Tier 2: Check if repository owner (free - string comparison)
-      const ownerStatus = isRepositoryOwner(user.login, owner);
-      setIsOwner(ownerStatus);
+      // Tier 2: Check if repository owner (API call to get owner ID - cached)
+      try {
+        const ownerStatus = await isRepositoryOwner(user.id, owner, repo);
+        setIsOwner(ownerStatus);
 
-      if (ownerStatus) {
-        setIsAdminUser(true);
-        setLoading(false);
-        return;
+        if (ownerStatus) {
+          setIsAdminUser(true);
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.warn('[useAdminStatus] Failed to check owner status:', error);
+        setIsOwner(false);
+        // Continue to check admin list
       }
 
       // Tier 3: Check admin list (cached by admin service - 10 min TTL)
