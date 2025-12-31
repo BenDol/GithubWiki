@@ -678,6 +678,7 @@ Include any supplementary details, notes, or related information.
 
       // For existing pages, check if file has been modified since we loaded it
       // Skip this check if we're editing PR content (we'll update the PR branch)
+      let currentSha = fileSha; // Track the SHA to use for this save operation
       if (!isNewPage && !editingPR) {
         const changed = await hasFileChanged(owner, repo, filePath, fileSha, baseBranch);
 
@@ -693,7 +694,8 @@ Include any supplementary details, notes, or related information.
 
           // Refresh SHA to get latest version
           const latestFile = await getFileContent(owner, repo, filePath, baseBranch);
-          setFileSha(latestFile.sha);
+          currentSha = latestFile.sha; // Use the latest SHA for this operation
+          setFileSha(latestFile.sha); // Also update state for future edits
         }
       }
 
@@ -750,7 +752,7 @@ Include any supplementary details, notes, or related information.
           newContent,
           commitMessage,
           baseBranch,
-          isNewPage ? null : fileSha
+          isNewPage ? null : currentSha
         );
 
         console.log(`\n[PageEditor] ✓ Successfully committed to ${baseBranch}`);
@@ -899,7 +901,7 @@ Include any supplementary details, notes, or related information.
           filePath,
           newContent,
           commitMessage,
-          isNewPage ? null : fileSha
+          isNewPage ? null : currentSha
         );
 
         pr = existingPR;

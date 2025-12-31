@@ -13,6 +13,7 @@ const MAX_COMMITS_PER_SECTION = 10; // Show max 10 commits per section before tr
 const MAX_TITLE_LENGTH = 100; // Truncate commit titles longer than this
 const MAX_DESCRIPTION_LENGTH = 300; // Truncate commit descriptions longer than this
 const MAX_GROUPED_COMMITS_DISPLAY = 5; // Show max 5 commits in a group before truncating
+const MAX_LIST_ITEMS_DISPLAY = 5; // Show max 5 list items before truncating
 
 /**
  * Sanitize commit message to remove sensitive or unnecessary information
@@ -52,13 +53,74 @@ function sanitizeCommitMessage(message) {
   // Remove generic "Generated with Claude Code" footers
   sanitized = sanitized.replace(/🤖 Generated with \[Claude Code\].*$/gim, '');
 
+  // Remove CI command postfixes (e.g., [skip tests], [no-ci], [skip-tests])
+  sanitized = sanitized.replace(/\s+\[[^\]]+\]\s*$/gim, '');
+
   // Remove multiple consecutive blank lines
   sanitized = sanitized.replace(/\n\s*\n\s*\n/g, '\n\n');
 
-  // Trim extra whitespace
+  // Trim leading and trailing spaces from each line
+  sanitized = sanitized.split('\n').map(line => line.trim()).join('\n');
+
+  // Trim extra whitespace from entire message
   sanitized = sanitized.trim();
 
+  // Capitalize first letter of message and first letter after newlines
+  if (sanitized.length > 0) {
+    // Capitalize first character
+    sanitized = sanitized.charAt(0).toUpperCase() + sanitized.slice(1);
+
+    // Capitalize first character after newlines
+    sanitized = sanitized.replace(/\n(.)/g, (match, char) => '\n' + char.toUpperCase());
+  }
+
   return sanitized;
+}
+
+/**
+ * Check if text contains list-style formatting (lines starting with * or -)
+ * @param {string} text - Text to check
+ * @returns {boolean} True if text has list formatting
+ */
+function hasListFormatting(text) {
+  const lines = text.split('\n').filter(line => line.trim().length > 0);
+  return lines.some(line => /^\s*[-*]\s+/.test(line));
+}
+
+/**
+ * Parse list items from text
+ * @param {string} text - Text with list formatting
+ * @returns {Array} Array of list item strings
+ */
+function parseListItems(text) {
+  const lines = text.split('\n');
+  const items = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+
+    // Check if line starts with * or -
+    const match = trimmed.match(/^[-*]\s+(.+)$/);
+    if (match) {
+      const itemText = match[1].trim();
+
+      // Exclude separator lines (e.g., ---------, ********, =========, etc.)
+      const isSeparator = /^[-*_=]{2,}$/.test(itemText);
+      if (!isSeparator && itemText.length > 0) {
+        items.push(itemText);
+      }
+    } else {
+      // Also check if the whole line is a separator
+      const isSeparator = /^[-*_=]{2,}$/.test(trimmed);
+      if (!isSeparator && trimmed.length > 0) {
+        items.push(trimmed);
+      }
+    }
+  }
+
+  // Filter out any empty items that might have slipped through
+  return items.filter(item => item && item.trim().length > 0);
 }
 
 /**
@@ -113,6 +175,24 @@ function groupCommitsByAuthor(commits) {
         } else {
           break;
         }
+      }
+
+      // Deduplicate commits with same message (case-insensitive)
+      if (group.commits.length > 1) {
+        const seenMessages = new Map();
+        const uniqueCommits = [];
+
+        for (const commit of group.commits) {
+          const sanitizedMessage = sanitizeCommitMessage(commit.message);
+          const messageLower = sanitizedMessage.split('\n')[0].trim().toLowerCase();
+
+          if (!seenMessages.has(messageLower)) {
+            seenMessages.set(messageLower, true);
+            uniqueCommits.push(commit);
+          }
+        }
+
+        group.commits = uniqueCommits;
       }
 
       grouped.push(group);
@@ -438,13 +518,72 @@ const CommitCard = ({ group, isWiki = false }) => {
   const commit = group.commits[0]; // First commit for single commits or groups
 
   // For single commits, extract title and description
-  let title, description, needsTruncation;
+  let title, description, needsTruncation, descriptionHasList, descriptionListItems;
   if (!isGroup) {
     const sanitizedMessage = sanitizeCommitMessage(commit.message);
     const lines = sanitizedMessage.split('\n');
-    title = lines[0];
+    let rawTitle = lines[0];
+
+    // Remove list marker from title if present
+    const titleMatch = rawTitle.match(/^\s*[-*]\s+(.+)$/);
+    if (titleMatch) {
+      title = titleMatch[1].trim();
+      // Capitalize first letter
+      if (title.length > 0) {
+        title = title.charAt(0).toUpperCase() + title.slice(1);
+      }
+    } else {
+      title = rawTitle;
+    }
+
+    // Ensure title is not empty after processing
+    if (!title || title.trim().length === 0) {
+      title = 'Update';
+    }
+
     description = lines.slice(1).join('\n').trim();
     needsTruncation = description.length > MAX_DESCRIPTION_LENGTH;
+
+    // Check if description has list formatting
+    descriptionHasList = hasListFormatting(description);
+    if (descriptionHasList) {
+      const items = parseListItems(description).map(item => {
+        // Capitalize first letter of each list item
+        if (item.length > 0) {
+          return item.charAt(0).toUpperCase() + item.slice(1);
+        }
+        return item;
+      });
+
+      // Deduplicate list items (case-insensitive)
+      const seenItems = new Map();
+      descriptionListItems = [];
+      for (const item of items) {
+        // Skip empty items
+        if (!item || item.trim().length === 0) continue;
+
+        const itemLower = item.toLowerCase();
+        if (!seenItems.has(itemLower)) {
+          seenItems.set(itemLower, true);
+          descriptionListItems.push(item);
+        }
+      }
+
+      // If all items were filtered out, treat as no list
+      if (descriptionListItems.length === 0) {
+        descriptionHasList = false;
+      }
+    }
+  }
+
+  // For grouped commits, check if all are list-style
+  let groupHasListFormat = false;
+  if (isGroup) {
+    groupHasListFormat = group.commits.every(c => {
+      const sanitizedMessage = sanitizeCommitMessage(c.message);
+      const commitTitle = sanitizedMessage.split('\n')[0];
+      return /^\s*[-*]\s+/.test(commitTitle);
+    });
   }
 
   // Format date (use start date for groups, commit date for single)
@@ -478,52 +617,99 @@ const CommitCard = ({ group, isWiki = false }) => {
           {/* Title or Grouped Messages */}
           {isGroup ? (
             <div className="space-y-1">
-              <ul className="list-disc list-inside space-y-1 text-sm text-gray-900 dark:text-white">
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
                 {(() => {
-                  const commitsToShow = isExpanded ? group.commits : group.commits.slice(0, MAX_GROUPED_COMMITS_DISPLAY);
-                  const hasMoreCommits = group.commits.length > MAX_GROUPED_COMMITS_DISPLAY;
+                  // Process ALL commits first for deduplication
+                  const seenMessages = new Map();
+                  const allUniqueCommits = [];
 
-                  return (
-                    <>
-                      {commitsToShow.map((c) => {
-                        const sanitizedMessage = sanitizeCommitMessage(c.message);
-                        const commitTitle = sanitizedMessage.split('\n')[0];
-                        return (
-                          <li key={c.sha} className="ml-1">
-                            {commitTitle}
-                          </li>
-                        );
-                      })}
-                      {hasMoreCommits && !isExpanded && (
-                        <li className="ml-1 text-blue-600 dark:text-blue-400">
-                          <button
-                            onClick={() => setIsExpanded(true)}
-                            className="hover:underline text-xs font-medium flex items-center gap-1"
-                          >
-                            +{group.commits.length - MAX_GROUPED_COMMITS_DISPLAY} more commits
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                        </li>
-                      )}
-                      {hasMoreCommits && isExpanded && (
-                        <li className="ml-1 text-blue-600 dark:text-blue-400">
-                          <button
-                            onClick={() => setIsExpanded(false)}
-                            className="hover:underline text-xs font-medium flex items-center gap-1"
-                          >
-                            Show less
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                            </svg>
-                          </button>
-                        </li>
-                      )}
-                    </>
-                  );
+                  for (const c of group.commits) {
+                    const sanitizedMessage = sanitizeCommitMessage(c.message);
+                    const commitTitle = sanitizedMessage.split('\n')[0];
+
+                    // Strip list marker if all commits are list-style
+                    let displayText = groupHasListFormat
+                      ? commitTitle.replace(/^\s*[-*]\s+/, '')
+                      : commitTitle;
+
+                    // Capitalize first letter
+                    if (displayText.length > 0) {
+                      displayText = displayText.charAt(0).toUpperCase() + displayText.slice(1);
+                    }
+
+                    // Skip empty items
+                    if (!displayText || displayText.trim().length === 0) continue;
+
+                    // Deduplicate (case-insensitive)
+                    const textLower = displayText.toLowerCase();
+                    if (!seenMessages.has(textLower)) {
+                      seenMessages.set(textLower, true);
+                      allUniqueCommits.push({ sha: c.sha, text: displayText });
+                    }
+                  }
+
+                  // Now apply truncation to the deduplicated list
+                  const itemsToShow = isExpanded ? allUniqueCommits : allUniqueCommits.slice(0, MAX_LIST_ITEMS_DISPLAY);
+
+                  return itemsToShow.filter(item => item.text && item.text.trim().length > 0).map((item) => (
+                    <li key={item.sha} className="ml-1">
+                      {item.text}
+                    </li>
+                  ));
                 })()}
               </ul>
+              {(() => {
+                // Process ALL commits first for deduplication (repeat logic to get allUniqueCommits)
+                const seenMessages = new Map();
+                const allUniqueCommits = [];
+
+                for (const c of group.commits) {
+                  const sanitizedMessage = sanitizeCommitMessage(c.message);
+                  const commitTitle = sanitizedMessage.split('\n')[0];
+
+                  let displayText = groupHasListFormat
+                    ? commitTitle.replace(/^\s*[-*]\s+/, '')
+                    : commitTitle;
+
+                  if (displayText.length > 0) {
+                    displayText = displayText.charAt(0).toUpperCase() + displayText.slice(1);
+                  }
+
+                  if (!displayText || displayText.trim().length === 0) continue;
+
+                  const textLower = displayText.toLowerCase();
+                  if (!seenMessages.has(textLower)) {
+                    seenMessages.set(textLower, true);
+                    allUniqueCommits.push({ sha: c.sha, text: displayText });
+                  }
+                }
+
+                const hasMoreItems = allUniqueCommits.length > MAX_LIST_ITEMS_DISPLAY;
+                if (!hasMoreItems) return null;
+
+                return (
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 flex items-center gap-1 ml-6"
+                  >
+                    {isExpanded ? (
+                      <>
+                        Show less
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </>
+                    ) : (
+                      <>
+                        +{allUniqueCommits.length - MAX_LIST_ITEMS_DISPLAY} more items
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                );
+              })()}
             </div>
           ) : (
             <>
@@ -534,38 +720,84 @@ const CommitCard = ({ group, isWiki = false }) => {
               {/* Description (if exists) with gradient fade and expansion */}
               {description && (
                 <div className="relative mt-2">
-                  <div
-                    className={`text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap overflow-hidden transition-all duration-200 ${
-                      isExpanded ? 'max-h-none' : 'max-h-[4.5rem]'
-                    }`}
-                    style={!isExpanded && needsTruncation ? {
-                      maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
-                      WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
-                    } : {}}
-                  >
-                    {description}
-                  </div>
-                  {needsTruncation && (
-                    <button
-                      onClick={() => setIsExpanded(!isExpanded)}
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 flex items-center gap-1 relative z-10"
-                    >
-                      {isExpanded ? (
-                        <>
-                          Show less
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                          </svg>
-                        </>
-                      ) : (
-                        <>
-                          Show more
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
+                  {descriptionHasList ? (
+                    // Render as list if description has list formatting
+                    <>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                        {(() => {
+                          const itemsToShow = isExpanded ? descriptionListItems : descriptionListItems.slice(0, MAX_LIST_ITEMS_DISPLAY);
+                          return itemsToShow.filter(item => item && item.trim().length > 0).map((item, idx) => (
+                            <li key={idx} className="ml-1">
+                              {item}
+                            </li>
+                          ));
+                        })()}
+                      </ul>
+                      {(() => {
+                        const hasMoreItems = descriptionListItems.length > MAX_LIST_ITEMS_DISPLAY;
+                        if (!hasMoreItems) return null;
+
+                        return (
+                          <button
+                            onClick={() => setIsExpanded(!isExpanded)}
+                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 flex items-center gap-1 ml-6"
+                          >
+                            {isExpanded ? (
+                              <>
+                                Show less
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                              </>
+                            ) : (
+                              <>
+                                +{descriptionListItems.length - MAX_LIST_ITEMS_DISPLAY} more items
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    // Regular text rendering with truncation
+                    <>
+                      <div
+                        className={`text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap overflow-hidden transition-all duration-200 ${
+                          isExpanded ? 'max-h-none' : 'max-h-[4.5rem]'
+                        }`}
+                        style={!isExpanded && needsTruncation ? {
+                          maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+                          WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
+                        } : {}}
+                      >
+                        {description}
+                      </div>
+                      {needsTruncation && (
+                        <button
+                          onClick={() => setIsExpanded(!isExpanded)}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 flex items-center gap-1 relative z-10"
+                        >
+                          {isExpanded ? (
+                            <>
+                              Show less
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              </svg>
+                            </>
+                          ) : (
+                            <>
+                              Show more
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </>
+                          )}
+                        </button>
                       )}
-                    </button>
+                    </>
                   )}
                 </div>
               )}

@@ -903,7 +903,12 @@ export const handleGitHubError = (error) => {
     return 'Permission denied. You may not have access to this resource.';
   } else if (error.status === 404) {
     return 'Resource not found.';
-  } else if (error.status === 422) {
+  } else if (error.status === 409 || error.status === 422) {
+    // Check for SHA mismatch errors (file was updated by someone else)
+    const message = error.message || '';
+    if (message.includes('does not match') || message.includes('SHA')) {
+      return 'This page was modified by someone else while you were editing. Please refresh the page and try again.';
+    }
     return 'Invalid request. Please check your input.';
   } else {
     return error.message || 'An error occurred while communicating with GitHub.';

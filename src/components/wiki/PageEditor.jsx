@@ -287,6 +287,52 @@ const PageEditor = ({
   // Get framework-level picker components
   const VideoGuidePicker = getPicker('video-guide');
 
+  // Helper function to save editor selection before opening pickers/dialogs
+  // This prevents losing cursor position when editor loses focus
+  const saveEditorSelection = useCallback(() => {
+    if (editorApiRef.current) {
+      const selection = editorApiRef.current.getSelection();
+      logger.trace('Saving editor selection', {
+        text: selection.text,
+        from: selection.from,
+        to: selection.to,
+        empty: selection.empty
+      });
+
+      // Create a deep copy of the selection to ensure it persists
+      setSavedSelection({
+        text: selection.text,
+        from: selection.from,
+        to: selection.to,
+        empty: selection.empty
+      });
+    }
+  }, []);
+
+  // Auto-save cursor position whenever editor is used
+  // This ensures we always have the latest cursor position before any toolbar interaction
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Continuously save cursor position (even after editor loses focus)
+      if (editorApiRef.current) {
+        const selection = editorApiRef.current.getSelection();
+
+        // Always update if cursor position has changed, regardless of focus
+        // This preserves the last known cursor position even after clicking Insert dropdown
+        if (!savedSelection || savedSelection.from !== selection.from || savedSelection.to !== selection.to) {
+          setSavedSelection({
+            text: selection.text,
+            from: selection.from,
+            to: selection.to,
+            empty: selection.empty
+          });
+        }
+      }
+    }, 150); // Check every 150ms
+
+    return () => clearInterval(interval);
+  }, [savedSelection]);
+
   // Build content pickers array for toolbar (generic + registered)
   const contentPickers = useMemo(() => {
     const pickers = [];
@@ -296,7 +342,10 @@ const PageEditor = ({
       icon: ImageIcon,
       label: 'Image',
       action: 'image',
-      handler: () => setShowImagePicker(true)
+      handler: () => {
+        saveEditorSelection();
+        setShowImagePicker(true);
+      }
     });
 
     // Add generic data selector (if available)
@@ -305,7 +354,10 @@ const PageEditor = ({
         icon: Database,
         label: 'Data',
         action: 'data',
-        handler: () => setShowDataSelector(true)
+        handler: () => {
+          saveEditorSelection();
+          setShowDataSelector(true);
+        }
       });
     }
 
@@ -320,7 +372,10 @@ const PageEditor = ({
             icon: picker.icon,
             label: picker.label,
             action: picker.action,
-            handler: () => setShowVideoGuidePicker(true),
+            handler: () => {
+              saveEditorSelection();
+              setShowVideoGuidePicker(true);
+            },
             pickerHandler: picker.handler // Store for onSelect callback
           });
         } else {
@@ -329,7 +384,10 @@ const PageEditor = ({
             icon: picker.icon,
             label: picker.label,
             action: picker.action,
-            handler: () => setOpenPicker(picker.name),
+            handler: () => {
+              saveEditorSelection();
+              setOpenPicker(picker.name);
+            },
             pickerHandler: picker.handler // Store for onSelect callback
           });
         }
@@ -337,13 +395,13 @@ const PageEditor = ({
     });
 
     return pickers;
-  }, []);
+  }, [saveEditorSelection]);
 
   // Refs for sticky detection and scrolling
   const sentinelRef = useRef(null);
   const toolbarRef = useRef(null);
   const validationErrorsRef = useRef(null);
-  const editorApiRef = useRef(null);
+  const editorApiRef = useRef({ lastCursorPosition: 0 }); // Initialize with lastCursorPosition shared across all editor instances
   const colorButtonRef = useRef(null);
   const metadataRef = useRef(metadata); // Track latest metadata to prevent loss during race conditions
 
@@ -1078,8 +1136,26 @@ const PageEditor = ({
     const pickerMeta = registeredPickers.find(p => p.name === pickerName);
 
     if (pickerMeta && pickerMeta.handler) {
-      // Call the parent-specific handler with editor API
-      pickerMeta.handler(data, editorApiRef.current);
+      // Create enhanced API that uses saved cursor position
+      const enhancedApi = {
+        ...editorApiRef.current,
+        insertAtCursor: (text) => {
+          const api = editorApiRef.current;
+          // Use saved cursor position if available
+          if (savedSelection && savedSelection.from !== undefined) {
+            api.replaceRange(savedSelection.from, savedSelection.to, text);
+            setSavedSelection(null); // Clear after use
+          } else {
+            api.insertAtCursor(text);
+          }
+        }
+      };
+
+      // Call the parent-specific handler with enhanced editor API
+      pickerMeta.handler(data, enhancedApi);
+
+      // Clear saved selection if not already cleared
+      setSavedSelection(null);
     } else {
       logger.warn('No handler registered for picker', { pickerName });
     }
@@ -1091,21 +1167,27 @@ const PageEditor = ({
   const handleVideoGuideSelect = (syntax) => {
     if (!editorApiRef.current) return;
 
-    // Insert video guide syntax into content
-    // Format: {{video-guide:ID}}
-    // Insert at cursor position with trailing spaces and paragraph breaks
-    editorApiRef.current.insertAtCursor(`\n\n${syntax}  \n\n`);
+    const api = editorApiRef.current;
+    const textToInsert = `\n\n${syntax}  \n\n`;
+
+    // Use insertAtCursor which has smart logic to use last known position
+    api.insertAtCursor(textToInsert);
   };
 
   // Handle image selection from picker
-  const handleImageSelect = (markdownSyntax, image) => {
+  const handleImageSelect = (markdownSyntax, image, options) => {
     if (!editorApiRef.current) return;
 
-    // Insert image markdown into content
-    // Format: ![alt text](path)
-    // Insert at cursor position with trailing spaces and paragraph breaks
-    // Two spaces at end of line create hard break, blank line separates blocks
-    editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}  \n\n`);
+    const api = editorApiRef.current;
+
+    // For inline mode, insert without newlines
+    // For block mode (default), add newlines for proper spacing
+    const textToInsert = options?.mode === 'inline'
+      ? markdownSyntax
+      : `\n\n${markdownSyntax}  \n\n`;
+
+    // Always use insertAtCursor which has smart logic to use last known position
+    api.insertAtCursor(textToInsert);
   };
 
   // Handle background image selection
@@ -1153,9 +1235,16 @@ const PageEditor = ({
       dataSyntax = `{{data:${source}:${id}:${template}}}`;
     }
 
-    // Insert at cursor position with trailing spaces and paragraph breaks
-    // Two spaces at end of line create hard break, blank line separates blocks
-    editorApiRef.current.insertAtCursor(`\n\n${dataSyntax}  \n\n`);
+    const api = editorApiRef.current;
+
+    // For inline template, insert without newlines
+    // For block templates (card, table, etc), add newlines for proper spacing
+    const textToInsert = template === 'inline'
+      ? dataSyntax
+      : `\n\n${dataSyntax}  \n\n`;
+
+    // Use insertAtCursor which has smart logic to use last known position
+    api.insertAtCursor(textToInsert);
 
     // Close the data selector
     setShowDataSelector(false);
@@ -1402,7 +1491,13 @@ const PageEditor = ({
         break;
 
       case 'link':
-        // Open link dialog
+        // Save selection before opening dialog (will be used when inserting link)
+        setSavedSelection({
+          text: selection.text,
+          from: selection.from,
+          to: selection.to,
+          empty: selection.empty
+        });
         setLinkDialogText(selection.text);
         setShowLinkDialog(true);
         break;
@@ -1502,8 +1597,17 @@ const PageEditor = ({
   // Handle link insertion from dialog
   const handleLinkInsert = (text, url) => {
     if (!editorApiRef.current) return;
+
+    const api = editorApiRef.current;
     const markdown = `[${text}](${url})`;
-    editorApiRef.current.replaceSelection(markdown);
+
+    // If there's saved selection text, replace it; otherwise insert at cursor
+    if (savedSelection && savedSelection.text) {
+      api.replaceSelection(markdown);
+      setSavedSelection(null);
+    } else {
+      api.insertAtCursor(markdown);
+    }
   };
 
   // Handle color picker open
@@ -1514,24 +1618,7 @@ const PageEditor = ({
     });
 
     // Save current selection before opening picker (selection may be lost when picker opens)
-    if (editorApiRef.current) {
-      const selection = editorApiRef.current.getSelection();
-      logger.trace('Saving selection', {
-        text: selection.text,
-        from: selection.from,
-        to: selection.to,
-        empty: selection.empty,
-        length: selection.text?.length
-      });
-
-      // Create a deep copy of the selection to ensure it persists
-      setSavedSelection({
-        text: selection.text,
-        from: selection.from,
-        to: selection.to,
-        empty: selection.empty
-      });
-    }
+    saveEditorSelection();
 
     setShowColorPicker(true);
   };
@@ -1690,6 +1777,19 @@ const PageEditor = ({
       {/* Toolbar - Sticky */}
       <div
         ref={toolbarRef}
+        onMouseDownCapture={() => {
+          // Save cursor position before any toolbar button is clicked
+          // Using capture phase to ensure this fires before child button handlers
+          if (editorApiRef.current) {
+            const selection = editorApiRef.current.getSelection();
+            setSavedSelection({
+              text: selection.text,
+              from: selection.from,
+              to: selection.to,
+              empty: selection.empty
+            });
+          }
+        }}
         className={`sticky top-16 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md transition-all ${
           isToolbarStuck ? 'rounded-b-lg' : 'rounded-lg'
         }`}

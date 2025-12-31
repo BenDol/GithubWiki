@@ -32,6 +32,49 @@ function isBotCommit(commit) {
 }
 
 /**
+ * Check if commit message is too short to be meaningful
+ * @param {Object} commit - GitHub commit object
+ * @returns {boolean} True if commit message is too short (1-2 words)
+ */
+function isShortCommit(commit) {
+  const message = commit.message || commit.commit?.message || '';
+  // Get first line (title) only
+  const title = message.split('\n')[0].trim();
+
+  // Count words (split by whitespace, filter empty strings)
+  const words = title.split(/\s+/).filter(word => word.length > 0);
+
+  // Filter out commits with 1-2 words (e.g., "fix", "update", "wip")
+  return words.length <= 2;
+}
+
+/**
+ * Check if commit is a merge commit
+ * @param {Object} commit - GitHub commit object
+ * @returns {boolean} True if commit is a merge commit
+ */
+function isMergeCommit(commit) {
+  const message = commit.message || commit.commit?.message || '';
+  const title = message.split('\n')[0].trim();
+
+  // Filter out merge commits (e.g., "Merge branch 'main' into dev")
+  return title.startsWith('Merge branch') || title.startsWith('Merge pull request');
+}
+
+/**
+ * Check if commit message contains "dev" keyword
+ * @param {Object} commit - GitHub commit object
+ * @returns {boolean} True if commit contains "dev" keyword
+ */
+function isDevCommit(commit) {
+  const message = commit.message || commit.commit?.message || '';
+  const title = message.split('\n')[0].trim();
+
+  // Filter out commits with "dev" keyword (case-insensitive)
+  return /\bdev\b/i.test(title);
+}
+
+/**
  * Check if commit affects wiki content
  * @param {Array} files - Array of file objects from commit
  * @returns {boolean} True if commit affects wiki content
@@ -99,13 +142,22 @@ export async function fetchChangelogCommits(owner, repo, weeksBack = 4) {
 
     logger.debug('Fetched commits', { count: commits.length });
 
-    // Filter out bot commits
+    // Filter out bot commits, short commits, merge commits, and dev commits
     const nonBotCommits = commits.filter(commit => !isBotCommit(commit));
     logger.debug('Filtered bot commits', { nonBot: nonBotCommits.length });
 
+    const nonShortCommits = nonBotCommits.filter(commit => !isShortCommit(commit));
+    logger.debug('Filtered short commits', { nonShort: nonShortCommits.length });
+
+    const nonMergeCommits = nonShortCommits.filter(commit => !isMergeCommit(commit));
+    logger.debug('Filtered merge commits', { nonMerge: nonMergeCommits.length });
+
+    const meaningfulCommits = nonMergeCommits.filter(commit => !isDevCommit(commit));
+    logger.debug('Filtered dev commits', { meaningful: meaningfulCommits.length });
+
     // Fetch file details for each commit (in parallel with rate limiting)
     const commitsWithFiles = await Promise.all(
-      nonBotCommits.map(async (commit) => {
+      meaningfulCommits.map(async (commit) => {
         try {
           const { data: commitDetail } = await octokit.rest.repos.getCommit({
             owner,
@@ -301,12 +353,16 @@ async function fetchChangelogCommitsSince(owner, repo, since) {
 
     logger.debug('Fetched new commits', { count: commits.length });
 
-    // Filter out bot commits
+    // Filter out bot commits, short commits, merge commits, and dev commits
     const nonBotCommits = commits.filter(commit => !isBotCommit(commit));
+    const nonShortCommits = nonBotCommits.filter(commit => !isShortCommit(commit));
+    const nonMergeCommits = nonShortCommits.filter(commit => !isMergeCommit(commit));
+    const meaningfulCommits = nonMergeCommits.filter(commit => !isDevCommit(commit));
+    logger.debug('Filtered bot, short, merge, and dev commits', { meaningful: meaningfulCommits.length });
 
     // Fetch file details for each commit (in parallel)
     const commitsWithFiles = await Promise.all(
-      nonBotCommits.map(async (commit) => {
+      meaningfulCommits.map(async (commit) => {
         try {
           const { data: commitDetail } = await octokit.rest.repos.getCommit({
             owner,

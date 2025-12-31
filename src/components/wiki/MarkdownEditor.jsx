@@ -85,12 +85,30 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
         },
         insertAtCursor: (text) => {
           const view = viewRef.current;
-          if (!view) return;
-          const pos = view.state.selection.main.head;
+          if (!view) {
+            logger.error('INSERT DEBUG: No view available!');
+            return;
+          }
+
+          // Use tracked cursor position (updated by updateListener, blur, and click handlers)
+          const pos = editorApi.current?.lastCursorPosition || 0;
+
+          logger.trace('INSERT at cursor', {
+            trackedPos: pos,
+            textLength: text.length
+          });
+
           view.dispatch({
             changes: { from: pos, insert: text },
             selection: { anchor: pos + text.length }
           });
+
+          // Update tracked position after insert
+          if (editorApi.current) {
+            editorApi.current.lastCursorPosition = pos + text.length;
+          }
+
+          logger.trace('INSERT complete', { newTrackedPos: editorApi.current?.lastCursorPosition });
         },
         getCurrentLine: () => {
           const view = viewRef.current;
@@ -134,6 +152,10 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
 
   useEffect(() => {
     if (!editorRef.current) return;
+
+    logger.trace('MarkdownEditor mounted', {
+      sharedCursorPos: editorApi.current?.lastCursorPosition || 0
+    });
 
     // Custom deletion handlers to provide intuitive deletion behavior
     // Prevents unexpected multi-character or newline deletions
@@ -236,8 +258,17 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             // Check for data autocomplete pattern
             checkDataAutocomplete();
           }
-          // Also check on selection change (cursor movement)
-          if (update.selectionSet) {
+          // Track cursor position changes
+          if (update.selectionSet || update.docChanged) {
+            const cursorPos = update.state.selection.main.head;
+
+            // Always update cursor position to track user's latest position
+            // Blur handler will preserve position when editor loses focus
+            logger.trace('Cursor position update', { cursorPos });
+            if (editorApi.current) {
+              editorApi.current.lastCursorPosition = cursorPos;
+            }
+
             checkDataAutocomplete();
           }
         }),
@@ -273,8 +304,27 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
 
     viewRef.current = view;
 
+    // Track cursor position when editor loses focus (blur)
+    // This ensures we save position before toolbar buttons are clicked
+    const handleBlur = () => {
+      if (view && editorApi.current) {
+        const cursorPos = view.state.selection.main.head;
+        logger.trace('Editor blur - save cursor', { cursorPos });
+        editorApi.current.lastCursorPosition = cursorPos;
+      }
+    };
+
+    // Add blur listener to the editor's DOM element
+    const editorElement = editorRef.current?.querySelector('.cm-editor');
+    if (editorElement) {
+      editorElement.addEventListener('blur', handleBlur);
+    }
+
     // Cleanup
     return () => {
+      if (editorElement) {
+        editorElement.removeEventListener('blur', handleBlur);
+      }
       view.destroy();
     };
   }, [darkMode]); // Recreate editor when theme changes
@@ -724,12 +774,21 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     setWidgetVisible(false);
   };
 
-  // Add click and touch listeners to check for images
+  // Add click and touch listeners to check for images AND track cursor position
   useEffect(() => {
     if (!editorRef.current) return;
 
     const handleInteraction = () => {
-      setTimeout(checkCursorOnImage, 50);
+      setTimeout(() => {
+        checkCursorOnImage();
+
+        // Also update cursor position tracking on click/touch
+        if (viewRef.current && editorApi.current) {
+          const cursorPos = viewRef.current.state.selection.main.head;
+          logger.trace('Click/Touch - save cursor', { cursorPos });
+          editorApi.current.lastCursorPosition = cursorPos;
+        }
+      }, 50);
     };
 
     const element = editorRef.current;
