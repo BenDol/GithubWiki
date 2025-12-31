@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Heart, Coffee, Server, Zap, Users, ChevronRight } from 'lucide-react';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 import { useAuthStore } from '../store/authStore';
+import { useCustomAvatar } from '../hooks/useCustomAvatar';
 import { Helmet } from 'react-helmet-async';
 
 const DonatePage = () => {
@@ -16,6 +17,9 @@ const DonatePage = () => {
   const [paypalError, setPaypalError] = useState(null);
   const paypalButtonRef = useRef(null);
   const customAmountRef = useRef(null);
+
+  // Use custom avatar hook (same pattern as profile pictures)
+  const { avatarUrl } = useCustomAvatar(user?.id, user?.avatar_url);
 
   // Pre-fill GitHub username if authenticated
   useEffect(() => {
@@ -268,7 +272,7 @@ const DonatePage = () => {
                 <div className="flex-shrink-0">
                   <div className="relative inline-block">
                     <img
-                      src={user?.avatar_url || 'https://github.com/github.png'}
+                      src={avatarUrl || 'https://github.com/github.png'}
                       alt="Avatar"
                       className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full object-cover ring-4 ring-white dark:ring-gray-800"
                     />
@@ -282,7 +286,7 @@ const DonatePage = () => {
                       title={`${badgeConfig.badge} ${badgeConfig.title}`}
                     >
                       <span
-                        className="leading-none select-none animate-glow-pulse text-base sm:text-lg md:text-xl"
+                        className="leading-none select-none animate-glow-pulse text-lg sm:text-xl md:text-2xl"
                       >
                         {badgeConfig.badge}
                       </span>

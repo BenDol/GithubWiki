@@ -10,6 +10,7 @@ import DataBrowserModal from '../common/DataBrowserModal';
 import MaintenancePage from '../../pages/MaintenancePage';
 import MaintenanceBypassBanner from '../common/MaintenanceBypassBanner';
 import { useDevStore } from '../../store/devStore';
+import { useUIStore } from '../../store/uiStore';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAdminStatus } from '../../hooks/useAdminStatus';

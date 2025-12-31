@@ -5,6 +5,7 @@ import MarkdownEditor from './MarkdownEditor';
 import MarkdownFormatToolbar from './MarkdownFormatToolbar';
 import PageViewer from './PageViewer';
 import ImagePicker from './ImagePicker';
+import BackgroundConfigPanel from './BackgroundConfigPanel';
 import LinkDialog from './LinkDialog';
 import ColorPicker from './ColorPicker';
 import { useUIStore } from '../../store/uiStore';
@@ -138,6 +139,9 @@ const PageEditor = ({
   const [openPicker, setOpenPicker] = useState(null);
   const [showVideoGuidePicker, setShowVideoGuidePicker] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+  const [showBackgroundConfig, setShowBackgroundConfig] = useState(false);
+  const [selectedBackgroundPath, setSelectedBackgroundPath] = useState(null);
   const [showDataSelector, setShowDataSelector] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [linkDialogText, setLinkDialogText] = useState('');
@@ -638,7 +642,7 @@ const PageEditor = ({
     // Check for unknown/invalid metadata fields in the raw content
     try {
       const parsed = matter(content);
-      const allowedFields = ['id', 'title', 'description', 'tags', 'category', 'date', 'order'];
+      const allowedFields = ['id', 'title', 'description', 'tags', 'category', 'date', 'order', 'background'];
       const actualFields = Object.keys(parsed.data);
 
       const unknownFields = actualFields.filter(field => !allowedFields.includes(field));
@@ -1102,6 +1106,36 @@ const PageEditor = ({
     // Insert at cursor position with trailing spaces and paragraph breaks
     // Two spaces at end of line create hard break, blank line separates blocks
     editorApiRef.current.insertAtCursor(`\n\n${markdownSyntax}  \n\n`);
+  };
+
+  // Handle background image selection
+  const handleBackgroundSelect = (markdown, imageObject) => {
+    // ImagePicker passes markdown as first param and image object as second
+    const imagePath = imageObject?.path || markdown;
+    setSelectedBackgroundPath(imagePath);
+    setShowBackgroundPicker(false);
+    setShowBackgroundConfig(true);
+  };
+
+  // Handle background configuration apply
+  const handleBackgroundApply = (config) => {
+    const newMetadata = {
+      ...metadata,
+      background: config
+    };
+    setMetadata(newMetadata);
+    metadataRef.current = newMetadata;
+    updateContentWithMetadata(newMetadata);
+    setShowBackgroundConfig(false);
+    setSelectedBackgroundPath(null);
+  };
+
+  // Handle background removal
+  const handleBackgroundRemove = () => {
+    const { background, ...newMetadata } = metadata;
+    setMetadata(newMetadata);
+    metadataRef.current = newMetadata;
+    updateContentWithMetadata(newMetadata);
   };
 
   // Handle data selection from data selector
@@ -2022,6 +2056,55 @@ const PageEditor = ({
                   Controls page position in section list (lower numbers appear first)
                 </p>
               </div>
+
+              {/* Background Image */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Background Image
+                </label>
+                {metadata.background ? (
+                  <div className="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-700">
+                    <img
+                      src={metadata.background.path}
+                      alt="Background"
+                      className="w-16 h-16 object-cover rounded border border-gray-300 dark:border-gray-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        Background configured
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Opacity: {Math.round((metadata.background.opacity || 1) * 100)}% • Size: {metadata.background.size || 'cover'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowBackgroundPicker(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded transition-colors"
+                      >
+                        Change
+                      </button>
+                      <button
+                        onClick={handleBackgroundRemove}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowBackgroundPicker(true)}
+                    className="w-full px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 rounded-md transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    Add Background
+                  </button>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Set a background image for this page
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -2100,12 +2183,14 @@ const PageEditor = ({
               Editor
             </h3>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowFrontmatter(!showFrontmatter)}
-                className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
-              >
-                {showFrontmatter ? 'Hide Frontmatter' : 'Show Frontmatter'}
-              </button>
+              {import.meta.env.DEV && (
+                <button
+                  onClick={() => setShowFrontmatter(!showFrontmatter)}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                >
+                  {showFrontmatter ? 'Hide Frontmatter' : 'Show Frontmatter'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -2171,16 +2256,20 @@ const PageEditor = ({
               </span>
             </div>
 
-            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 ${
+            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
+              metadata?.background ? '' : 'bg-white dark:bg-gray-800'
+            } ${
               viewMode === 'preview' ? 'p-6 md:p-8' : 'p-6'
             } ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
+                  key={metadata?.background?.path || 'no-background'}
                   content={content}
                   metadata={metadata}
                   className={viewMode === 'preview' ? 'max-w-full' : ''}
                   contentProcessor={contentProcessor}
                   customComponents={customComponents}
+                  isPreview={true}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-600">
@@ -2260,13 +2349,17 @@ const PageEditor = ({
               </span>
             </div>
 
-            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 p-6 ${darkMode ? 'dark' : ''}`}>
+            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
+              metadata?.background ? '' : 'bg-white dark:bg-gray-800'
+            } p-6 ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
+                  key={metadata?.background?.path || 'no-background'}
                   content={content}
                   metadata={metadata}
                   contentProcessor={contentProcessor}
                   customComponents={customComponents}
+                  isPreview={true}
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-600">
@@ -2335,6 +2428,27 @@ const PageEditor = ({
         onClose={() => setShowImagePicker(false)}
         onSelect={handleImageSelect}
       />
+
+      {/* Background Image Picker Modal */}
+      <ImagePicker
+        isOpen={showBackgroundPicker}
+        onClose={() => setShowBackgroundPicker(false)}
+        onSelect={handleBackgroundSelect}
+        mode="background"
+      />
+
+      {/* Background Configuration Panel */}
+      {showBackgroundConfig && (
+        <BackgroundConfigPanel
+          imagePath={selectedBackgroundPath}
+          initialConfig={metadata.background}
+          onApply={handleBackgroundApply}
+          onCancel={() => {
+            setShowBackgroundConfig(false);
+            setSelectedBackgroundPath(null);
+          }}
+        />
+      )}
 
       {/* Data Selector Modal */}
       {hasDataSelector() && showDataSelector && (() => {
@@ -2631,10 +2745,13 @@ const PageEditor = ({
                   >
                     <div className="prose prose-lg dark:prose-invert max-w-none p-2 md:p-4">
                       <PageViewer
+                        key={metadata?.background?.path || 'no-background'}
                         content={content}
+                        metadata={metadata}
                         contentProcessor={contentProcessor}
                         customComponents={customComponents}
                         emoticonMap={emoticonMap}
+                        isPreview={true}
                       />
                     </div>
                   </div>

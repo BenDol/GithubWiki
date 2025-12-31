@@ -112,7 +112,8 @@ const PageViewer = ({
   metadata,
   className = '',
   contentProcessor = null,
-  customComponents = {}
+  customComponents = {},
+  isPreview = false // Flag to indicate if rendering in editor preview
 }) => {
   // Process content to remove duplicate header
   let processedContent = removeDuplicateHeader(content, metadata?.title);
@@ -125,8 +126,34 @@ const PageViewer = ({
     processedContent = contentProcessor(processedContent);
   }
 
+  // Extract background configuration from metadata
+  const background = metadata?.background;
+
+  // Build background styles object
+  const backgroundStyles = background ? {
+    // Encode the URL to handle spaces and special characters
+    backgroundImage: `url(${encodeURI(background.path).replace(/\(/g, '%28').replace(/\)/g, '%29')})`,
+    backgroundRepeat: background.repeat || 'no-repeat',
+    backgroundSize: background.size || 'cover',
+    backgroundPosition: background.position || 'center',
+    backgroundAttachment: background.attachment || 'scroll',
+    opacity: background.opacity !== undefined ? background.opacity : 1,
+    mixBlendMode: background.blendMode || 'normal'
+  } : null;
+
   return (
-    <article className={className || 'max-w-4xl mx-auto'}>
+    <div className={`page-viewer relative ${isPreview ? 'min-h-full' : 'min-h-screen'}`}>
+      {/* Background container */}
+      {background && backgroundStyles && (
+        <div
+          className={`page-background ${isPreview ? 'absolute' : 'fixed'} top-0 left-0 right-0 bottom-0 pointer-events-none`}
+          style={{ ...backgroundStyles, zIndex: 0 }}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Content overlay */}
+      <article className={`${className || 'max-w-4xl mx-auto'} relative`} style={{ zIndex: 1 }}>
       {/* Page metadata */}
       {metadata && (
         <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-800">
@@ -371,6 +398,7 @@ const PageViewer = ({
         </ReactMarkdown>
       </div>
     </article>
+    </div>
   );
 };
 

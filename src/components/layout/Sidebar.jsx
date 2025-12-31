@@ -400,17 +400,47 @@ const Sidebar = () => {
         />
       )}
 
+      {/* Expand button - shows when sidebar is collapsed on desktop */}
+      {!sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="hidden lg:block fixed top-20 left-4 z-40 p-2 bg-gray-800/70 dark:bg-gray-700/70 text-white rounded-lg hover:bg-gray-800/90 dark:hover:bg-gray-700/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
+          title="Expand sidebar"
+          aria-label="Expand sidebar"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+
       {/* Sidebar */}
       <aside
         className={`
           fixed lg:sticky top-16 left-0 z-40 h-[calc(100vh-4rem)]
           flex-shrink-0 overflow-y-auto border-r border-gray-200 dark:border-gray-800
-          bg-gray-50 dark:bg-gray-900 transition-transform duration-200
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          bg-gray-50 dark:bg-gray-900 transition-all duration-200 lg:relative
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           ${isResizing ? 'select-none' : ''}
         `}
-        style={{ width: `${effectiveSidebarWidth}px` }}
+        style={{
+          width: typeof window !== 'undefined' && window.innerWidth >= 1024
+            ? (sidebarOpen ? `${effectiveSidebarWidth}px` : '0px')
+            : `${effectiveSidebarWidth}px`
+        }}
       >
+        {/* Collapse button - absolute positioned in top-right, desktop only */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="hidden lg:block absolute top-2 right-2 z-50 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          title="Collapse sidebar"
+          aria-label="Collapse sidebar"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+
         <nav className="p-4 space-y-1">
           {loading ? (
             <div className="flex items-center justify-center py-8">

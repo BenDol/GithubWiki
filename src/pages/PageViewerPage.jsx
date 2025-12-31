@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import matter from 'gray-matter';
 import PageViewer from '../components/wiki/PageViewer';
@@ -40,6 +40,9 @@ const PageViewerPage = ({ sectionId }) => {
   const [userIsBanned, setUserIsBanned] = useState(false);
   const [checkingBanStatus, setCheckingBanStatus] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showFullscreenButton, setShowFullscreenButton] = useState(false);
+  const contentRef = useRef(null);
 
   // Check if this is a framework/hardcoded page (no editing allowed)
   const isFrameworkPage = section?.allowContributions === false;
@@ -97,6 +100,39 @@ const PageViewerPage = ({ sectionId }) => {
       setRefreshing(false);
     }
   };
+
+  /**
+   * Toggle fullscreen mode
+   */
+  const toggleFullscreen = async () => {
+    if (!contentRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await contentRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('[PageViewer] Fullscreen error:', error);
+    }
+  };
+
+  /**
+   * Listen for fullscreen changes (e.g., ESC key)
+   */
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   useEffect(() => {
     const loadPage = async () => {
@@ -481,7 +517,12 @@ const PageViewerPage = ({ sectionId }) => {
       <div className="flex gap-8">
         {/* Main content */}
         <div className="flex-1 min-w-0 space-y-12">
-          <div className="relative">
+          <div
+            ref={contentRef}
+            className={`relative ${isFullscreen ? 'pt-8' : ''}`}
+            onMouseEnter={() => setShowFullscreenButton(true)}
+            onMouseLeave={() => setShowFullscreenButton(false)}
+          >
             {/* Page ID display - top right corner (dev mode only) */}
             {metadata?.id && import.meta.env.DEV && (
               <div className="absolute top-0 right-0 z-10 hidden md:block">
@@ -489,6 +530,28 @@ const PageViewerPage = ({ sectionId }) => {
                   {metadata.id}
                 </span>
               </div>
+            )}
+
+            {/* Fullscreen toggle button */}
+            {showFullscreenButton && (
+              <button
+                onClick={toggleFullscreen}
+                className="absolute top-4 right-4 z-20 p-2 bg-gray-800/70 dark:bg-gray-700/70 text-white rounded-lg hover:bg-gray-800/90 dark:hover:bg-gray-700/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
+                title={isFullscreen ? 'Exit fullscreen (ESC)' : 'Enter fullscreen'}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isFullscreen ? (
+                  // Exit fullscreen icon
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  // Enter fullscreen icon
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                )}
+              </button>
             )}
 
             <PageViewer

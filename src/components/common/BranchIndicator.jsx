@@ -1,4 +1,5 @@
 import { useBranchNamespace } from '../../hooks/useBranchNamespace';
+import { useWikiConfig } from '../../hooks/useWikiConfig';
 
 /**
  * BranchIndicator - Shows current git branch
@@ -6,9 +7,13 @@ import { useBranchNamespace } from '../../hooks/useBranchNamespace';
  */
 const BranchIndicator = () => {
   const { branch, loading } = useBranchNamespace();
+  const { config } = useWikiConfig();
 
-  // Don't show while loading or if branch not detected
-  if (loading || !branch) {
+  // Check if branch indicator is enabled in config (default: true for dev, false for prod)
+  const isEnabled = config?.features?.branchIndicator?.enabled ?? import.meta.env.DEV;
+
+  // Don't show if disabled, while loading, or if branch not detected
+  if (!isEnabled || loading || !branch) {
     return null;
   }
 
