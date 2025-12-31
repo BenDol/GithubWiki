@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 import { useBranchNamespace } from '../hooks/useBranchNamespace';
@@ -35,6 +35,7 @@ const achievementCheckCooldowns = new Map(); // userId -> timestamp
  */
 const ProfilePage = () => {
   const { username: urlUsername } = useParams();
+  const navigate = useNavigate();
   const { user: currentUser, isAuthenticated, isLoading: authLoading } = useAuthStore();
   const { config } = useWikiConfig();
   const { branch, loading: branchLoading } = useBranchNamespace();
@@ -105,6 +106,14 @@ const ProfilePage = () => {
   // Determine if viewing own profile or another user's profile
   const isOwnProfile = !urlUsername || (isAuthenticated && currentUser?.login === urlUsername);
   const targetUsername = isOwnProfile ? currentUser?.login : urlUsername;
+
+  // Update URL to include username when viewing own profile (for sharing)
+  useEffect(() => {
+    if (isOwnProfile && !urlUsername && currentUser?.login) {
+      // Replace URL with username to make it shareable
+      navigate(`/profile/${currentUser.login}`, { replace: true });
+    }
+  }, [isOwnProfile, urlUsername, currentUser?.login, navigate]);
 
   useEffect(() => {
     const loadProfile = async () => {
