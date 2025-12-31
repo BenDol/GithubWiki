@@ -753,6 +753,7 @@ const ProfilePage = () => {
                     src={profileUser.avatar_url}
                     alt={profileUser.name || profileUser.login}
                     username={profileUser.login}
+                    userId={profileUser.id}
                     stats={stats}
                     size="2xl"
                     showBadge={true}
@@ -850,10 +851,14 @@ const ProfilePage = () => {
           <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 sm:p-6 border border-blue-200 dark:border-blue-800">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
               {/* Avatar without prestige badge */}
-              <img
+              <PrestigeAvatar
                 src={profileUser.avatar_url}
                 alt={profileUser.login}
-                className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-lg flex-shrink-0"
+                username={profileUser.login}
+                userId={profileUser.id}
+                size="2xl"
+                showBadge={false}
+                className="shadow-lg flex-shrink-0"
               />
 
               {/* User Info */}
@@ -1337,6 +1342,8 @@ const ProfilePage = () => {
                     <PrestigeAvatar
                       src={pr.user?.avatar_url || profileUser?.avatar_url}
                       alt={pr.user?.login || profileUser?.login}
+                      username={pr.user?.login || profileUser?.login}
+                      userId={pr.user?.id || profileUser?.id}
                       size="md"
                       stats={pr.user?.login === profileUser?.login ? stats : null}
                       showBadge={pr.user?.login === profileUser?.login}
@@ -1503,6 +1510,8 @@ const ProfilePage = () => {
                     <PrestigeAvatar
                       src={pr.user?.avatar_url || profileUser?.avatar_url}
                       alt={pr.user?.login || profileUser?.login}
+                      username={pr.user?.login || profileUser?.login}
+                      userId={pr.user?.id || profileUser?.id}
                       size="lg"
                       stats={pr.user?.login === profileUser?.login ? stats : null}
                       showBadge={pr.user?.login === profileUser?.login}
