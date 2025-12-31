@@ -9,6 +9,7 @@ import { deleteCharBackward, deleteCharForward } from '@codemirror/commands';
 import ImageDimensionWidget from './ImageDimensionWidget';
 import DataAutocomplete from './DataAutocomplete';
 import { createLogger } from '../../utils/logger';
+import * as dataAutocompleteSearchModule from '../../utils/dataAutocompleteSearch';
 
 const logger = createLogger('MarkdownEditor');
 
@@ -753,6 +754,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           position={autocompletePosition}
           query={autocompleteQuery}
           suggestions={autocompleteSuggestions}
+          searchModule={dataAutocompleteSearchModule}
           onSelect={handleAutocompleteSelect}
           onClose={() => setAutocompleteVisible(false)}
         />,

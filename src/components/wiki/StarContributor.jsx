@@ -14,7 +14,8 @@ import { useAuthStore } from '../../store/authStore';
  */
 const StarContributor = ({ sectionId, pageId }) => {
   const { config } = useWikiConfig();
-  const { commits, loading, error } = usePageHistory(sectionId, pageId);
+  // Fetch ALL commits (up to 100) for accurate star contributor calculation
+  const { commits, loading, error } = usePageHistory(sectionId, pageId, 100);
   const { user } = useAuthStore();
 
   // User action menu state
@@ -68,7 +69,9 @@ const StarContributor = ({ sectionId, pageId }) => {
       const stats = commit.stats || { additions: 0, deletions: 0, total: 0 };
 
       console.log('[StarContributor] Processing commit:', {
+        sha: commit.sha?.substring(0, 7),
         username,
+        authorName: commit.author?.name,
         isBotCommit: username === botUsername,
         stats,
         messagePreview: commit.message?.substring(0, 100),

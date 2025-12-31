@@ -34,6 +34,21 @@ const PageHistory = ({ sectionId, pageId }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userMenuPosition, setUserMenuPosition] = useState({ x: 0, y: 0 });
 
+  // Expanded commit messages state (track by commit SHA)
+  const [expandedCommits, setExpandedCommits] = useState(new Set());
+
+  const toggleCommitExpanded = (sha) => {
+    setExpandedCommits(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sha)) {
+        newSet.delete(sha);
+      } else {
+        newSet.add(sha);
+      }
+      return newSet;
+    });
+  };
+
   // Handle avatar click
   const handleAvatarClick = (e, username, userId) => {
     if (!username) return;
@@ -184,17 +199,46 @@ const PageHistory = ({ sectionId, pageId }) => {
                       {commit.message.split('\n')[0]}
                     </p>
                     {commit.message.split('\n').length > 1 && (() => {
-                      const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
-                      const isBotCommit = commit.author.username === botUsername;
-                      const messageLines = commit.message.split('\n').slice(1);
-
-                      // For bot commits, show only first 3 lines
-                      const displayLines = isBotCommit ? messageLines.slice(0, 3) : messageLines;
+                      const messageLines = commit.message.split('\n').slice(1).filter(line => line.trim());
+                      const isExpanded = expandedCommits.has(commit.sha);
+                      const fullMessage = messageLines.join('\n');
 
                       return (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap" style={{ marginTop: '-0.875rem' }}>
-                          {displayLines.join('\n')}
-                        </p>
+                        <div className="relative mt-2">
+                          <div
+                            className={`text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap overflow-hidden transition-all duration-200 ${
+                              isExpanded ? 'max-h-none' : 'max-h-[4.5rem]'
+                            }`}
+                            style={!isExpanded && fullMessage.length > 150 ? {
+                              maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+                              WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
+                            } : {}}
+                          >
+                            {fullMessage}
+                          </div>
+                          {fullMessage.length > 150 && (
+                            <button
+                              onClick={() => toggleCommitExpanded(commit.sha)}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline mt-1 flex items-center gap-1 relative z-10"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  Show less
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                  </svg>
+                                </>
+                              ) : (
+                                <>
+                                  Show more
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
                       );
                     })()}
                   </div>

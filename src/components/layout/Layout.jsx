@@ -13,11 +13,13 @@ import { useDevStore } from '../../store/devStore';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAdminStatus } from '../../hooks/useAdminStatus';
+import { LayoutProvider, useLayout } from '../../contexts/LayoutContext';
 
 /**
- * Main layout component that wraps all pages
+ * Inner Layout component that uses layout context
  */
-const Layout = () => {
+const LayoutInner = () => {
+  const { containerClasses, maxWidthClass, marginClass } = useLayout();
   const { toggleDevPanel } = useDevStore();
   const { config } = useWikiConfig();
   const { isAdmin, loading: adminLoading } = useAdminStatus();
@@ -85,7 +87,7 @@ const Layout = () => {
         <Sidebar />
 
         <main className="flex-1 w-full flex flex-col min-w-0">
-          <div className="flex-1 container mx-auto px-4 sm:px-4 py-8 max-w-7xl w-full">
+          <div className={`flex-1 container ${marginClass} ${containerClasses} py-8 ${maxWidthClass} w-full`}>
             <Outlet />
           </div>
 
@@ -108,6 +110,17 @@ const Layout = () => {
         onClose={() => setIsDataBrowserOpen(false)}
       />
     </div>
+  );
+};
+
+/**
+ * Layout wrapper that provides layout context
+ */
+const Layout = () => {
+  return (
+    <LayoutProvider>
+      <LayoutInner />
+    </LayoutProvider>
   );
 };
 

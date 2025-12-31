@@ -1661,7 +1661,7 @@ Include any supplementary details, notes, or related information.
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Breadcrumb */}
       <nav className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400 mb-6">
         <Link to="/" className="hover:text-blue-600 dark:hover:text-blue-400">

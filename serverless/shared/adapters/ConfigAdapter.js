@@ -7,7 +7,7 @@
  * -------------------------
  * 1. PRODUCTION (Parent Project):
  *    - Netlify: Loads from process.cwd() + '/wiki-config.json'
- *    - Cloudflare: Uses embedded defaults with env overrides
+ *    - Cloudflare: Uses static import from functions/_shared/wiki-config.json
  *    - Config file: ../../../wiki-config.json (parent's config)
  *
  * 2. FRAMEWORK TESTS:
@@ -30,6 +30,14 @@ export class ConfigAdapter {
   constructor(platform) {
     this.platform = platform;
     this._configCache = null;
+  }
+
+  /**
+   * Set config manually (for Cloudflare Workers)
+   * @param {Object} config - Configuration object
+   */
+  setConfig(config) {
+    this._configCache = config;
   }
 
   /**
@@ -60,17 +68,10 @@ export class ConfigAdapter {
   _loadFromFilesystem() {
     try {
       if (this.platform === 'cloudflare') {
-        // Cloudflare: Import from functions/_shared/wiki-config.json
-        // This file should be copied during build from root wiki-config.json
-        try {
-          // Dynamic import won't work in Workers, so we need to use require or static import
-          // For now, we'll need to handle this at the handler level
-          const configPath = join(process.cwd(), 'functions', '_shared', 'wiki-config.json');
-          return JSON.parse(readFileSync(configPath, 'utf-8'));
-        } catch (cfError) {
-          console.warn('[ConfigAdapter] Cloudflare config load failed, using defaults:', cfError.message);
-          return this._getDefaultConfig();
-        }
+        // Cloudflare: Config should be injected via setConfig() by the handler
+        // If not set, return defaults
+        console.warn('[ConfigAdapter] Cloudflare config not injected, using defaults');
+        return this._getDefaultConfig();
       }
 
       // Netlify: Load from filesystem

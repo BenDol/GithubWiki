@@ -400,29 +400,131 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
             ref: commit.sha,
           });
 
+          // Check if this is a merge commit (has 2+ parents) OR a squash-merged PR
+          const isMergeCommit = commit.parents && commit.parents.length >= 2;
+          const commitMessage = commit.commit.message || '';
+          const squashMergeMatch = commitMessage.match(/\(#(\d+)\)/);
+          const isSquashMerge = squashMergeMatch !== null;
+
+          let actualAuthor = {
+            name: commit.commit.author.name,
+            email: commit.commit.author.email,
+            date: commit.commit.author.date,
+            avatar: commit.author?.avatar_url,
+            username: commit.author?.login,
+            userId: commit.author?.id,
+          };
+
+          // For merge commits or squash merges, get the PR author
+          if (isMergeCommit || isSquashMerge) {
+            try {
+              let pr = null;
+
+              // If squash merge, we can get PR number directly from commit message
+              if (isSquashMerge) {
+                const prNumber = parseInt(squashMergeMatch[1], 10);
+                try {
+                  const { data: prData } = await octokit.rest.pulls.get({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                  });
+                  pr = prData;
+                  logger.info('Found squash-merged PR from commit message', {
+                    sha: commit.sha.substring(0, 7),
+                    prNumber,
+                    prAuthor: pr.user.login,
+                    merger: commit.author?.login
+                  });
+                } catch (prErr) {
+                  logger.warn('Failed to fetch PR by number', {
+                    sha: commit.sha.substring(0, 7),
+                    prNumber,
+                    error: prErr.message
+                  });
+                }
+              }
+
+              // If not squash merge or PR fetch failed, try to find associated PR
+              if (!pr) {
+                const { data: prs } = await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner,
+                  repo,
+                  commit_sha: commit.sha,
+                });
+
+                if (prs && prs.length > 0) {
+                  pr = prs[0];
+                  logger.info('Found PR from associated commits', {
+                    sha: commit.sha.substring(0, 7),
+                    prNumber: pr.number
+                  });
+                }
+              }
+
+              // Use PR author if found
+              if (pr) {
+                actualAuthor = {
+                  name: pr.user.login,
+                  email: commit.commit.author.email, // Keep original email
+                  date: commit.commit.author.date,
+                  avatar: pr.user.avatar_url,
+                  username: pr.user.login,
+                  userId: pr.user.id,
+                };
+                logger.info('✅ Using PR author instead of merger', {
+                  sha: commit.sha.substring(0, 7),
+                  originalAuthor: commit.author?.login,
+                  prAuthor: pr.user.login,
+                  prNumber: pr.number,
+                  isSquash: isSquashMerge,
+                  isMerge: isMergeCommit
+                });
+              }
+            } catch (prErr) {
+              // If PR lookup fails, use commit author
+              logger.warn('Failed to fetch PR, using commit author', {
+                sha: commit.sha.substring(0, 7),
+                error: prErr.message
+              });
+            }
+          }
+
+          // Extract stats for the specific file being viewed, not entire commit
+          const fileStats = commitDetails.files?.find(file => file.filename === path);
+          const stats = fileStats ? {
+            additions: fileStats.additions || 0,
+            deletions: fileStats.deletions || 0,
+            total: fileStats.changes || 0,
+          } : {
+            additions: 0,
+            deletions: 0,
+            total: 0,
+          };
+
+          logger.debug('Extracted file-specific stats', {
+            sha: commit.sha.substring(0, 7),
+            path,
+            fileFound: !!fileStats,
+            fileStats: stats,
+            totalCommitStats: {
+              additions: commitDetails.stats?.additions || 0,
+              deletions: commitDetails.stats?.deletions || 0,
+            }
+          });
+
           return {
             sha: commit.sha,
             message: commit.commit.message,
             date: commit.commit.author.date, // Flat date field for filtering
-            author: {
-              name: commit.commit.author.name,
-              email: commit.commit.author.email,
-              date: commit.commit.author.date,
-              avatar: commit.author?.avatar_url,
-              username: commit.author?.login,
-              userId: commit.author?.id,
-            },
+            author: actualAuthor,
             committer: {
               name: commit.commit.committer.name,
               date: commit.commit.committer.date,
             },
             url: commit.html_url,
             parents: commit.parents,
-            stats: {
-              additions: commitDetails.stats?.additions || 0,
-              deletions: commitDetails.stats?.deletions || 0,
-              total: commitDetails.stats?.total || 0,
-            },
+            stats,
           };
         } catch (err) {
           // If fetching stats fails for a commit, return without stats

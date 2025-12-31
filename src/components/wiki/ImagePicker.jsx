@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight, Upload, Loader } from 'lucide-react';
+import ImageUploadModal from './ImageUploadModal.jsx';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('ImagePicker');
 
 /**
  * ImagePicker - Modal for browsing and selecting images from the image database
@@ -31,6 +35,10 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
   const [alignment, setAlignment] = useState('none');
   const [displayMode, setDisplayMode] = useState('block');
   const [isMobile, setIsMobile] = useState(false);
+  const [cdnImages, setCdnImages] = useState([]);
+  const [activeTab, setActiveTab] = useState('static'); // 'static' or 'cdn'
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [pendingImages, setPendingImages] = useState([]); // Images waiting for index
   const imagesPerPage = 24;
   const isScalingRef = useRef(false);
 
@@ -77,29 +85,142 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
     loadImages();
   }, [isOpen]);
 
+  // Load CDN images
+  const loadCdnImages = async () => {
+    try {
+      logger.debug('Loading CDN image index from GitHub API');
+      const cdnBaseUrl = 'https://raw.githubusercontent.com/BenDol/SlayerLegendCDN/main';
+
+      // Use GitHub Contents API to get the latest version (always returns HEAD)
+      const apiUrl = 'https://api.github.com/repos/BenDol/SlayerLegendCDN/contents/user-content/images/image-index.json';
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json'
+        },
+        cache: 'no-store'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to load CDN image index from GitHub API');
+      }
+
+      const apiData = await response.json();
+
+      // Decode base64 content
+      const content = atob(apiData.content.replace(/\s/g, '')); // Remove whitespace from base64
+      const data = JSON.parse(content);
+
+      logger.debug('Fetched image index', {
+        sha: apiData.sha,
+        size: apiData.size,
+        imageCount: data.images?.length
+      });
+
+      // Prepend CDN base URL to relative paths
+      const imagesWithCdnUrls = (data.images || []).map(img => ({
+        ...img,
+        path: img.path?.startsWith('http') ? img.path : `${cdnBaseUrl}/${img.path}`,
+        webpPath: img.webpPath?.startsWith('http') ? img.webpPath : `${cdnBaseUrl}/${img.webpPath}`
+      }));
+
+      setCdnImages(imagesWithCdnUrls);
+      logger.info('Loaded CDN images', { count: imagesWithCdnUrls.length, sha: apiData.sha });
+
+      // Extract unique categories from CDN images and merge with static categories
+      const cdnCategories = [...new Set(imagesWithCdnUrls.map(img => img.category))].sort();
+      const allCategories = [...new Set([...categories, ...cdnCategories])].sort();
+      setCategories(allCategories);
+
+      return imagesWithCdnUrls;
+    } catch (error) {
+      logger.error('Failed to load CDN images', { error: error.message });
+      setCdnImages([]);
+      return [];
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'cdn') return;
+    loadCdnImages();
+  }, [isOpen, activeTab]);
+
+  // Poll for newly uploaded image to appear in index
+  const pollForImage = async (imageId, uploadResult) => {
+    const maxAttempts = 90; // 90 attempts = 3 minutes (2 sec intervals)
+    let attempts = 0;
+
+    logger.info('Starting to poll for image in index (using GitHub API for fresh data)', { imageId });
+
+    const poll = async () => {
+      attempts++;
+      const elapsed = attempts * 2;
+      logger.debug('Polling for image in index', {
+        imageId,
+        attempt: attempts,
+        maxAttempts,
+        elapsedSeconds: elapsed
+      });
+
+      const latestImages = await loadCdnImages();
+      logger.debug('Polled index', {
+        totalImages: latestImages.length,
+        lookingFor: imageId,
+        imageIds: latestImages.map(img => img.id)
+      });
+
+      const foundImage = latestImages.find(img => img.id === imageId);
+
+      if (foundImage) {
+        logger.info('Image found in index!', { imageId, afterSeconds: elapsed });
+        // Remove from pending
+        setPendingImages(prev => prev.filter(p => p.id !== imageId));
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        logger.warn('Image polling timed out after 3 minutes - GitHub Action may still be running', { imageId });
+        // Remove from pending after timeout
+        setPendingImages(prev => prev.filter(p => p.id !== imageId));
+        return;
+      }
+
+      // Continue polling
+      setTimeout(poll, 2000); // Poll every 2 seconds
+    };
+
+    // Start polling after 1 second
+    setTimeout(poll, 1000);
+  };
+
   // Filter images based on search and category
   useEffect(() => {
-    let filtered = images;
+    // Use appropriate image source based on active tab
+    // Combine actual CDN images with pending images
+    const sourceImages = activeTab === 'static' ? images : [...pendingImages, ...cdnImages];
+    let filtered = sourceImages;
 
     // Filter by category
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(img => img.category === selectedCategory);
     }
 
-    // Filter by search query (filename and keywords)
+    // Filter by search query (filename, keywords, name, tags, description)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(img => {
-        const filenameMatch = img.filename.toLowerCase().includes(query);
+        const filenameMatch = img.filename?.toLowerCase().includes(query);
         const keywordsMatch = img.keywords?.some(kw => kw.toLowerCase().includes(query));
-        const pathMatch = img.path.toLowerCase().includes(query);
-        return filenameMatch || keywordsMatch || pathMatch;
+        const pathMatch = img.path?.toLowerCase().includes(query);
+        const nameMatch = img.name?.toLowerCase().includes(query);
+        const tagsMatch = img.tags?.some(tag => tag.toLowerCase().includes(query));
+        const descriptionMatch = img.description?.toLowerCase().includes(query);
+        return filenameMatch || keywordsMatch || pathMatch || nameMatch || tagsMatch || descriptionMatch;
       });
     }
 
     setFilteredImages(filtered);
     setCurrentPage(1); // Reset to first page on filter change
-  }, [searchQuery, selectedCategory, images]);
+  }, [searchQuery, selectedCategory, images, cdnImages, pendingImages, activeTab]);
 
   // Pagination
   const totalPages = Math.ceil(filteredImages.length / imagesPerPage);
@@ -396,6 +517,40 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
           </button>
         </div>
 
+        {/* Tab System */}
+        <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('static')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'static'
+                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              Static Assets ({images.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('cdn')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'cdn'
+                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+            >
+              User Uploads ({cdnImages.length + pendingImages.length})
+            </button>
+          </div>
+
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+          >
+            <Upload className="w-4 h-4" />
+            Upload
+          </button>
+        </div>
+
         {/* Search and Filters */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -510,31 +665,47 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
                     ? selectedImageList.some(img => img.path === image.path)
                     : selectedImage?.path === image.path;
 
+                  const isPending = image.isPending; // Check if this is a pending upload
+
                   return (
                     <button
-                      key={image.path}
-                      onClick={(e) => handleImageSelect(image, e)}
-                      className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all hover:scale-105 ${
+                      key={image.path || image.id}
+                      onClick={(e) => !isPending && handleImageSelect(image, e)}
+                      className={`group relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                        isPending ? 'opacity-60 cursor-wait' : 'hover:scale-105'
+                      } ${
                         isSelected
                           ? 'border-blue-500 ring-2 ring-blue-500 ring-offset-2'
                           : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
                       }`}
-                      title={image.filename}
+                      title={isPending ? 'Processing upload...' : image.filename}
+                      disabled={isPending}
                     >
                       <img
                         src={image.path}
-                        alt={image.filename}
+                        alt={image.filename || image.name}
                         className="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
                         loading="lazy"
                       />
+
+                      {/* Loading spinner for pending uploads */}
+                      {isPending && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+                          <Loader className="w-8 h-8 animate-spin text-white" />
+                        </div>
+                      )}
+
                       {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-opacity flex items-end p-2">
-                        <p className="text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                          {image.filename}
-                        </p>
-                      </div>
+                      {!isPending && (
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 transition-opacity flex items-end p-2">
+                          <p className="text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                            {image.filename}
+                          </p>
+                        </div>
+                      )}
+
                       {/* Selected checkmark */}
-                      {isSelected && (
+                      {isSelected && !isPending && (
                         <div className="absolute top-2 right-2 bg-blue-500 rounded-full p-1">
                           <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -798,6 +969,45 @@ const ImagePicker = ({ isOpen, onClose, onSelect }) => {
           </div>
         </div>
       </div>
+
+      {/* Image Upload Modal */}
+      {showUploadModal && (
+        <ImageUploadModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={(result) => {
+            logger.info('Image uploaded successfully', {
+              imageId: result.imageId,
+              originalUrl: result.originalUrl,
+              webpUrl: result.webpUrl,
+              name: result.name,
+              category: result.category
+            });
+            setShowUploadModal(false);
+
+            // Add to pending images with loading state
+            const pendingImage = {
+              id: result.imageId,
+              filename: result.name || 'Uploading...',
+              name: result.name || 'Uploading...',
+              path: result.webpUrl || result.originalUrl,
+              webpPath: result.webpUrl,
+              category: result.category || 'other',
+              dimensions: result.dimensions,
+              isPending: true // Flag for rendering loading state
+            };
+
+            logger.debug('Created pending image', { pendingImage });
+            setPendingImages(prev => [pendingImage, ...prev]);
+
+            // Switch to CDN tab to show the pending image
+            setActiveTab('cdn');
+
+            // Start polling for the image to appear in index
+            pollForImage(result.imageId, result);
+          }}
+        />
+      )}
     </div>
   );
 

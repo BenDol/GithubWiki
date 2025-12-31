@@ -126,6 +126,7 @@ const PageEditor = ({
 
   const [content, setContent] = useState(fixedInitialContent);
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [editSummary, setEditSummary] = useState('');
   const [metadataExpanded, setMetadataExpanded] = useState(true);
   const [validationErrors, setValidationErrors] = useState([]);
@@ -145,6 +146,96 @@ const PageEditor = ({
   const [italicActive, setItalicActive] = useState(false);
   const [underlineActive, setUnderlineActive] = useState(false);
   const [savedSelection, setSavedSelection] = useState(null);
+
+  // Resizable panel state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50); // percentage
+  const [isResizing, setIsResizing] = useState(false);
+  const containerRef = useRef(null);
+  const fullscreenContainerRef = useRef(null);
+
+  // Handle resize start
+  const handleResizeStart = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  // Handle resize move
+  const handleResizeMove = (e) => {
+    if (!isResizing) return;
+
+    // Use fullscreen container if in fullscreen mode, otherwise use normal container
+    const container = isFullscreen ? fullscreenContainerRef.current : containerRef.current;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+    // Constrain between 20% and 80%
+    const constrainedWidth = Math.min(Math.max(newLeftWidth, 20), 80);
+    setLeftPanelWidth(constrainedWidth);
+  };
+
+  // Handle resize end
+  const handleResizeEnd = () => {
+    setIsResizing(false);
+  };
+
+  // Add global mouse event listeners for resizing
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+      // Prevent text selection while resizing
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove);
+        window.removeEventListener('mouseup', handleResizeEnd);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+      };
+    }
+  }, [isResizing, leftPanelWidth, isFullscreen]);
+
+  // Handle ESC key to exit fullscreen
+  useEffect(() => {
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscKey);
+    return () => window.removeEventListener('keydown', handleEscKey);
+  }, [isFullscreen]);
+
+  // Hide body scrollbar and reset margins when in fullscreen
+  useEffect(() => {
+    if (isFullscreen) {
+      // Store original styles
+      const originalBodyOverflow = document.body.style.overflow;
+      const originalBodyMargin = document.body.style.margin;
+      const originalBodyPadding = document.body.style.padding;
+      const originalHtmlMargin = document.documentElement.style.margin;
+      const originalHtmlPadding = document.documentElement.style.padding;
+
+      // Set fullscreen styles
+      document.body.style.overflow = 'hidden';
+      document.body.style.margin = '0';
+      document.body.style.padding = '0';
+      document.documentElement.style.margin = '0';
+      document.documentElement.style.padding = '0';
+
+      return () => {
+        document.body.style.overflow = originalBodyOverflow;
+        document.body.style.margin = originalBodyMargin;
+        document.body.style.padding = originalBodyPadding;
+        document.documentElement.style.margin = originalHtmlMargin;
+        document.documentElement.style.padding = originalHtmlPadding;
+      };
+    }
+  }, [isFullscreen]);
 
   // Debug: Track showColorPicker state changes
   useEffect(() => {
@@ -1607,6 +1698,13 @@ const PageEditor = ({
               >
                 👁️
               </button>
+              <button
+                onClick={() => setIsFullscreen(true)}
+                className="px-2.5 py-2 text-base rounded-md transition-colors text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-600"
+                title="Fullscreen Mode"
+              >
+                ⛶
+              </button>
             </div>
 
             {/* Status Indicator - Compact */}
@@ -1708,6 +1806,16 @@ const PageEditor = ({
                 👁️ Preview
               </button>
             </div>
+
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+            <button
+              onClick={() => setIsFullscreen(true)}
+              className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              title="Fullscreen Mode"
+            >
+              ⛶ Fullscreen
+            </button>
 
             <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
@@ -1970,13 +2078,23 @@ const PageEditor = ({
         </div>
       )}
 
-      {/* Editor and Preview */}
-      <div className={`grid gap-4 ${
-        viewMode === 'split' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
-      }`}>
+      {/* Editor and Preview - Desktop with resizable divider */}
+      <div
+        ref={containerRef}
+        className={`${
+          viewMode === 'split'
+            ? 'hidden lg:flex lg:gap-0' // Flex layout with resizable divider on desktop
+            : viewMode === 'edit' || viewMode === 'preview'
+            ? 'grid grid-cols-1 gap-4' // Single column for edit/preview only modes
+            : ''
+        }`}
+      >
         {/* Editor */}
         {(viewMode === 'edit' || viewMode === 'split') && (
-        <div className="space-y-3">
+        <div
+          className="space-y-3"
+          style={viewMode === 'split' ? { width: `${leftPanelWidth}%` } : {}}
+        >
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
               Editor
@@ -1988,9 +2106,6 @@ const PageEditor = ({
               >
                 {showFrontmatter ? 'Hide Frontmatter' : 'Show Frontmatter'}
               </button>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Markdown supported
-              </span>
             </div>
           </div>
 
@@ -2027,9 +2142,26 @@ const PageEditor = ({
         </div>
         )}
 
+        {/* Draggable Divider - Only show in split mode on desktop */}
+        {viewMode === 'split' && (
+          <div
+            className="hidden lg:flex items-start justify-center w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 dark:hover:bg-blue-500 cursor-col-resize transition-colors group relative h-[585px]"
+            style={{ marginTop: '40px' }}
+            onMouseDown={handleResizeStart}
+          >
+            {/* Visual handle indicator */}
+            <div className="absolute top-0 bottom-0 -left-1 -right-1 flex items-center justify-center">
+              <div className="w-1 h-12 bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-500 dark:group-hover:bg-blue-400 rounded-full transition-colors"></div>
+            </div>
+          </div>
+        )}
+
         {/* Preview */}
         {(viewMode === 'preview' || viewMode === 'split') && (
-          <div className={`space-y-3 ${viewMode === 'preview' ? 'max-w-full' : ''}`}>
+          <div
+            className={`space-y-3 ${viewMode === 'preview' ? 'max-w-full' : ''}`}
+            style={viewMode === 'split' ? { width: `${100 - leftPanelWidth}%` } : {}}
+          >
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                 Preview
@@ -2064,6 +2196,92 @@ const PageEditor = ({
           </div>
         )}
       </div>
+
+      {/* Mobile Split View - Stacked grid layout without resizable divider */}
+      {viewMode === 'split' && (
+        <div className="grid grid-cols-1 gap-4 lg:hidden">
+          {/* Mobile Editor */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Editor
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowFrontmatter(!showFrontmatter)}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                >
+                  {showFrontmatter ? 'Hide Frontmatter' : 'Show Frontmatter'}
+                </button>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Markdown supported
+                </span>
+              </div>
+            </div>
+
+            <div className="h-[600px]">
+              <MarkdownEditor
+                key={showFrontmatter ? 'with-frontmatter' : 'body-only'}
+                value={getEditorContent()}
+                onChange={handleContentChange}
+                darkMode={darkMode}
+                placeholder="Write your content in Markdown..."
+                editorApi={editorApiRef}
+                dataAutocompleteSearch={dataAutocompleteSearch}
+              />
+            </div>
+
+            {/* Edit summary */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Edit Summary (optional)
+              </label>
+              <input
+                type="text"
+                value={editSummary}
+                onChange={(e) => setEditSummary(e.target.value)}
+                placeholder="Briefly describe your changes..."
+                className="block w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                This will be included in the edit request description
+              </p>
+            </div>
+          </div>
+
+          {/* Mobile Preview */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Preview
+              </h3>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                Live preview
+              </span>
+            </div>
+
+            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 p-6 ${darkMode ? 'dark' : ''}`}>
+              {content ? (
+                <PageViewer
+                  content={content}
+                  metadata={metadata}
+                  contentProcessor={contentProcessor}
+                  customComponents={customComponents}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-600">
+                  <div className="text-center">
+                    <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    <p className="text-sm">Preview will appear here</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Help text */}
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
@@ -2136,6 +2354,296 @@ const PageEditor = ({
         onInsert={handleLinkInsert}
         selectedText={linkDialogText}
       />
+
+      {/* Fullscreen Mode Overlay */}
+      {isFullscreen && (
+        <div
+          className="fixed top-0 left-0 right-0 bottom-0 z-[9999] m-0 bg-white dark:bg-gray-900 flex flex-col"
+          style={{ margin: 0, padding: 0, top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          {/* Fullscreen Content */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Toolbar - Sticky */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-gray-800">
+              {/* Mobile Layout - Compact */}
+              <div className="md:hidden p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  {/* View Mode Buttons - Icon Only */}
+                  <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+                    <button
+                      onClick={() => setViewMode('edit')}
+                      className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                        viewMode === 'edit'
+                          ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      title="Edit Only"
+                    >
+                      📝
+                    </button>
+                    <button
+                      onClick={() => setViewMode('split')}
+                      className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                        viewMode === 'split'
+                          ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      title="Split View"
+                    >
+                      ⚡
+                    </button>
+                    <button
+                      onClick={() => setViewMode('preview')}
+                      className={`px-2.5 py-2 text-base rounded-md transition-colors ${
+                        viewMode === 'preview'
+                          ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-600 dark:text-gray-400'
+                      }`}
+                      title="Preview Only"
+                    >
+                      👁️
+                    </button>
+                  </div>
+
+                  {/* Status Indicators */}
+                  {hasUnsavedChanges && (
+                    <div className="flex items-center text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Action Buttons - Icon Only */}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleSave(false)}
+                      disabled={isSaving || !hasUnsavedChanges}
+                      className="p-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={
+                        isConfiguringPR
+                          ? 'Configuring your edit request... please wait'
+                          : !hasUnsavedChanges
+                          ? 'No changes to save'
+                          : validationErrors.length > 0
+                            ? 'Click to view validation errors'
+                            : 'Save changes'
+                      }
+                    >
+                      {isSaving ? (
+                        <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setIsFullscreen(false)}
+                      className="p-2.5 text-xl text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                      title="Exit Fullscreen (ESC)"
+                    >
+                      ⛶
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Desktop Layout - Full Toolbar */}
+              <div className="hidden md:flex items-center gap-3 px-3">
+                {/* Markdown Toolbar */}
+                <div className="flex-1">
+                  <MarkdownFormatToolbar
+                    contentPickers={contentPickers}
+                    onFormat={handleFormat}
+                    onColorPicker={handleOpenColorPicker}
+                    colorButtonRef={colorButtonRef}
+                    boldActive={boldActive}
+                    italicActive={italicActive}
+                    underlineActive={underlineActive}
+                    emoticonMap={emoticonMap}
+                    shortcutDisplayMap={shortcutDisplayMap}
+                  />
+                </div>
+
+                {/* Vertical Divider */}
+                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+                {/* View Mode Buttons */}
+                <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('edit')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      viewMode === 'edit'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    📝 Edit
+                  </button>
+                  <button
+                    onClick={() => setViewMode('split')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      viewMode === 'split'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    ⚡ Split View
+                  </button>
+                  <button
+                    onClick={() => setViewMode('preview')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      viewMode === 'preview'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    👁️ Preview
+                  </button>
+                </div>
+
+                {/* Vertical Divider */}
+                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+                {/* Quick Save Button */}
+                {!isAnonymousMode && editingExistingPR && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleSave(true)}
+                    disabled={isSaving || !hasUnsavedChanges}
+                    title={
+                      !hasUnsavedChanges
+                        ? 'No changes to save'
+                        : validationErrors.length > 0
+                          ? 'Click to view validation errors'
+                          : 'Save changes and continue editing (Ctrl+S)'
+                    }
+                  >
+                    <Save className="w-4 h-4 mr-1.5" />
+                    Quick Save
+                  </Button>
+                )}
+
+                {/* Save Button */}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleSave(false)}
+                  disabled={isSaving || !hasUnsavedChanges}
+                  title={
+                    isConfiguringPR
+                      ? 'Configuring your edit request... please wait'
+                      : !hasUnsavedChanges
+                      ? 'No changes to save'
+                      : validationErrors.length > 0
+                        ? 'Click to view validation errors'
+                        : 'Save & Exit'
+                  }
+                >
+                  {isConfiguringPR ? 'Configuring...' : isSaving ? 'Saving...' : 'Save Changes'}
+                </Button>
+
+                {/* Vertical Divider */}
+                <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+
+                {/* Exit Fullscreen Button */}
+                <button
+                  onClick={() => setIsFullscreen(false)}
+                  className="text-2xl text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  title="Exit Fullscreen (ESC)"
+                >
+                  ⛶
+                </button>
+              </div>
+
+              {/* Mobile Markdown Toolbar - Below top panel */}
+              <div className="md:hidden border-t border-gray-200 dark:border-gray-700">
+                <MarkdownFormatToolbar
+                  contentPickers={contentPickers}
+                  onFormat={handleFormat}
+                  onColorPicker={handleOpenColorPicker}
+                  colorButtonRef={colorButtonRef}
+                  boldActive={boldActive}
+                  italicActive={italicActive}
+                  underlineActive={underlineActive}
+                  emoticonMap={emoticonMap}
+                  shortcutDisplayMap={shortcutDisplayMap}
+                />
+              </div>
+            </div>
+
+            {/* Editor and Preview in Fullscreen */}
+            <div className="flex-1 overflow-hidden">
+              <div
+                ref={fullscreenContainerRef}
+                className="h-full flex flex-col md:flex-row gap-2 md:gap-4 p-2 md:p-4"
+                style={{
+                  '--left-panel-width': `${leftPanelWidth}%`,
+                  '--right-panel-width': `${100 - leftPanelWidth}%`
+                }}
+              >
+                {/* Editor */}
+                {(viewMode === 'edit' || viewMode === 'split') && (
+                  <div
+                    className={`flex flex-col overflow-hidden ${
+                      viewMode === 'split'
+                        ? 'h-1/2 md:h-full w-full md:w-[var(--left-panel-width)]'
+                        : 'h-full w-full'
+                    }`}
+                  >
+                    <MarkdownEditor
+                      key={showFrontmatter ? 'with-frontmatter' : 'body-only'}
+                      value={getEditorContent()}
+                      onChange={handleContentChange}
+                      darkMode={darkMode}
+                      placeholder="Write your content in Markdown..."
+                      editorApi={editorApiRef}
+                      dataAutocompleteSearch={dataAutocompleteSearch}
+                    />
+                  </div>
+                )}
+
+                {/* Divider - Only in split mode on desktop */}
+                {viewMode === 'split' && (
+                  <div
+                    className="hidden md:block w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-500 dark:hover:bg-blue-500 cursor-col-resize transition-colors group relative flex-shrink-0"
+                    onMouseDown={handleResizeStart}
+                  >
+                    <div className="absolute top-0 bottom-0 -left-1 -right-1 flex items-center justify-center">
+                      <div className="w-1 h-12 bg-gray-300 dark:bg-gray-600 group-hover:bg-blue-500 dark:group-hover:bg-blue-400 rounded-full transition-colors"></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Preview */}
+                {(viewMode === 'preview' || viewMode === 'split') && (
+                  <div
+                    className={`overflow-y-auto overflow-x-hidden ${
+                      viewMode === 'split'
+                        ? 'h-1/2 md:h-full w-full md:w-[var(--right-panel-width)]'
+                        : 'h-full w-full'
+                    }`}
+                  >
+                    <div className="prose prose-lg dark:prose-invert max-w-none p-2 md:p-4">
+                      <PageViewer
+                        content={content}
+                        contentProcessor={contentProcessor}
+                        customComponents={customComponents}
+                        emoticonMap={emoticonMap}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
