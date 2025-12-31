@@ -2257,8 +2257,6 @@ const PageEditor = ({
             </div>
 
             <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
-              metadata?.background ? '' : 'bg-white dark:bg-gray-800'
-            } ${
               viewMode === 'preview' ? 'p-6 md:p-8' : 'p-6'
             } ${darkMode ? 'dark' : ''}`}>
               {content ? (
@@ -2349,9 +2347,7 @@ const PageEditor = ({
               </span>
             </div>
 
-            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
-              metadata?.background ? '' : 'bg-white dark:bg-gray-800'
-            } p-6 ${darkMode ? 'dark' : ''}`}>
+            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-6 ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
                   key={metadata?.background?.path || 'no-background'}

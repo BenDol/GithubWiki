@@ -7,6 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import { defaultSchema } from 'rehype-sanitize';
+import { useUIStore } from '../../store/uiStore';
 import 'highlight.js/styles/github-dark.css';
 
 /**
@@ -115,6 +116,9 @@ const PageViewer = ({
   customComponents = {},
   isPreview = false // Flag to indicate if rendering in editor preview
 }) => {
+  // Get dark mode state from UI store
+  const darkMode = useUIStore((state) => state.darkMode);
+
   // Process content to remove duplicate header
   let processedContent = removeDuplicateHeader(content, metadata?.title);
 
@@ -129,31 +133,102 @@ const PageViewer = ({
   // Extract background configuration from metadata
   const background = metadata?.background;
 
+  // Default background configuration (when no custom background is set)
+  const defaultBackground = {
+    path: '/images/backgrounds/page-bg.jpg',
+    repeat: 'no-repeat',
+    size: 'cover',
+    position: 'center',
+    attachment: 'scroll',
+    darkOpacity: 0.02,  // Very low opacity for dark mode (subtle on dark backgrounds)
+    lightOpacity: 0.06,  // Higher opacity for light mode (visible on light backgrounds)
+    blendMode: 'normal'
+  };
+
+  // Use custom background if provided, otherwise use default
+  const effectiveBackground = background || defaultBackground;
+
+  // Determine opacity based on theme
+  // Support both old single opacity and new dark/light opacity properties
+  let effectiveOpacity;
+  if (effectiveBackground.darkOpacity !== undefined || effectiveBackground.lightOpacity !== undefined) {
+    // New format: separate dark/light opacities
+    effectiveOpacity = darkMode
+      ? (effectiveBackground.darkOpacity !== undefined ? effectiveBackground.darkOpacity : 0.04)
+      : (effectiveBackground.lightOpacity !== undefined ? effectiveBackground.lightOpacity : 0.4);
+  } else {
+    // Old format: single opacity (backward compatibility)
+    effectiveOpacity = effectiveBackground.opacity !== undefined ? effectiveBackground.opacity : 1;
+  }
+
+  // Debug logging
+  console.log('[PageViewer] Background config:', {
+    hasCustomBackground: !!background,
+    effectiveBackground,
+    darkMode,
+    effectiveOpacity,
+    isPreview
+  });
+
   // Build background styles object
-  const backgroundStyles = background ? {
+  const backgroundStyles = {
     // Encode the URL to handle spaces and special characters
-    backgroundImage: `url(${encodeURI(background.path).replace(/\(/g, '%28').replace(/\)/g, '%29')})`,
-    backgroundRepeat: background.repeat || 'no-repeat',
-    backgroundSize: background.size || 'cover',
-    backgroundPosition: background.position || 'center',
-    backgroundAttachment: background.attachment || 'scroll',
-    opacity: background.opacity !== undefined ? background.opacity : 1,
-    mixBlendMode: background.blendMode || 'normal'
-  } : null;
+    backgroundImage: `url(${encodeURI(effectiveBackground.path).replace(/\(/g, '%28').replace(/\)/g, '%29')})`,
+    backgroundRepeat: effectiveBackground.repeat || 'no-repeat',
+    backgroundSize: effectiveBackground.size || 'cover',
+    backgroundPosition: effectiveBackground.position || 'center',
+    backgroundAttachment: effectiveBackground.attachment || 'scroll',
+    opacity: effectiveOpacity,
+    mixBlendMode: effectiveBackground.blendMode || 'normal'
+  };
+
+  // Frosted glass styles for light mode - COMMENTED OUT FOR NOW
+  // const articleStyles = !darkMode ? {
+  //   zIndex: 1,
+  //   backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  //   backdropFilter: 'blur(24px)',
+  //   WebkitBackdropFilter: 'blur(24px)',
+  //   borderRadius: '12px',
+  //   padding: '2rem',
+  //   margin: '-2rem',
+  //   marginLeft: 'auto',
+  //   marginRight: 'auto',
+  //   marginTop: '0',
+  //   marginBottom: '0',
+  //   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
+  // } : {
+  //   zIndex: 1
+  // };
+
+  // Ensure content sits above background and vignette with proper stacking context
+  const articleStyles = {
+    zIndex: 2,
+    isolation: 'isolate' // Creates stacking context to ensure all children stay above vignette
+  };
 
   return (
     <div className={`page-viewer relative ${isPreview ? 'min-h-full' : 'min-h-screen'}`}>
-      {/* Background container */}
-      {background && backgroundStyles && (
+      {/* Background container - always rendered (default or custom) */}
+      <div
+        className={`page-background ${isPreview ? 'absolute' : 'fixed'} top-0 left-0 right-0 bottom-0 pointer-events-none`}
+        style={{ ...backgroundStyles, zIndex: 0 }}
+        aria-hidden="true"
+      />
+
+      {/* Vignette overlay for light mode - COMMENTED OUT FOR NOW */}
+      {/* {!darkMode && (
         <div
-          className={`page-background ${isPreview ? 'absolute' : 'fixed'} top-0 left-0 right-0 bottom-0 pointer-events-none`}
-          style={{ ...backgroundStyles, zIndex: 0 }}
+          className={`page-vignette ${isPreview ? 'absolute' : 'fixed'} top-0 left-0 right-0 bottom-0 pointer-events-none`}
+          style={{
+            zIndex: 0,
+            background: 'radial-gradient(ellipse at center, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0.85) 100%)'
+          }}
           aria-hidden="true"
         />
-      )}
+      )} */}
 
       {/* Content overlay */}
-      <article className={`${className || 'max-w-4xl mx-auto'} relative`} style={{ zIndex: 1 }}>
+      <article className={`${className || 'max-w-4xl mx-auto'} relative`} style={articleStyles}>
       {/* Page metadata */}
       {metadata && (
         <div className="mb-8 pb-6 border-b border-gray-200 dark:border-gray-800">

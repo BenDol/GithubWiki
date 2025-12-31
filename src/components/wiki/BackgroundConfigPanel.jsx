@@ -17,7 +17,9 @@ import { createPortal } from 'react-dom';
 const BackgroundConfigPanel = ({ imagePath, initialConfig, onApply, onCancel }) => {
   const [config, setConfig] = useState({
     path: imagePath,
-    opacity: initialConfig?.opacity !== undefined ? initialConfig.opacity : 1,
+    // Support both old single opacity and new dark/light opacities
+    darkOpacity: initialConfig?.darkOpacity !== undefined ? initialConfig.darkOpacity : (initialConfig?.opacity !== undefined ? initialConfig.opacity : 0.04),
+    lightOpacity: initialConfig?.lightOpacity !== undefined ? initialConfig.lightOpacity : (initialConfig?.opacity !== undefined ? initialConfig.opacity : 0.4),
     repeat: initialConfig?.repeat || 'no-repeat',
     size: initialConfig?.size || 'cover',
     position: initialConfig?.position || 'center',
@@ -72,13 +74,13 @@ const BackgroundConfigPanel = ({ imagePath, initialConfig, onApply, onCancel }) 
 
         {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Preview */}
+          {/* Preview (shows dark mode preview) */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Preview
+              Preview (Dark Mode)
             </label>
             <div
-              className="w-full h-48 rounded-lg border border-gray-200 dark:border-gray-700"
+              className="w-full h-32 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-900"
               style={{
                 // Encode the URL to handle spaces and special characters
                 backgroundImage: `url(${encodeURI(config.path).replace(/\(/g, '%28').replace(/\)/g, '%29')})`,
@@ -86,28 +88,72 @@ const BackgroundConfigPanel = ({ imagePath, initialConfig, onApply, onCancel }) 
                 backgroundSize: config.size,
                 backgroundPosition: config.position,
                 backgroundAttachment: 'scroll', // Always use scroll in preview
-                opacity: config.opacity,
+                opacity: config.darkOpacity,
                 mixBlendMode: config.blendMode
               }}
             />
           </div>
 
-          {/* Opacity Slider */}
+          {/* Preview (shows light mode preview) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Preview (Light Mode)
+            </label>
+            <div
+              className="w-full h-32 rounded-lg border border-gray-200 dark:border-gray-700 bg-white"
+              style={{
+                // Encode the URL to handle spaces and special characters
+                backgroundImage: `url(${encodeURI(config.path).replace(/\(/g, '%28').replace(/\)/g, '%29')})`,
+                backgroundRepeat: config.repeat,
+                backgroundSize: config.size,
+                backgroundPosition: config.position,
+                backgroundAttachment: 'scroll', // Always use scroll in preview
+                opacity: config.lightOpacity,
+                mixBlendMode: config.blendMode
+              }}
+            />
+          </div>
+
+          {/* Dark Mode Opacity Slider */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Opacity
+                Dark Mode Opacity
               </label>
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                {Math.round(config.opacity * 100)}%
+                {Math.round(config.darkOpacity * 100)}%
               </span>
             </div>
             <input
               type="range"
               min="0"
               max="100"
-              value={config.opacity * 100}
-              onChange={(e) => setConfig({ ...config, opacity: e.target.value / 100 })}
+              value={config.darkOpacity * 100}
+              onChange={(e) => setConfig({ ...config, darkOpacity: e.target.value / 100 })}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <span>Transparent</span>
+              <span>Opaque</span>
+            </div>
+          </div>
+
+          {/* Light Mode Opacity Slider */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Light Mode Opacity
+              </label>
+              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                {Math.round(config.lightOpacity * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={config.lightOpacity * 100}
+              onChange={(e) => setConfig({ ...config, lightOpacity: e.target.value / 100 })}
               className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
             />
             <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
