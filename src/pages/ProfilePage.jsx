@@ -13,6 +13,7 @@ import { getUserContributionStats } from '../services/github/contributorHighscor
 import { addAdmin } from '../services/adminActions';
 import { isBanned } from '../services/github/admin';
 import { getUserSnapshot } from '../services/github/userSnapshots';
+import { triggerSnapshotCreation } from '../services/github/snapshotCreation';
 import AchievementsSection from '../components/achievements/AchievementsSection';
 import { manualLinkAnonymousEdits } from '../services/github/anonymousEditLinking';
 import { checkUserAchievements } from '../services/achievements/achievementChecker';
@@ -72,6 +73,10 @@ const ProfilePage = () => {
   const [linkingEdits, setLinkingEdits] = useState(false);
   const [linkingResult, setLinkingResult] = useState(null);
 
+  // Snapshot creation state
+  const [creatingSnapshot, setCreatingSnapshot] = useState(false);
+  const [snapshotCreationError, setSnapshotCreationError] = useState(null);
+
   // Handle avatar click
   const handleAvatarClick = (e, username) => {
     if (!username) return;
@@ -130,10 +135,33 @@ const ProfilePage = () => {
         // Try to load from snapshot first (works for both own profile and other users)
         console.log(`[Profile] Loading profile for: ${targetUsername}`);
 
+        // For other users, fetch their user data first to get correct userId
+        let targetUserId = null;
+        let targetUserData = null;
+        if (!isOwnProfile) {
+          try {
+            const octokit = getOctokit();
+            const { data: userData } = await octokit.rest.users.getByUsername({
+              username: targetUsername,
+            });
+            targetUserId = userData.id;
+            targetUserData = userData;
+            console.log(`[Profile] Fetched user data for ${targetUsername}: userId=${targetUserId}, currentLogin=${userData.login}`);
+          } catch (err) {
+            console.error('[Profile] Failed to fetch user data:', err);
+            setError(`User "${targetUsername}" not found`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          // For own profile, use current user's ID
+          targetUserId = currentUser?.id;
+        }
+
         // Try to load snapshot data
         try {
-          console.log(`[Profile] Fetching snapshot for: ${targetUsername}`);
-          const snapshot = await getUserSnapshot(owner, repo, targetUsername, currentUser?.id);
+          console.log(`[Profile] Fetching snapshot for: ${targetUsername} with userId=${targetUserId}`);
+          const snapshot = await getUserSnapshot(owner, repo, targetUsername, targetUserId);
 
           if (snapshot) {
             console.log(`[Profile] Snapshot loaded for ${targetUsername}:`, {
@@ -153,22 +181,42 @@ const ProfilePage = () => {
             console.log(`[Profile] No snapshot found for ${targetUsername}, falling back to live data`);
 
             if (!isOwnProfile) {
-              // For other users without snapshot, fetch basic user data
-              try {
-                const octokit = getOctokit();
-                const { data: userData } = await octokit.rest.users.getByUsername({
-                  username: urlUsername,
+              // For other users without snapshot, use already-fetched user data
+              setProfileUser(targetUserData);
+              // Don't set error - we'll show a basic profile page with a friendly message
+              setPullRequests([]); // No PRs yet
+              setHighscoreStats(null); // No stats yet
+
+              // Trigger automatic snapshot creation in the background
+              console.log(`[Profile] Triggering automatic snapshot creation for ${targetUsername} (userId: ${targetUserId})`);
+              setCreatingSnapshot(true);
+              setSnapshotCreationError(null);
+
+              triggerSnapshotCreation(owner, repo, targetUsername, targetUserId)
+                .then(result => {
+                  console.log(`[Profile] Snapshot creation result:`, result);
+                  setCreatingSnapshot(false);
+
+                  if (result.status === 'created' && result.snapshot) {
+                    // Snapshot was created, update the page with the new data
+                    console.log(`[Profile] New snapshot created, updating page data`);
+                    setSnapshotData(result.snapshot);
+                    setPullRequests(result.snapshot.pullRequests);
+                    setHighscoreStats(result.snapshot.stats);
+                  } else if (result.status === 'exists' && result.snapshot) {
+                    // Snapshot already existed, use it
+                    console.log(`[Profile] Existing snapshot found, updating page data`);
+                    setSnapshotData(result.snapshot);
+                    setPullRequests(result.snapshot.pullRequests);
+                    setHighscoreStats(result.snapshot.stats);
+                  }
+                })
+                .catch(err => {
+                  console.error('[Profile] Failed to trigger snapshot creation:', err);
+                  setCreatingSnapshot(false);
+                  setSnapshotCreationError(err.message);
+                  // Don't show error to user - they can still view basic profile
                 });
-                setProfileUser(userData);
-                // Don't set error - we'll show a basic profile page with a friendly message
-                setPullRequests([]); // No PRs yet
-                setHighscoreStats(null); // No stats yet
-              } catch (err) {
-                console.error('Failed to fetch user data:', err);
-                setError(`User "${urlUsername}" not found`);
-                setLoading(false);
-                return;
-              }
             } else {
               // For own profile without snapshot, fetch live data
               console.log(`[Profile] Loading own profile with live data`);
@@ -211,6 +259,32 @@ const ProfilePage = () => {
               // Show basic profile with no data
               setPullRequests([]);
               setHighscoreStats(null);
+
+              // Trigger automatic snapshot creation in the background
+              console.log(`[Profile] Triggering automatic snapshot creation for ${urlUsername} (fallback path)`);
+              setCreatingSnapshot(true);
+              setSnapshotCreationError(null);
+
+              triggerSnapshotCreation(owner, repo, urlUsername, userData.id)
+                .then(result => {
+                  console.log(`[Profile] Snapshot creation result (fallback):`, result);
+                  setCreatingSnapshot(false);
+
+                  if (result.status === 'created' && result.snapshot) {
+                    setSnapshotData(result.snapshot);
+                    setPullRequests(result.snapshot.pullRequests);
+                    setHighscoreStats(result.snapshot.stats);
+                  } else if (result.status === 'exists' && result.snapshot) {
+                    setSnapshotData(result.snapshot);
+                    setPullRequests(result.snapshot.pullRequests);
+                    setHighscoreStats(result.snapshot.stats);
+                  }
+                })
+                .catch(err => {
+                  console.error('[Profile] Failed to trigger snapshot creation (fallback):', err);
+                  setCreatingSnapshot(false);
+                  setSnapshotCreationError(err.message);
+                });
             } catch (userErr) {
               console.error('Failed to fetch user data:', userErr);
               setError(`User "${urlUsername}" not found`);
@@ -740,6 +814,23 @@ const ProfilePage = () => {
                     </p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Snapshot Creation Indicator */}
+        {creatingSnapshot && (
+          <div className="mt-6 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600 dark:border-yellow-400"></div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                  Building profile snapshot...
+                </p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-300 mt-1">
+                  This may take a moment. The page will update automatically when complete.
+                </p>
               </div>
             </div>
           </div>

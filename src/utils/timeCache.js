@@ -15,6 +15,11 @@
  * @param {number} ttlMs - Time to live in milliseconds
  */
 export function setCacheValue(key, value, ttlMs) {
+  // Skip caching in server context (no localStorage)
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
   try {
     const cacheData = {
       value,
@@ -32,6 +37,11 @@ export function setCacheValue(key, value, ttlMs) {
  * @returns {any|null} Cached value or null if expired/not found
  */
 export function getCacheValue(key) {
+  // Skip caching in server context (no localStorage)
+  if (typeof localStorage === 'undefined') {
+    return null;
+  }
+
   try {
     const cached = localStorage.getItem(key);
     if (!cached) return null;
@@ -56,6 +66,11 @@ export function getCacheValue(key) {
  * @param {string} key - Cache key
  */
 export function clearCacheValue(key) {
+  // Skip in server context (no localStorage)
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
   try {
     localStorage.removeItem(key);
   } catch (error) {
@@ -68,6 +83,11 @@ export function clearCacheValue(key) {
  * @param {string} prefix - Key prefix to match
  */
 export function clearCacheByPrefix(prefix) {
+  // Skip in server context (no localStorage)
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
   try {
     const keys = Object.keys(localStorage);
     const matchingKeys = keys.filter(key => key.startsWith(prefix));

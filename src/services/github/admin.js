@@ -20,6 +20,26 @@ const pendingAdminIssueRequests = new Map();
 const pendingBanIssueRequests = new Map();
 
 /**
+ * Clear in-memory admin issue cache
+ * Used after mutations to force fresh data on next request
+ * @param {string} cacheKey - Cache key to clear
+ */
+function clearAdminIssueCache(cacheKey) {
+  pendingAdminIssueRequests.delete(cacheKey);
+  console.log(`[Admin] Cleared in-memory admin issue cache: ${cacheKey}`);
+}
+
+/**
+ * Clear in-memory ban issue cache
+ * Used after mutations to force fresh data on next request
+ * @param {string} cacheKey - Cache key to clear
+ */
+function clearBanIssueCache(cacheKey) {
+  pendingBanIssueRequests.delete(cacheKey);
+  console.log(`[Admin] Cleared in-memory ban issue cache: ${cacheKey}`);
+}
+
+/**
  * Check if a user is the repository owner
  * @param {number} userId - User ID to check
  * @param {string} owner - Repository owner username
@@ -50,9 +70,10 @@ export const isRepositoryOwner = async (userId, owner, repo) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<Object>} Issue object containing admins list
  */
-export const getOrCreateAdminsIssue = async (owner, repo, config) => {
+export const getOrCreateAdminsIssue = async (owner, repo, config, botUsername = null) => {
   // Detect current branch for namespace isolation
   const branch = await detectCurrentBranch(config);
   const branchLabel = `branch:${branch}`;
@@ -109,9 +130,9 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
 
       if (existingIssue) {
         // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
-        const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
-        if (existingIssue.user.login !== botUsername) {
-          console.warn(`[Admin] Security: Admin list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+        const effectiveBotUsername = botUsername || (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_USERNAME : null);
+        if (effectiveBotUsername && existingIssue.user.login !== effectiveBotUsername) {
+          console.warn(`[Admin] Security: Admin list issue created by ${existingIssue.user.login}, expected ${effectiveBotUsername}`);
           throw new Error('Invalid admin list issue - not created by bot');
         }
         console.log(`[Admin] Found existing admin list issue #${existingIssue.number}`);
@@ -159,9 +180,10 @@ export const getOrCreateAdminsIssue = async (owner, repo, config) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<Object>} Issue object containing banned users list
  */
-export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
+export const getOrCreateBannedUsersIssue = async (owner, repo, config, botUsername = null) => {
   // Detect current branch for namespace isolation
   const branch = await detectCurrentBranch(config);
   const branchLabel = `branch:${branch}`;
@@ -218,9 +240,9 @@ export const getOrCreateBannedUsersIssue = async (owner, repo, config) => {
 
       if (existingIssue) {
         // Security: Verify issue was created by wiki bot (admin issues are bot-managed)
-        const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
-        if (existingIssue.user.login !== botUsername) {
-          console.warn(`[Admin] Security: Ban list issue created by ${existingIssue.user.login}, expected ${botUsername}`);
+        const effectiveBotUsername = botUsername || (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_USERNAME : null);
+        if (effectiveBotUsername && existingIssue.user.login !== effectiveBotUsername) {
+          console.warn(`[Admin] Security: Ban list issue created by ${existingIssue.user.login}, expected ${effectiveBotUsername}`);
           throw new Error('Invalid ban list issue - not created by bot');
         }
         console.log(`[Admin] Found existing ban list issue #${existingIssue.number}`);
@@ -305,11 +327,12 @@ const updateUserListInIssue = (body, users) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<Array<Object>>} Array of admin objects
  */
-export const getAdmins = async (owner, repo, config) => {
+export const getAdmins = async (owner, repo, config, botUsername = null) => {
   try {
-    const issue = await getOrCreateAdminsIssue(owner, repo, config);
+    const issue = await getOrCreateAdminsIssue(owner, repo, config, botUsername);
     return parseUserListFromIssue(issue.body);
   } catch (error) {
     console.error('Failed to get admins:', error);
@@ -322,11 +345,12 @@ export const getAdmins = async (owner, repo, config) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<Array<Object>>} Array of banned user objects
  */
-export const getBannedUsers = async (owner, repo, config) => {
+export const getBannedUsers = async (owner, repo, config, botUsername = null) => {
   try {
-    const issue = await getOrCreateBannedUsersIssue(owner, repo, config);
+    const issue = await getOrCreateBannedUsersIssue(owner, repo, config, botUsername);
     return parseUserListFromIssue(issue.body);
   } catch (error) {
     console.error('Failed to get banned users:', error);
@@ -340,9 +364,10 @@ export const getBannedUsers = async (owner, repo, config) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<boolean>} True if user is admin or owner
  */
-export const isAdmin = async (username, owner, repo, config) => {
+export const isAdmin = async (username, owner, repo, config, botUsername = null) => {
   // Fetch user ID for comparison (cached)
   let userId;
   try {
@@ -358,7 +383,7 @@ export const isAdmin = async (username, owner, repo, config) => {
   }
 
   // Check admin list (prefer userId, fallback to username for backwards compatibility)
-  const admins = await getAdmins(owner, repo, config);
+  const admins = await getAdmins(owner, repo, config, botUsername);
   return admins.some(admin => {
     // Primary check: userId (immutable, survives username changes)
     if (userId && admin.userId && admin.userId === userId) {
@@ -488,10 +513,11 @@ export const addAdmin = async (username, owner, repo, addedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, admins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear issue cache to force refresh on next read
+  // Clear both localStorage cache AND in-memory cache to force refresh on next read
   const branch = await detectCurrentBranch(config);
   const issueCacheKey = `${owner}/${repo}/${branch}`;
   clearCacheValue(cacheName('admin_issue', issueCacheKey));
+  clearAdminIssueCache(issueCacheKey);
   console.log(`[Admin] Cleared admin issue cache after adding ${username}`);
 
   console.log(`[Admin] Added admin: ${username} (ID: ${userId})`);
@@ -556,10 +582,11 @@ export const removeAdmin = async (username, owner, repo, removedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, updatedAdmins);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear issue cache to force refresh on next read
+  // Clear both localStorage cache AND in-memory cache to force refresh on next read
   const branch = await detectCurrentBranch(config);
   const issueCacheKey = `${owner}/${repo}/${branch}`;
   clearCacheValue(cacheName('admin_issue', issueCacheKey));
+  clearAdminIssueCache(issueCacheKey);
   console.log(`[Admin] Cleared admin issue cache after removing ${username}`);
 
   console.log(`[Admin] Removed admin: ${username} (ID: ${userId})`);
@@ -637,10 +664,11 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
         const newAdminBody = updateUserListInIssue(adminIssue.body, updatedAdmins);
         await updateAdminIssueWithBot(owner, repo, adminIssue.number, newAdminBody);
 
-        // Clear admin issue cache
+        // Clear both localStorage cache AND in-memory cache
         const branch = await detectCurrentBranch(config);
         const issueCacheKey = `${owner}/${repo}/${branch}`;
         clearCacheValue(cacheName('admin_issue', issueCacheKey));
+        clearAdminIssueCache(issueCacheKey);
 
         console.log(`[Admin] Removed ${username} from admin list before banning`);
       }
@@ -680,10 +708,11 @@ export const banUser = async (username, reason, owner, repo, bannedBy, config) =
   const newBody = updateUserListInIssue(issue.body, bannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear issue cache to force refresh on next read
+  // Clear both localStorage cache AND in-memory cache to force refresh on next read
   const branch = await detectCurrentBranch(config);
   const issueCacheKey = `${owner}/${repo}/${branch}`;
   clearCacheValue(cacheName('ban_issue', issueCacheKey));
+  clearBanIssueCache(issueCacheKey);
   console.log(`[Admin] Cleared ban issue cache after banning ${username}`);
 
   // Clear cache for this user so next check gets fresh data (use userId)
@@ -745,10 +774,11 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
   const newBody = updateUserListInIssue(issue.body, updatedBannedUsers);
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 
-  // Clear issue cache to force refresh on next read
+  // Clear both localStorage cache AND in-memory cache to force refresh on next read
   const branch = await detectCurrentBranch(config);
   const issueCacheKey = `${owner}/${repo}/${branch}`;
   clearCacheValue(cacheName('ban_issue', issueCacheKey));
+  clearBanIssueCache(issueCacheKey);
   console.log(`[Admin] Cleared ban issue cache after unbanning ${username}`);
 
   // Clear cache for this user so next check gets fresh data (use userId)
@@ -765,9 +795,10 @@ export const unbanUser = async (username, owner, repo, unbannedBy, config) => {
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
  * @returns {Promise<Object>} Object with isOwner, isAdmin, username
  */
-export const getCurrentUserAdminStatus = async (owner, repo, config) => {
+export const getCurrentUserAdminStatus = async (owner, repo, config, botUsername = null) => {
   try {
     console.log('[Admin] Getting authenticated user...');
     const user = await getAuthenticatedUser();
@@ -776,7 +807,7 @@ export const getCurrentUserAdminStatus = async (owner, repo, config) => {
     const userId = user.id;
 
     const isOwner = await isRepositoryOwner(userId, owner, repo);
-    const userIsAdmin = isOwner || await isAdmin(username, owner, repo, config);
+    const userIsAdmin = isOwner || await isAdmin(username, owner, repo, config, botUsername);
 
     return {
       isOwner,

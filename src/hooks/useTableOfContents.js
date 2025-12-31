@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import GithubSlugger from 'github-slugger';
 
 /**
+ * Strip HTML tags from text
+ * @param {string} html - Text that may contain HTML tags
+ * @returns {string} Text with HTML tags removed
+ */
+const stripHtmlTags = (html) => {
+  if (!html) return '';
+  // Remove HTML tags using regex
+  return html.replace(/<[^>]*>/g, '').trim();
+};
+
+/**
  * Extract headings from markdown content to generate table of contents
  */
 export const extractHeadings = (content) => {
@@ -14,9 +25,13 @@ export const extractHeadings = (content) => {
 
   while ((match = headingRegex.exec(content)) !== null) {
     const level = match[1].length;
-    const text = match[2].trim();
+    const rawText = match[2].trim();
+
+    // Strip HTML tags from the text for display and slug generation
+    const text = stripHtmlTags(rawText);
 
     // Generate slug using github-slugger (same as rehype-slug does)
+    // Use the stripped text so the slug matches the rendered heading IDs
     const slug = slugger.slug(text);
 
     headings.push({

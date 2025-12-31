@@ -29,7 +29,16 @@ const getEnv = (key) => {
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     return import.meta.env[key];
   }
+  // Fallback to process.env for serverless contexts
+  if (typeof process !== 'undefined' && process.env) {
+    return process.env[key];
+  }
   return undefined;
+};
+
+// Helper to check if running in serverless/server context
+const isServerContext = () => {
+  return typeof window === 'undefined';
 };
 
 // Development-only imports - tree-shaken in production builds
@@ -272,13 +281,75 @@ const lockIssueDirectly = async (owner, repo, issueNumber) => {
  */
 export const createAdminIssueWithBot = async (owner, repo, title, body, labels, lock = true) => {
   try {
-    // Get user credentials for server-side permission verification
-    const { user, getToken } = useAuthStore.getState();
-    const userToken = getToken();
-    const username = user?.login;
+    // Check if running in server context (no window/browser)
+    const inServerContext = isServerContext();
 
-    if (!userToken || !username) {
-      throw new Error('Authentication required to perform admin actions');
+    let userToken, username;
+
+    if (inServerContext) {
+      // Server context: Use GITHUB_TOKEN set by the handler
+      userToken = process.env.GITHUB_TOKEN;
+      // Username is not needed in server context as authentication is already done by handler
+      username = 'server';
+      console.log('[Bot Service] Server context: Using handler-provided token');
+    } else {
+      // Browser context: Get user credentials from authStore
+      const useAuthStore = await getAuthStore();
+      const { user, getToken } = useAuthStore.getState();
+      userToken = getToken();
+      username = user?.login;
+
+      if (!userToken || !username) {
+        throw new Error('Authentication required to perform admin actions');
+      }
+    }
+
+    // Server context: Use Octokit directly with bot token
+    if (inServerContext) {
+      console.log('[Bot Service] Server context: Creating admin issue directly with Octokit');
+
+      // Get bot token from environment
+      // In server context, try multiple sources
+      const botToken = getEnv('WIKI_BOT_TOKEN') ||
+                       getEnv('VITE_WIKI_BOT_TOKEN') ||
+                       process.env.WIKI_BOT_TOKEN ||
+                       process.env.VITE_WIKI_BOT_TOKEN;
+
+      console.log('[Bot Service] Bot token check:', {
+        hasToken: !!botToken,
+        tokenLength: botToken?.length,
+        envKeys: Object.keys(process.env).filter(k => k.includes('WIKI') || k.includes('BOT'))
+      });
+
+      if (!botToken) {
+        throw new Error('Bot token not configured - check WIKI_BOT_TOKEN environment variable');
+      }
+
+      // Dynamically import Octokit for server context
+      const { Octokit } = await import('octokit');
+      const octokit = new Octokit({ auth: botToken });
+
+      // Create the issue
+      const { data: issue } = await octokit.rest.issues.create({
+        owner,
+        repo,
+        title,
+        body,
+        labels,
+      });
+
+      // Lock the issue if requested
+      if (lock) {
+        await octokit.rest.issues.lock({
+          owner,
+          repo,
+          issue_number: issue.number,
+          lock_reason: 'resolved',
+        });
+      }
+
+      console.log(`[Bot Service] ✓ Admin issue created in server context: #${issue.number}`);
+      return issue;
     }
 
     // Development mode: Try direct API call first
@@ -346,13 +417,63 @@ export const createAdminIssueWithBot = async (owner, repo, title, body, labels, 
  */
 export const updateAdminIssueWithBot = async (owner, repo, issueNumber, body) => {
   try {
-    // Get user credentials for server-side permission verification
-    const { user, getToken } = useAuthStore.getState();
-    const userToken = getToken();
-    const username = user?.login;
+    // Check if running in server context (no window/browser)
+    const inServerContext = isServerContext();
 
-    if (!userToken || !username) {
-      throw new Error('Authentication required to perform admin actions');
+    let userToken, username;
+
+    if (inServerContext) {
+      // Server context: Use GITHUB_TOKEN set by the handler
+      userToken = process.env.GITHUB_TOKEN;
+      username = 'server';
+      console.log('[Bot Service] Server context: Using handler-provided token for update');
+    } else {
+      // Browser context: Get user credentials from authStore
+      const useAuthStore = await getAuthStore();
+      const { user, getToken } = useAuthStore.getState();
+      userToken = getToken();
+      username = user?.login;
+
+      if (!userToken || !username) {
+        throw new Error('Authentication required to perform admin actions');
+      }
+    }
+
+    // Server context: Use Octokit directly with bot token
+    if (inServerContext) {
+      console.log('[Bot Service] Server context: Updating admin issue directly with Octokit');
+
+      // Get bot token from environment
+      // In server context, try multiple sources
+      const botToken = getEnv('WIKI_BOT_TOKEN') ||
+                       getEnv('VITE_WIKI_BOT_TOKEN') ||
+                       process.env.WIKI_BOT_TOKEN ||
+                       process.env.VITE_WIKI_BOT_TOKEN;
+
+      console.log('[Bot Service] Bot token check:', {
+        hasToken: !!botToken,
+        tokenLength: botToken?.length,
+        envKeys: Object.keys(process.env).filter(k => k.includes('WIKI') || k.includes('BOT'))
+      });
+
+      if (!botToken) {
+        throw new Error('Bot token not configured - check WIKI_BOT_TOKEN environment variable');
+      }
+
+      // Dynamically import Octokit for server context
+      const { Octokit } = await import('octokit');
+      const octokit = new Octokit({ auth: botToken });
+
+      // Update the issue
+      const { data: issue } = await octokit.rest.issues.update({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        body,
+      });
+
+      console.log(`[Bot Service] ✓ Admin issue updated in server context: #${issue.number}`);
+      return issue;
     }
 
     // Development mode: Try direct API call first
@@ -684,7 +805,8 @@ const saveUserSnapshotDirectly = async (owner, repo, username, snapshotData, exi
  */
 export const saveUserSnapshotWithBot = async (owner, repo, username, snapshotData, existingIssueNumber = null) => {
   try {
-    // Get user credentials for server-side verification
+    // Get user credentials for server-side verification (lazy-load to avoid serverless issues)
+    const useAuthStore = await getAuthStore();
     const { user, getToken } = useAuthStore.getState();
     const userToken = getToken();
     const requestingUsername = user?.login;
