@@ -12,6 +12,8 @@ import { hasWriteAccess } from '../services/github/permissions';
 import { getOrCreateFork } from '../services/github/forks';
 import { submitAnonymousEdit } from '../services/github/anonymousEdits';
 import { isBanned } from '../services/github/admin';
+import { invalidatePageCache } from '../services/github/dynamicPageLoader';
+import { useWikiStore } from '../store/wikiStore';
 import PageEditor from '../components/wiki/PageEditor';
 import PendingEditRequests from '../components/wiki/PendingEditRequests';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -35,6 +37,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false, emoticonMap = null }) =>
   const { isAuthenticated, user, isLoading: authLoading } = useAuthStore();
   const { branch: currentBranch, loading: branchLoading } = useBranchNamespace();
   const invalidatePrestige = useInvalidatePrestige();
+  const { clearPageCache } = useWikiStore();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -745,7 +748,7 @@ Include any supplementary details, notes, or related information.
         const commitMessage = `${action} ${parsedMetadata?.title || currentPageId}\n\n${editSummary || `${action}d via wiki editor`}`;
 
         // Commit directly to main branch
-        await updateFileContent(
+        const commitResult = await updateFileContent(
           owner,
           repo,
           filePath,
@@ -756,6 +759,11 @@ Include any supplementary details, notes, or related information.
         );
 
         console.log(`\n[PageEditor] ✓ Successfully committed to ${baseBranch}`);
+
+        // Invalidate dynamic page cache
+        invalidatePageCache(sectionId, currentPageId, commitResult.commit.sha);
+        clearPageCache(`${sectionId}/${currentPageId}`);
+        console.log(`[PageEditor] Invalidated page cache for ${sectionId}/${currentPageId} (commit: ${commitResult.commit.sha})`);
 
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {

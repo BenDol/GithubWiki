@@ -16,6 +16,10 @@ import { useAuthStore } from '../store/authStore';
 import { getFileContent } from '../services/github/content';
 import { isBanned } from '../services/github/admin';
 import { getContentProcessor, getCustomComponents } from '../utils/contentRendererRegistry';
+import { loadDynamicPage, shouldUseDynamicLoading, invalidatePageCache } from '../services/github/dynamicPageLoader';
+import { createLogger } from '../utils/logger';
+
+const logger = createLogger('PageViewer');
 
 /**
  * Page viewer page component
@@ -42,6 +46,8 @@ const PageViewerPage = ({ sectionId }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFullscreenButton, setShowFullscreenButton] = useState(false);
+  const [loadingSource, setLoadingSource] = useState(null);
+  const [cacheWarning, setCacheWarning] = useState(null);
   const contentRef = useRef(null);
 
   // Check if this is a framework/hardcoded page (no editing allowed)
@@ -61,39 +67,63 @@ const PageViewerPage = ({ sectionId }) => {
   const handleRefreshContent = async () => {
     try {
       setRefreshing(true);
+      setCacheWarning(null);
 
       // Clear in-memory cache for this page
       const cacheKey = `${sectionId}/${pageId}`;
       clearPageCache(cacheKey);
 
-      // Fetch with cache-busting query parameter to bypass browser cache
-      const timestamp = Date.now();
-      const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md?t=${timestamp}`);
+      const useDynamic = shouldUseDynamicLoading(config);
 
-      if (!response.ok) {
-        throw new Error('Failed to refresh content');
+      if (useDynamic) {
+        // Invalidate cache and fetch fresh from GitHub
+        invalidatePageCache(sectionId, pageId, null);
+
+        const result = await loadDynamicPage(sectionId, pageId, config, branch, true);
+
+        if (result.warning) {
+          setCacheWarning(result.warning);
+        }
+
+        // Apply auto-formatting to title if enabled
+        const formattedMetadata = {
+          ...result.metadata,
+          title: getDisplayTitle(pageId, result.metadata.title, autoFormatTitles)
+        };
+
+        setContent(result.content);
+        setMetadata(formattedMetadata);
+        setLoadingSource(result.source);
+      } else {
+        // Fetch with cache-busting query parameter to bypass browser cache
+        const timestamp = Date.now();
+        const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md?t=${timestamp}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to refresh content');
+        }
+
+        const markdownText = await response.text();
+
+        // Parse frontmatter and content
+        const { data, content: markdownContent } = matter(markdownText);
+
+        // Apply auto-formatting to title if enabled
+        const formattedMetadata = {
+          ...data,
+          title: getDisplayTitle(pageId, data.title, autoFormatTitles)
+        };
+
+        setMetadata(formattedMetadata);
+        setContent(markdownContent);
+
+        // Cache the refreshed page
+        cachePage(cacheKey, markdownContent, formattedMetadata);
       }
 
-      const markdownText = await response.text();
-
-      // Parse frontmatter and content
-      const { data, content: markdownContent } = matter(markdownText);
-
-      // Apply auto-formatting to title if enabled
-      const formattedMetadata = {
-        ...data,
-        title: getDisplayTitle(pageId, data.title, autoFormatTitles)
-      };
-
-      setMetadata(formattedMetadata);
-      setContent(markdownContent);
-
-      // Cache the refreshed page
-      cachePage(cacheKey, markdownContent, formattedMetadata);
-
-      console.log('[PageViewer] Content refreshed successfully');
+      logger.info('Content refreshed successfully');
     } catch (error) {
-      console.error('[PageViewer] Failed to refresh content:', error);
+      logger.error('Failed to refresh content', { error });
       // Show error notification or toast (could be enhanced)
       alert('Failed to refresh content. The page may not be deployed yet. Please try again in a moment.');
     } finally {
@@ -116,7 +146,7 @@ const PageViewerPage = ({ sectionId }) => {
         setIsFullscreen(false);
       }
     } catch (error) {
-      console.error('[PageViewer] Fullscreen error:', error);
+      logger.error('Fullscreen error', { error });
     }
   };
 
@@ -140,59 +170,84 @@ const PageViewerPage = ({ sectionId }) => {
         setLoading(true);
         setError(null);
         setExistsOnGitHub(false); // Reset GitHub existence state on each page load
+        setCacheWarning(null); // Reset cache warning
 
-        // Check cache first
-        const cacheKey = `${sectionId}/${pageId}`;
-        const cached = getCachedPage(cacheKey);
+        const useDynamic = shouldUseDynamicLoading(config);
 
-        if (cached) {
-          setContent(cached.content);
-          setMetadata(cached.metadata);
-          setLoading(false);
-          return;
+        if (useDynamic) {
+          // Use dynamic page loading from GitHub
+          logger.debug('Using dynamic page loading');
+
+          const result = await loadDynamicPage(sectionId, pageId, config, branch, false);
+
+          if (result.warning) {
+            setCacheWarning(result.warning);
+          }
+
+          // Apply auto-formatting to title if enabled
+          const formattedMetadata = {
+            ...result.metadata,
+            title: getDisplayTitle(pageId, result.metadata.title, autoFormatTitles)
+          };
+
+          setContent(result.content);
+          setMetadata(formattedMetadata);
+          setLoadingSource(result.source);
+        } else {
+          // Use static page loading (original behavior)
+          logger.debug('Using static page loading');
+
+          // Check cache first
+          const cacheKey = `${sectionId}/${pageId}`;
+          const cached = getCachedPage(cacheKey);
+
+          if (cached) {
+            setContent(cached.content);
+            setMetadata(cached.metadata);
+            setLoading(false);
+            return;
+          }
+
+          // Load markdown file from public/content/
+          // Use import.meta.env.BASE_URL to respect Vite's base path
+          const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md`);
+
+          if (!response.ok) {
+            throw new Error('Page not found');
+          }
+
+          const markdownText = await response.text();
+
+          // Check if we got HTML instead of markdown (dev server returns index.html for missing files)
+          if (markdownText.trim().startsWith('<!DOCTYPE') || markdownText.trim().startsWith('<html') || markdownText.includes('<script type="module" src="/@vite/client">')) {
+            throw new Error('Page not found');
+          }
+
+          // Parse frontmatter and content
+          const { data, content: markdownContent } = matter(markdownText);
+
+          // Apply auto-formatting to title if enabled and no explicit title exists
+          const formattedMetadata = {
+            ...data,
+            title: getDisplayTitle(pageId, data.title, autoFormatTitles)
+          };
+
+          setMetadata(formattedMetadata);
+          setContent(markdownContent);
+
+          // Cache the page with formatted metadata
+          cachePage(cacheKey, markdownContent, formattedMetadata);
         }
-
-        // Load markdown file from public/content/
-        // Use import.meta.env.BASE_URL to respect Vite's base path
-        const response = await fetch(`${import.meta.env.BASE_URL}content/${sectionId}/${pageId}.md`);
-
-        if (!response.ok) {
-          throw new Error('Page not found');
-        }
-
-        const markdownText = await response.text();
-
-        // Check if we got HTML instead of markdown (dev server returns index.html for missing files)
-        if (markdownText.trim().startsWith('<!DOCTYPE') || markdownText.trim().startsWith('<html') || markdownText.includes('<script type="module" src="/@vite/client">')) {
-          throw new Error('Page not found');
-        }
-
-        // Parse frontmatter and content
-        const { data, content: markdownContent } = matter(markdownText);
-
-        // Apply auto-formatting to title if enabled and no explicit title exists
-        const formattedMetadata = {
-          ...data,
-          title: getDisplayTitle(pageId, data.title, autoFormatTitles)
-        };
-
-        setMetadata(formattedMetadata);
-        setContent(markdownContent);
-
-        // Cache the page with formatted metadata
-        cachePage(cacheKey, markdownContent, formattedMetadata);
       } catch (err) {
-        console.error('Error loading page:', err);
-        console.error('Error message:', err?.message);
-        console.error('Error stack:', err?.stack);
-        console.error('Error name:', err?.name);
+        logger.error('Error loading page', { error: err, message: err?.message });
 
         // Check if the file exists on GitHub but hasn't been deployed yet
         if (config?.wiki?.repository?.owner && config?.wiki?.repository?.repo && branch) {
           try {
-            console.log('[PageViewer] Checking if file exists on GitHub...');
-            console.log('[PageViewer] Checking path:', `public/content/${sectionId}/${pageId}.md`);
-            console.log('[PageViewer] Branch:', branch);
+            logger.debug('Checking if file exists on GitHub', {
+              path: `public/content/${sectionId}/${pageId}.md`,
+              branch
+            });
             const filePath = `public/content/${sectionId}/${pageId}.md`;
             // Use cache-busting to get fresh content (especially important for recent PRs)
             const fileData = await getFileContent(
@@ -205,19 +260,19 @@ const PageViewerPage = ({ sectionId }) => {
 
             // getFileContent returns null for 404 errors instead of throwing
             if (fileData === null) {
-              console.log('[PageViewer] File does NOT exist on GitHub (returned null)');
+              logger.debug('File does NOT exist on GitHub (returned null)');
               setExistsOnGitHub(false);
             } else {
               // If we get here, the file exists on GitHub
-              console.log('[PageViewer] File EXISTS on GitHub but not deployed yet');
+              logger.debug('File EXISTS on GitHub but not deployed yet');
               setExistsOnGitHub(true);
             }
           } catch (githubErr) {
-            console.log('[PageViewer] File does NOT exist on GitHub (error):', githubErr.message);
+            logger.debug('File does NOT exist on GitHub (error)', { error: githubErr.message });
             setExistsOnGitHub(false);
           }
         } else {
-          console.log('[PageViewer] Cannot check GitHub - missing config or branch');
+          logger.debug('Cannot check GitHub - missing config or branch');
           setExistsOnGitHub(false);
         }
 
@@ -246,10 +301,10 @@ const PageViewerPage = ({ sectionId }) => {
         setUserIsBanned(banned);
 
         if (banned) {
-          console.log(`[PageViewer] User ${user.login} is banned - hiding edit button`);
+          logger.info('User is banned - hiding edit button', { username: user.login });
         }
       } catch (error) {
-        console.error('[PageViewer] Failed to check ban status:', error);
+        logger.error('Failed to check ban status', { error });
         setUserIsBanned(false); // Fail open - allow access on error
       } finally {
         setCheckingBanStatus(false);
@@ -268,14 +323,16 @@ const PageViewerPage = ({ sectionId }) => {
       const hashParts = window.location.hash.split('#');
       const anchor = hashParts[2]; // The anchor is the 3rd element (index 2)
 
-      console.log('Full hash:', window.location.hash);
-      console.log('Hash parts:', hashParts);
-      console.log('Extracted anchor:', anchor);
+      logger.trace('Anchor navigation', {
+        fullHash: window.location.hash,
+        hashParts,
+        anchor
+      });
 
       if (anchor) {
         // Decode the anchor in case it's URL-encoded
         const decodedAnchor = decodeURIComponent(anchor);
-        console.log('Looking for element with ID:', decodedAnchor);
+        logger.trace('Looking for element with ID', { anchor: decodedAnchor });
 
         // Use MutationObserver to wait for the element to be added to the DOM
         let attempts = 0;
@@ -285,13 +342,16 @@ const PageViewerPage = ({ sectionId }) => {
           const element = document.getElementById(decodedAnchor);
 
           if (element) {
-            console.log('Found element:', element);
+            logger.trace('Found element for anchor', { anchor: decodedAnchor });
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
           } else {
             attempts++;
             if (attempts >= maxAttempts) {
-              console.error(`Element with ID "${decodedAnchor}" not found after ${maxAttempts} attempts`);
-              console.log('Available IDs on page:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+              logger.warn('Element not found after max attempts', {
+                anchor: decodedAnchor,
+                maxAttempts,
+                availableIds: Array.from(document.querySelectorAll('[id]')).map(el => el.id)
+              });
             } else {
               // Try again
               requestAnimationFrame(checkElement);
@@ -513,6 +573,16 @@ const PageViewerPage = ({ sectionId }) => {
         )}
       </div>
 
+      {/* Warning banner for cache/GitHub issues */}
+      {cacheWarning && (
+        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200">
+            {cacheWarning === 'rate-limited' && '⚠️ GitHub rate limit reached. Showing cached content.'}
+            {cacheWarning === 'github-unavailable' && '⚠️ GitHub unavailable. Showing bundled version.'}
+          </p>
+        </div>
+      )}
+
       {/* Page content with TOC */}
       <div className="flex gap-8">
         {/* Main content */}
@@ -523,15 +593,6 @@ const PageViewerPage = ({ sectionId }) => {
             onMouseEnter={() => setShowFullscreenButton(true)}
             onMouseLeave={() => setShowFullscreenButton(false)}
           >
-            {/* Page ID display - top right corner (dev mode only) */}
-            {metadata?.id && import.meta.env.DEV && (
-              <div className="absolute top-0 right-0 z-10 hidden md:block">
-                <span className="inline-block px-2 py-1 text-xs text-gray-400 dark:text-gray-600 font-mono bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700">
-                  {metadata.id}
-                </span>
-              </div>
-            )}
-
             {/* Fullscreen toggle button */}
             {showFullscreenButton && (
               <button
