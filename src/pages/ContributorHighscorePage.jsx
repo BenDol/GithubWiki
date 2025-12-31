@@ -283,7 +283,7 @@ const ContributorHighscorePage = () => {
                     )
                   ) : (
                     <div className="text-amber-600 dark:text-amber-400 font-medium">
-                      🤖 Auto-updated daily
+                      Auto-updated daily
                     </div>
                   )}
                 </div>
