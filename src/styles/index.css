@@ -57,6 +57,38 @@ body::before {
   z-index: 0;
 }
 
+/* Apply default background to fullscreen container */
+.page-viewer-container:fullscreen {
+  background-color: rgb(249 250 251); /* bg-gray-50 for light mode */
+}
+
+.page-viewer-container:fullscreen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('/images/backgrounds/page-bg.jpg');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  background-attachment: scroll;
+  opacity: calc(var(--page-bg-opacity) + 0.01); /* Light mode: less opacity increase */
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Dark mode fullscreen */
+.dark .page-viewer-container:fullscreen {
+  background-color: rgb(17 24 39); /* bg-gray-900 for dark mode */
+}
+
+/* Dark mode fullscreen - more opacity increase */
+.dark .page-viewer-container:fullscreen::before {
+  opacity: calc(var(--page-bg-opacity) + 0.02);
+}
+
 code {
   font-family: 'Fira Code', 'Courier New', monospace;
 }

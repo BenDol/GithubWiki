@@ -519,7 +519,7 @@ const PageViewerPage = ({ sectionId }) => {
         <div className="flex-1 min-w-0 space-y-12">
           <div
             ref={contentRef}
-            className={`relative ${isFullscreen ? 'pt-8' : ''}`}
+            className={`page-viewer-container relative ${isFullscreen ? 'pt-8' : ''}`}
             onMouseEnter={() => setShowFullscreenButton(true)}
             onMouseLeave={() => setShowFullscreenButton(false)}
           >
