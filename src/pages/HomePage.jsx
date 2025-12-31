@@ -152,16 +152,19 @@ const HomePage = () => {
   if (!config) return null;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Hero section */}
-      <div className="text-center mb-12">
-        <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
-          {config.wiki.title}
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-          {config.wiki.description}
-        </p>
-      </div>
+    <div className="relative min-h-screen">
+      {/* Background - global default from CSS, no component needed */}
+
+      <div className="max-w-5xl mx-auto relative" style={{ zIndex: 2 }}>
+        {/* Hero section */}
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
+            {config.wiki.title}
+          </h1>
+          <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            {config.wiki.description}
+          </p>
+        </div>
 
       {/* Featured Live Streams */}
       {!loadingCreators && streamers.length > 0 && (
@@ -257,23 +260,24 @@ const HomePage = () => {
         ))}
       </div>
 
-      {/* Quick links */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Getting Started
-        </h2>
-        <div className="space-y-2">
-          <p className="text-gray-700 dark:text-gray-300">
-            Welcome to the wiki! Browse through the sections above to find the documentation you need.
-          </p>
-          <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1 ml-4">
-            <li>Browse sections from the sidebar or header navigation</li>
-            <li>Use the search function (Ctrl+K) to quickly find content</li>
-            <li>Toggle dark mode with the theme button in the header</li>
-            {config.features?.editPages && (
-              <li>Sign in with GitHub to edit pages and contribute</li>
-            )}
-          </ul>
+        {/* Quick links */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Getting Started
+          </h2>
+          <div className="space-y-2">
+            <p className="text-gray-700 dark:text-gray-300">
+              Welcome to the wiki! Browse through the sections above to find the documentation you need.
+            </p>
+            <ul className="list-disc list-inside text-gray-700 dark:text-gray-300 space-y-1 ml-4">
+              <li>Browse sections from the sidebar or header navigation</li>
+              <li>Use the search function (Ctrl+K) to quickly find content</li>
+              <li>Toggle dark mode with the theme button in the header</li>
+              {config.features?.editPages && (
+                <li>Sign in with GitHub to edit pages and contribute</li>
+              )}
+            </ul>
+          </div>
         </div>
       </div>
     </div>

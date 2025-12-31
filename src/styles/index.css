@@ -11,6 +11,9 @@
   --text-primary: #111827;
   --text-secondary: #6b7280;
   --border-color: #e5e7eb;
+
+  /* Default page background - theme aware */
+  --page-bg-opacity: 0.06; /* Light mode default */
 }
 
 .dark {
@@ -21,6 +24,9 @@
   --text-primary: #f3f4f6;
   --text-secondary: #9ca3af;
   --border-color: #374151;
+
+  /* Default page background - theme aware */
+  --page-bg-opacity: 0.02; /* Dark mode default */
 }
 
 /* Base styles */
@@ -30,6 +36,25 @@ body {
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  position: relative;
+}
+
+/* Global default background - applied to all pages, can be overridden */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url('/images/backgrounds/page-bg.jpg');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  background-attachment: scroll;
+  opacity: var(--page-bg-opacity);
+  pointer-events: none;
+  z-index: 0;
 }
 
 code {
