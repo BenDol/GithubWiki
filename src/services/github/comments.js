@@ -163,6 +163,7 @@ export const getIssueComments = async (owner, repo, issueNumber, page = 1, perPa
       id: comment.id,
       body: comment.body,
       user: {
+        id: comment.user.id,
         login: comment.user.login,
         avatar_url: comment.user.avatar_url,
         html_url: comment.user.html_url,
@@ -225,6 +226,33 @@ export const createIssueComment = async (owner, repo, issueNumber, body, config)
     return comment;
   } catch (error) {
     console.error('Failed to create comment:', error);
+    throw error;
+  }
+};
+
+/**
+ * Update an existing issue comment
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {number} commentId - Comment ID
+ * @param {string} body - Updated comment body
+ * @param {Object} config - Wiki config
+ * @returns {Promise<Object>} Updated comment object
+ */
+export const updateIssueComment = async (owner, repo, commentId, body, config) => {
+  const octokit = getOctokit();
+
+  try {
+    const { data: comment } = await octokit.rest.issues.updateComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      body,
+    });
+
+    return comment;
+  } catch (error) {
+    console.error('Failed to update comment:', error);
     throw error;
   }
 };

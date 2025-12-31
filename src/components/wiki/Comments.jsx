@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { formatDistance } from 'date-fns';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { useDisplayNames } from '../../hooks/useDisplayName';
@@ -36,6 +38,12 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   const [commentReactions, setCommentReactions] = useState({});
   const [reactionLoading, setReactionLoading] = useState({});
   const [userIsBanned, setUserIsBanned] = useState(false);
+
+  // Reply and edit state
+  const [replyingTo, setReplyingTo] = useState(null); // {id, username, body, user}
+  const replyTextareaRef = useRef(null);
+  const [editingComment, setEditingComment] = useState(null); // {id, body}
+  const [editedBody, setEditedBody] = useState('');
 
   // Extract unique comment authors for display name fetching
   const commentAuthors = useMemo(() =>
@@ -352,8 +360,45 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     };
   }, [loadMore, hasMore]);
 
-  const handleSubmitComment = async () => {
-    if (!newComment.trim()) return;
+  /**
+   * Generate quote block for reply
+   * Truncates to 3 lines or 200 chars, whichever comes first
+   */
+  const generateQuoteBlock = (comment) => {
+    const username = displayNames[comment.user.id] || comment.user.login;
+    const lines = comment.body.split('\n');
+    let quoteText = comment.body;
+    let wasTruncated = false;
+
+    // Truncate by line count (max 3 lines)
+    if (lines.length > 3) {
+      quoteText = lines.slice(0, 3).join('\n');
+      wasTruncated = true;
+    }
+
+    // Truncate by character count (max 200 chars)
+    if (quoteText.length > 200) {
+      quoteText = quoteText.substring(0, 200);
+      wasTruncated = true;
+    }
+
+    // Remove trailing whitespace and add ellipsis if truncated
+    quoteText = quoteText.trim();
+    if (wasTruncated) {
+      quoteText += '...';
+    }
+
+    // Format as blockquote with each line prefixed with '>'
+    const quotedLines = quoteText.split('\n').map(line => `> ${line}`).join('\n');
+
+    // Return formatted quote block with link and double newline for cursor positioning
+    return `> [@${username}](#comment-${comment.id}) said:\n${quotedLines}\n\n`;
+  };
+
+  const handleSubmitComment = async (commentText = null) => {
+    // Use provided commentText or fall back to newComment state
+    const textToSubmit = commentText !== null ? commentText : newComment;
+    if (!textToSubmit.trim()) return;
 
     // Check if user is banned
     if (userIsBanned) {
@@ -396,7 +441,7 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       }
 
       console.log('[Comments] Creating comment on issue #', pageIssue.number);
-      const createdComment = await createIssueComment(owner, repo, pageIssue.number, newComment, config);
+      const createdComment = await createIssueComment(owner, repo, pageIssue.number, textToSubmit, config);
       console.log('[Comments] Comment created:', createdComment);
 
       // Reload first page of comments (reset pagination)
@@ -470,6 +515,138 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       setIsSubmitting(false);
     }
   };
+
+  /**
+   * Handle reply button click
+   */
+  const handleReplyClick = (comment) => {
+    setReplyingTo({
+      id: comment.id,
+      username: displayNames[comment.user.id] || comment.user.login,
+      body: comment.body,
+      user: comment.user,
+    });
+
+    // Scroll to inline form after state updates
+    setTimeout(() => {
+      if (replyTextareaRef.current) {
+        replyTextareaRef.current.focus();
+        // Position cursor at end (after quote)
+        const length = replyTextareaRef.current.value.length;
+        replyTextareaRef.current.setSelectionRange(length, length);
+      }
+    }, 100);
+  };
+
+  /**
+   * Handle cancel reply
+   */
+  const handleCancelReply = () => {
+    setReplyingTo(null);
+  };
+
+  /**
+   * Handle submit reply (uses existing submit logic with quote block)
+   */
+  const handleSubmitReply = async () => {
+    // Prepend quote block to the user's comment text
+    const quoteBlock = generateQuoteBlock(replyingTo);
+    const fullCommentText = quoteBlock + (newComment || '');
+
+    // Use existing submit logic with the full comment text (quote + reply)
+    await handleSubmitComment(fullCommentText);
+
+    // Clear reply state after successful submission
+    setReplyingTo(null);
+  };
+
+  /**
+   * Handle edit button click
+   */
+  const handleEditClick = (comment) => {
+    setEditingComment(comment);
+    setEditedBody(comment.body);
+  };
+
+  /**
+   * Handle cancel edit
+   */
+  const handleCancelEdit = () => {
+    setEditingComment(null);
+    setEditedBody('');
+  };
+
+  /**
+   * Handle save edited comment
+   */
+  const handleSaveEdit = async () => {
+    if (!editedBody.trim()) {
+      alert('Comment cannot be empty');
+      return;
+    }
+
+    if (editedBody === editingComment.body) {
+      // No changes made
+      setEditingComment(null);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const { owner, repo } = config.wiki.repository;
+
+      console.log('[Comments] Updating comment #', editingComment.id);
+
+      // Call GitHub API to update comment
+      const { updateIssueComment } = await import('../../services/github/comments');
+      const updatedComment = await updateIssueComment(owner, repo, editingComment.id, editedBody, config);
+
+      console.log('[Comments] Comment updated:', updatedComment);
+
+      // Update the comment in local state
+      setComments(prevComments =>
+        prevComments.map(c =>
+          c.id === editingComment.id
+            ? { ...c, body: updatedComment.body, updated_at: updatedComment.updated_at }
+            : c
+        )
+      );
+
+      setEditingComment(null);
+      setEditedBody('');
+    } catch (err) {
+      console.error('Failed to update comment:', err);
+
+      if (err.status === 403) {
+        alert('❌ Permission denied. You can only edit your own comments.');
+      } else if (err.status === 404) {
+        alert('❌ Comment not found. It may have been deleted.');
+      } else {
+        alert('❌ Failed to update comment: ' + err.message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * Scroll to specific comment and highlight it
+   */
+  const scrollToComment = useCallback((commentId) => {
+    const element = document.getElementById(`comment-${commentId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      // Add temporary highlight effect
+      element.classList.add('comment-highlight-flash');
+      setTimeout(() => {
+        element.classList.remove('comment-highlight-flash');
+      }, 2000);
+    }
+  }, []);
+
+  // Note: Click handling for #comment-* links is now handled by the custom
+  // anchor component in ReactMarkdown rendering (see comment body section)
 
   /**
    * Check if user is rate limited for reactions
@@ -812,56 +989,60 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         )}
       </div>
 
-      {/* Comment input */}
-      {isAuthenticated ? (
-        userIsBanned ? (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
-            <p className="text-red-900 dark:text-red-200 text-sm font-medium">
-              ❌ You are banned from commenting on this wiki
-            </p>
-            <p className="text-red-700 dark:text-red-300 text-xs mt-1">
-              If you believe this is an error, please contact the repository owner.
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <PrestigeAvatar
-                src={user.avatar_url}
-                alt={user.name || user.login}
-                username={user.login}
-                userId={user.id}
-                size="md"
-                showBadge={true}
-                onClick={handleAvatarClick}
-              />
-              <div className="flex-1">
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Leave a comment..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-                <div className="mt-2 flex justify-end">
-                  <button
-                    onClick={handleSubmitComment}
-                    disabled={!newComment.trim() || isSubmitting}
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                  >
-                    {isSubmitting ? 'Posting...' : 'Post Comment'}
-                  </button>
+      {/* Comment input (hide when replying) */}
+      {!replyingTo && (
+        <>
+          {isAuthenticated ? (
+            userIsBanned ? (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+                <p className="text-red-900 dark:text-red-200 text-sm font-medium">
+                  ❌ You are banned from commenting on this wiki
+                </p>
+                <p className="text-red-700 dark:text-red-300 text-xs mt-1">
+                  If you believe this is an error, please contact the repository owner.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <PrestigeAvatar
+                    src={user.avatar_url}
+                    alt={user.name || user.login}
+                    username={user.login}
+                    userId={user.id}
+                    size="md"
+                    showBadge={true}
+                    onClick={handleAvatarClick}
+                  />
+                  <div className="flex-1">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Leave a comment..."
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    />
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={handleSubmitComment}
+                        disabled={!newComment.trim() || isSubmitting}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                      >
+                        {isSubmitting ? 'Posting...' : 'Post Comment'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
+            )
+          ) : (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-center">
+              <p className="text-blue-900 dark:text-blue-200 text-sm">
+                Sign in with GitHub to leave a comment
+              </p>
             </div>
-          </div>
-        )
-      ) : (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-center">
-          <p className="text-blue-900 dark:text-blue-200 text-sm">
-            Sign in with GitHub to leave a comment
-          </p>
-        </div>
+          )}
+        </>
       )}
 
       {/* Comments list */}
@@ -873,9 +1054,10 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         ) : (
           <>
             {comments.map((comment) => (
+            <React.Fragment key={comment.id}>
             <div
-              key={comment.id}
-              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4"
+              id={`comment-${comment.id}`}
+              className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 transition-colors duration-300"
             >
               <div className="flex items-start space-x-3">
                 <PrestigeAvatar
@@ -932,12 +1114,118 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                     </button>
                   </div>
 
-                  {/* Comment body */}
-                  <div className="prose prose-sm dark:prose-invert max-w-none mb-3">
-                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                      {comment.body}
-                    </p>
-                  </div>
+                  {/* Comment body or edit form */}
+                  {editingComment?.id === comment.id ? (
+                    <div className="mb-3">
+                      <textarea
+                        value={editedBody}
+                        onChange={(e) => setEditedBody(e.target.value)}
+                        rows={5}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        autoFocus
+                      />
+                      <div className="mt-2 flex justify-end space-x-2">
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1.5 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors text-sm"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={!editedBody.trim() || isSubmitting}
+                          className="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                        >
+                          {isSubmitting ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none mb-3 comment-body">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          // Customize anchor tags to handle #comment-* links
+                          a: ({ node, href, children, ...props }) => {
+                            // Check if this is a comment reference link
+                            if (href && href.startsWith('#comment-')) {
+                              return (
+                                <a
+                                  href={href}
+                                  className="text-blue-600 dark:text-blue-400 font-medium not-italic"
+                                  {...props}
+                                >
+                                  {children}
+                                </a>
+                              );
+                            }
+                            // Regular external link
+                            return (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline"
+                                {...props}
+                              >
+                                {children}
+                              </a>
+                            );
+                          },
+                          // Style blockquotes nicely - make entire quote clickable
+                          blockquote: ({ node, children, ...props }) => {
+                            // Try to extract comment ID from the quote block
+                            let commentId = null;
+
+                            // Check if the node contains a comment reference link
+                            const findCommentId = (node) => {
+                              if (node.type === 'element' && node.tagName === 'a') {
+                                const href = node.properties?.href;
+                                if (href && href.startsWith('#comment-')) {
+                                  return href.substring(9); // Remove '#comment-'
+                                }
+                              }
+                              if (node.children) {
+                                for (const child of node.children) {
+                                  const id = findCommentId(child);
+                                  if (id) return id;
+                                }
+                              }
+                              return null;
+                            };
+
+                            commentId = findCommentId(node);
+
+                            // If this is a reply quote with a comment reference, make it clickable
+                            if (commentId) {
+                              return (
+                                <blockquote
+                                  onClick={() => scrollToComment(commentId)}
+                                  className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 pl-4 py-2 my-2 italic text-gray-700 dark:text-gray-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                  title="Click to view original comment"
+                                  {...props}
+                                >
+                                  {children}
+                                </blockquote>
+                              );
+                            }
+
+                            // Regular blockquote (not a reply)
+                            return (
+                              <blockquote
+                                className="border-l-4 border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/20 pl-4 py-2 my-2 italic text-gray-700 dark:text-gray-300"
+                                {...props}
+                              >
+                                {children}
+                              </blockquote>
+                            );
+                          },
+                        }}
+                      >
+                        {comment.body}
+                      </ReactMarkdown>
+                    </div>
+                  )}
 
                   {/* Reactions */}
                   <div className="flex items-center space-x-2">
@@ -989,10 +1277,80 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
                     >
                       View on GitHub →
                     </a>
+                    {/* Reply button (only show if authenticated and not banned) */}
+                    {isAuthenticated && !userIsBanned && (
+                      <button
+                        onClick={() => handleReplyClick(comment)}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 ml-2 font-medium"
+                      >
+                        Reply
+                      </button>
+                    )}
+                    {/* Edit button (only for user's own comments) */}
+                    {isAuthenticated && user && comment.user.login === user.login && (
+                      <button
+                        onClick={() => handleEditClick(comment)}
+                        className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300 ml-2 font-medium"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Inline reply form */}
+            {replyingTo?.id === comment.id && (
+              <div className="ml-8 mt-4 bg-blue-50 dark:bg-blue-900/10 border-l-4 border-blue-500 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <PrestigeAvatar
+                    src={user.avatar_url}
+                    alt={user.name || user.login}
+                    username={user.login}
+                    userId={user.id}
+                    size="md"
+                    showBadge={true}
+                    onClick={handleAvatarClick}
+                  />
+                  <div className="flex-1">
+                    <textarea
+                      ref={replyTextareaRef}
+                      value={replyingTo.id === comment.id ? generateQuoteBlock(replyingTo) + (newComment || '') : newComment}
+                      onChange={(e) => {
+                        // Extract user's text after the quote block
+                        const quoteBlock = generateQuoteBlock(replyingTo);
+                        const value = e.target.value;
+                        if (value.startsWith(quoteBlock)) {
+                          setNewComment(value.substring(quoteBlock.length));
+                        } else {
+                          setNewComment(value);
+                        }
+                      }}
+                      placeholder="Write your reply..."
+                      rows={5}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    />
+                    <div className="mt-2 flex justify-end space-x-2">
+                      <button
+                        onClick={handleCancelReply}
+                        className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSubmitReply}
+                        disabled={!newComment.trim() || isSubmitting}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                      >
+                        {isSubmitting ? 'Posting...' : 'Post Reply'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            </React.Fragment>
           ))}
 
           {/* Sentinel element for IntersectionObserver */}
@@ -1026,6 +1384,22 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
           onMakeAdmin={handleMakeAdmin}
         />
       )}
+
+      {/* CSS for highlight animation */}
+      <style jsx>{`
+        @keyframes comment-highlight {
+          0%, 100% {
+            background-color: transparent;
+          }
+          50% {
+            background-color: rgba(59, 130, 246, 0.15);
+          }
+        }
+
+        .comment-highlight-flash {
+          animation: comment-highlight 2s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 };

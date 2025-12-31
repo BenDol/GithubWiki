@@ -450,6 +450,18 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     const replacingText = view.state.doc.sliceString(autocompleteRange.from, autocompleteRange.to);
     const isReplacingCompleteWrapper = replacingText.includes('}}');
 
+    // Check if there are closing }} after our range that should also be replaced
+    // This handles the case where user typed {{data:spirits:1}}, backspaced, and now selects a field
+    // Without this, we'd end up with {{data:spirits:1:name}}}} (double closing braces)
+    let adjustedRangeTo = autocompleteRange.to;
+    if (!isReplacingCompleteWrapper) {
+      const nextTwoChars = view.state.doc.sliceString(autocompleteRange.to, autocompleteRange.to + 2);
+      if (nextTwoChars === '}}') {
+        // Include the existing }} in the replacement range
+        adjustedRangeTo = autocompleteRange.to + 2;
+      }
+    }
+
     // Check if we need to add newlines (if not already at start/end of line)
     const line = view.state.doc.lineAt(autocompleteRange.from);
     const isAtLineStart = autocompleteRange.from === line.from;
@@ -474,7 +486,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
     view.dispatch({
       changes: {
         from: autocompleteRange.from,
-        to: autocompleteRange.to,
+        to: adjustedRangeTo,
         insert: insertText
       },
       selection: { anchor: autocompleteRange.from + insertText.length }
