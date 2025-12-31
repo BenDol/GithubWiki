@@ -58,6 +58,7 @@ export default function ImageUploadModal({ isOpen, onClose, onSuccess }) {
   const [category, setCategory] = useState('');
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
+  const [dryRun, setDryRun] = useState(false);
 
   // Upload state
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -107,6 +108,7 @@ export default function ImageUploadModal({ isOpen, onClose, onSuccess }) {
       setCategory('');
       setTags([]);
       setTagInput('');
+      setDryRun(false);
       setUploadProgress(0);
       setIsProcessing(false);
       setIsUploading(false);
@@ -221,7 +223,7 @@ export default function ImageUploadModal({ isOpen, onClose, onSuccess }) {
       setIsUploading(true);
       setStep('upload');
 
-      logger.info('Starting upload', { name, category, authenticated: !!userToken });
+      logger.info('Starting upload', { name, category, authenticated: !!userToken, dryRun });
 
       const result = await uploadImage({
         originalBlob: processedImages.original.blob,
@@ -235,6 +237,7 @@ export default function ImageUploadModal({ isOpen, onClose, onSuccess }) {
         userEmail: userEmail || undefined,
         verificationToken: verificationToken || undefined,
         userToken: userToken || undefined,
+        dryRun,
         onProgress: setUploadProgress
       });
 
@@ -457,6 +460,26 @@ export default function ImageUploadModal({ isOpen, onClose, onSuccess }) {
               </div>
               <p className="text-xs text-gray-500 mt-1">{tags.length}/10 tags</p>
             </div>
+
+            {/* Dry Run Mode (for testing moderation) - DEV ONLY */}
+            {import.meta.env.DEV && (
+              <div className="border-t pt-4 mt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dryRun}
+                    onChange={(e) => setDryRun(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium">
+                    Dry Run Mode (Testing)
+                  </span>
+                </label>
+                <p className="text-xs text-gray-500 mt-1 ml-6">
+                  Test validation and moderation without uploading to CDN. Useful for testing the content moderation system.
+                </p>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex gap-3 pt-4">

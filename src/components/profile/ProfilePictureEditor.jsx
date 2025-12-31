@@ -22,6 +22,7 @@ export function ProfilePictureEditor({ user, stats, onSuccess }) {
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [avatarRefreshTrigger, setAvatarRefreshTrigger] = useState(Date.now());
+  const [dryRun, setDryRun] = useState(false);
 
   const handleClick = () => {
     logger.debug('Profile picture editor clicked');
@@ -35,6 +36,7 @@ export function ProfilePictureEditor({ user, stats, onSuccess }) {
     setShowModal(false);
     setUploadError(null);
     setUploadSuccess(false);
+    setDryRun(false);
   };
 
   const handleImageProcessed = async (imageBlob) => {
@@ -42,10 +44,10 @@ export function ProfilePictureEditor({ user, stats, onSuccess }) {
       setUploading(true);
       setUploadError(null);
 
-      logger.info('Uploading profile picture', { size: imageBlob.size });
+      logger.info('Uploading profile picture', { size: imageBlob.size, dryRun });
 
       const token = getToken();
-      const result = await uploadCustomAvatar(user.id, user.login, imageBlob, token);
+      const result = await uploadCustomAvatar(user.id, user.login, imageBlob, token, dryRun);
 
       if (result.success) {
         logger.info('Profile picture uploaded successfully', { avatarUrl: result.avatarUrl });
@@ -152,6 +154,27 @@ export function ProfilePictureEditor({ user, stats, onSuccess }) {
               onImageProcessed={handleImageProcessed}
               onCancel={handleCancelUpload}
             />
+
+            {/* Dry Run Mode (for testing moderation) - DEV ONLY */}
+            {import.meta.env.DEV && (
+              <div className="border-t pt-4 mt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dryRun}
+                    onChange={(e) => setDryRun(e.target.checked)}
+                    disabled={uploading}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    Dry Run Mode (Testing)
+                  </span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                  Test validation and moderation without uploading to CDN. Useful for testing the content moderation system.
+                </p>
+              </div>
+            )}
 
             {/* Upload error */}
             {uploadError && (

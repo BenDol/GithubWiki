@@ -536,7 +536,7 @@ const PageViewerPage = ({ sectionId }) => {
             {showFullscreenButton && (
               <button
                 onClick={toggleFullscreen}
-                className="absolute top-4 right-4 z-20 p-2 bg-gray-800/70 dark:bg-gray-700/70 text-white rounded-lg hover:bg-gray-800/90 dark:hover:bg-gray-700/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
+                className="absolute top-4 right-4 z-20 p-2 bg-white/90 dark:bg-gray-800/70 text-gray-700 dark:text-white border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-white dark:hover:bg-gray-800/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
                 title={isFullscreen ? 'Exit fullscreen (ESC)' : 'Enter fullscreen'}
                 aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
               >

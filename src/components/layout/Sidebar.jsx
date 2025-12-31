@@ -158,6 +158,7 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuthStore();
   const [userIsBanned, setUserIsBanned] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
 
   const [expandedCategories, setExpandedCategories] = useState(() => {
     // Initialize expanded categories based on config
@@ -404,7 +405,7 @@ const Sidebar = () => {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="hidden lg:block fixed top-20 left-4 z-40 p-2 bg-gray-800/70 dark:bg-gray-700/70 text-white rounded-lg hover:bg-gray-800/90 dark:hover:bg-gray-700/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
+          className="hidden lg:block fixed top-20 left-4 z-40 p-2 bg-white/90 dark:bg-gray-800/70 text-gray-700 dark:text-white border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-white dark:hover:bg-gray-800/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
           title="Expand sidebar"
           aria-label="Expand sidebar"
         >
@@ -428,18 +429,22 @@ const Sidebar = () => {
             ? (sidebarOpen ? `${effectiveSidebarWidth}px` : '0px')
             : `${effectiveSidebarWidth}px`
         }}
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
       >
-        {/* Collapse button - absolute positioned in top-right, desktop only */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="hidden lg:block absolute top-2 right-2 z-50 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
-          title="Collapse sidebar"
-          aria-label="Collapse sidebar"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-        </button>
+        {/* Collapse button - absolute positioned in top-right, desktop only, shows on hover */}
+        {sidebarHovered && (
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="hidden lg:block absolute top-[18px] right-2 z-50 p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            title="Collapse sidebar"
+            aria-label="Collapse sidebar"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
 
         <nav className="p-4 space-y-1">
           {loading ? (

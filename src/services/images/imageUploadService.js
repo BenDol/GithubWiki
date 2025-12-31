@@ -21,6 +21,7 @@ const logger = createLogger('ImageUploadService');
  * @param {string} [params.userEmail] - Email (for anonymous)
  * @param {string} [params.verificationToken] - Verification token (for anonymous)
  * @param {string} [params.userToken] - GitHub user token (for authenticated)
+ * @param {boolean} [params.dryRun] - If true, skip CDN upload (for testing moderation)
  * @param {Function} [params.onProgress] - Progress callback (0-100)
  * @returns {Promise<Object>} Upload result
  */
@@ -37,6 +38,7 @@ export async function uploadImage(params) {
     userEmail,
     verificationToken,
     userToken,
+    dryRun = false,
     onProgress
   } = params;
 
@@ -46,7 +48,8 @@ export async function uploadImage(params) {
       originalSize: originalBlob.size,
       webpSize: webpBlob.size,
       category,
-      authenticated: !!userToken
+      authenticated: !!userToken,
+      dryRun
     });
 
     // Create FormData
@@ -61,6 +64,7 @@ export async function uploadImage(params) {
     formData.append('description', description || '');
     formData.append('category', category);
     formData.append('tags', JSON.stringify(tags || []));
+    formData.append('dryRun', dryRun.toString());
 
     // Debug: Check if dimensions exists before appending
     logger.debug('Appending dimensions to FormData', {

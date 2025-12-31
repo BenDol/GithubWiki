@@ -127,9 +127,9 @@ export async function loadCustomAvatarRegistry() {
  * @param {string} token - User's OAuth token
  * @returns {Promise<Object>} Result object with success/error/avatarUrl
  */
-export async function uploadCustomAvatar(userId, username, imageBlob, token) {
+export async function uploadCustomAvatar(userId, username, imageBlob, token, dryRun = false) {
   try {
-    logger.info('Uploading custom avatar', { userId, size: imageBlob.size });
+    logger.info('Uploading custom avatar', { userId, size: imageBlob.size, dryRun });
 
     // Create FormData for multipart upload
     const formData = new FormData();
@@ -137,6 +137,7 @@ export async function uploadCustomAvatar(userId, username, imageBlob, token) {
     formData.append('userId', userId.toString());
     formData.append('username', username);
     formData.append('token', token);
+    formData.append('dryRun', dryRun.toString());
 
     const response = await fetch(getProfilePictureEndpoint(), {
       method: 'POST',
