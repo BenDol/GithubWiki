@@ -41,6 +41,9 @@ const DonatePage = () => {
   // Get fallback URL (paypal.me for when SDK fails)
   const paypalFallbackUrl = paypalConfig.fallbackUrl || paypalConfig.url;
 
+  // Minimum donation amount (configurable via wiki-config)
+  const minAmount = donationConfig.minAmount || 5;
+
   // Preset donation amounts (configurable via wiki-config)
   const donationAmounts = donationConfig.amounts || [
     { amount: 5, label: '☕ One Coffee', description: 'Buy us a coffee!' },
@@ -139,7 +142,13 @@ const DonatePage = () => {
     // Clear existing buttons
     paypalButtonRef.current.innerHTML = '';
 
-    const amount = selectedAmount || parseFloat(customAmount) || 5;
+    const amount = selectedAmount || parseFloat(customAmount) || minAmount;
+
+    // Validate minimum amount
+    if (amount < minAmount) {
+      console.warn('[Donate] Amount below minimum', { amount, minAmount });
+      return;
+    }
 
     console.log('[Donate] Rendering PayPal button', { amount, username: githubUsername || 'anonymous' });
 
@@ -208,7 +217,14 @@ const DonatePage = () => {
       return;
     }
 
-    const amount = selectedAmount || parseFloat(customAmount) || 5;
+    const amount = selectedAmount || parseFloat(customAmount) || minAmount;
+
+    // Validate minimum amount
+    if (amount < minAmount) {
+      alert(`Minimum donation amount is $${minAmount.toFixed(2)} USD`);
+      return;
+    }
+
     let url = methodConfig.url;
 
     // Handle different URL formats for amount pre-filling
@@ -392,7 +408,7 @@ const DonatePage = () => {
                 </span>
                 <input
                   type="number"
-                  min="1"
+                  min={minAmount}
                   step="0.01"
                   placeholder={selectedAmount ? selectedAmount.toFixed(2) : "25.00"}
                   value={customAmount}
@@ -403,6 +419,11 @@ const DonatePage = () => {
                   className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:bg-gray-700 dark:text-white text-lg"
                 />
               </div>
+              {customAmount && parseFloat(customAmount) < minAmount && (
+                <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                  Minimum donation amount is ${minAmount.toFixed(2)} USD
+                </p>
+              )}
             </div>
 
             {/* GitHub Username (for automatic badge assignment) */}
@@ -450,7 +471,14 @@ const DonatePage = () => {
 
                       <button
                         onClick={() => {
-                          const amount = selectedAmount || parseFloat(customAmount) || 5;
+                          const amount = selectedAmount || parseFloat(customAmount) || minAmount;
+
+                          // Validate minimum amount
+                          if (amount < minAmount) {
+                            alert(`Minimum donation amount is $${minAmount.toFixed(2)} USD`);
+                            return;
+                          }
+
                           let url = paypalFallbackUrl;
 
                           // Add amount to paypal.me URL
