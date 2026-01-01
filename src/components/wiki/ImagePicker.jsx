@@ -127,13 +127,20 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
         }
 
         const data = await response.json();
-        setImages(data.images || []);
+
+        // Prepend /images/content to relative paths from game assets index
+        const imagesWithPrepend = (data.images || []).map(img => ({
+          ...img,
+          path: img.path?.startsWith('http') ? img.path : `/images/content${img.path}`
+        }));
+
+        setImages(imagesWithPrepend);
 
         // Extract unique categories from static images
-        const uniqueStaticCategories = [...new Set(data.images.map(img => img.category).filter(Boolean))].sort();
+        const uniqueStaticCategories = [...new Set(imagesWithPrepend.map(img => img.category).filter(Boolean))].sort();
         setStaticCategories(uniqueStaticCategories);
 
-        setFilteredImages(data.images || []);
+        setFilteredImages(imagesWithPrepend);
       } catch (err) {
         console.error('Failed to load images:', err);
         setError(err.message);
