@@ -133,12 +133,44 @@ function setCacheEntry(sectionId, pageId, entry) {
  * Invalidate cache after page edit
  * @param {string} sectionId - Section ID
  * @param {string} pageId - Page ID
- * @param {string|null} commitSha - Commit SHA (optional, for tracking)
+ * @param {string|null} commitSha - Commit SHA (for cache busting)
  */
 export function invalidatePageCache(sectionId, pageId, commitSha = null) {
   const key = buildCacheKey(sectionId, pageId);
   removeItem(key);
-  logger.info('Page cache invalidated', { sectionId, pageId, commitSha });
+
+  // Store the commit SHA for next fetch to bypass GitHub CDN cache
+  if (commitSha) {
+    const shaKey = `${key}:latest-sha`;
+    setItem(shaKey, { sha: commitSha, timestamp: Date.now() });
+    logger.info('Page cache invalidated with commit SHA', { sectionId, pageId, commitSha });
+  } else {
+    logger.info('Page cache invalidated', { sectionId, pageId });
+  }
+}
+
+/**
+ * Get the latest commit SHA for a page (if available from recent edit)
+ * @param {string} sectionId - Section ID
+ * @param {string} pageId - Page ID
+ * @returns {string|null} Commit SHA or null
+ */
+function getLatestCommitSha(sectionId, pageId) {
+  const key = buildCacheKey(sectionId, pageId);
+  const shaKey = `${key}:latest-sha`;
+  const shaData = getItem(shaKey);
+
+  // Only use SHA if it's less than 5 minutes old (fresh edit)
+  if (shaData && (Date.now() - shaData.timestamp) < 5 * 60 * 1000) {
+    return shaData.sha;
+  }
+
+  // Clean up expired SHA
+  if (shaData) {
+    removeItem(shaKey);
+  }
+
+  return null;
 }
 
 /**
@@ -215,9 +247,21 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
     const { owner, repo } = config.wiki.repository;
     const path = `public/content/${sectionId}/${pageId}.md`;
 
-    logger.debug('Fetching from GitHub', { sectionId, pageId, owner, repo, path, branch });
+    // Check if we have a fresh commit SHA to bypass GitHub CDN cache
+    const latestSha = getLatestCommitSha(sectionId, pageId);
+    const refToFetch = latestSha || branch;
 
-    const fileData = await getFileContent(owner, repo, path, branch, bustCache);
+    if (latestSha) {
+      logger.debug('Fetching from GitHub using commit SHA', {
+        sectionId, pageId, owner, repo, path, commitSha: latestSha
+      });
+    } else {
+      logger.debug('Fetching from GitHub using branch', {
+        sectionId, pageId, owner, repo, path, branch
+      });
+    }
+
+    const fileData = await getFileContent(owner, repo, path, refToFetch, bustCache);
 
     if (!fileData) {
       throw new Error('Page not found on GitHub');
