@@ -288,6 +288,15 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
   } catch (error) {
     logger.error('Failed to load dynamic page', { sectionId, pageId, error });
 
+    // Check if this is a 404 (page deleted or never existed)
+    // getFileContent returns null for 404s, which triggers 'Page not found on GitHub' error
+    const is404 = error.status === 404 || error.message === 'Page not found on GitHub';
+
+    if (is404) {
+      logger.info('Page not found (404), not falling back to static', { sectionId, pageId });
+      throw error; // Throw immediately for 404s - don't fall back to stale static files
+    }
+
     // Handle rate limiting
     if (error.status === 403 || error.status === 429) {
       logger.warn('GitHub rate limit reached', { sectionId, pageId });
@@ -309,7 +318,7 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
       }
     }
 
-    // Fall back to static bundled file
+    // Fall back to static bundled file (only for network/rate limit issues, not 404s)
     if (config.features.dynamicPageLoading.fallbackToStatic !== false) {
       logger.info('Falling back to static file', { sectionId, pageId });
       const staticResult = await loadStaticFile(sectionId, pageId);
