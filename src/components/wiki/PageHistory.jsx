@@ -19,15 +19,22 @@ const PageHistory = ({ sectionId, pageId }) => {
   const { user } = useAuthStore();
   const { commits, loading, loadingMore, error, hasMore, loadMore } = usePageHistory(sectionId, pageId, 10);
 
-  // Extract unique commit authors for display name fetching (exclude bot/anonymous)
+  // Extract unique commit authors for display name fetching (exclude bot/anonymous/owner)
   const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
+  const repoOwner = config?.wiki?.repository?.owner;
   const commitAuthors = useMemo(() =>
     commits
-      .filter(c => c.author.username && c.author.username !== botUsername)
+      .filter(c => c.author.username && c.author.username !== botUsername && c.author.username !== repoOwner)
       .map(c => ({ id: c.author.userId, login: c.author.username })),
-    [commits, botUsername]
+    [commits, botUsername, repoOwner]
   );
   const { displayNames } = useDisplayNames(commitAuthors);
+
+  // Filter out repository owner commits
+  const filteredCommits = useMemo(() =>
+    commits.filter(c => c.author.username !== repoOwner),
+    [commits, repoOwner]
+  );
 
   // User action menu state
   const [showUserActionMenu, setShowUserActionMenu] = useState(false);
@@ -99,7 +106,7 @@ const PageHistory = ({ sectionId, pageId }) => {
     );
   }
 
-  if (commits.length === 0) {
+  if (filteredCommits.length === 0) {
     return (
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-8 text-center">
         <svg className="w-16 h-16 mx-auto mb-4 text-blue-400 dark:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,12 +132,12 @@ const PageHistory = ({ sectionId, pageId }) => {
           Page History
         </h2>
         <p className="text-gray-600 dark:text-gray-400">
-          {commits.length} {commits.length === 1 ? 'commit' : 'commits'}
+          {filteredCommits.length} {filteredCommits.length === 1 ? 'commit' : 'commits'}
         </p>
       </div>
 
       <div className="space-y-4">
-        {commits.map((commit, index) => {
+        {filteredCommits.map((commit, index) => {
 
           // Check if this is an anonymous contribution
           const botUsername = import.meta.env.VITE_WIKI_BOT_USERNAME;
@@ -347,9 +354,9 @@ const PageHistory = ({ sectionId, pageId }) => {
       )}
 
       {/* Showing count */}
-      {!loading && commits.length > 0 && (
+      {!loading && filteredCommits.length > 0 && (
         <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-          Showing {commits.length} commit{commits.length !== 1 ? 's' : ''}
+          Showing {filteredCommits.length} commit{filteredCommits.length !== 1 ? 's' : ''}
           {!hasMore && ' (all loaded)'}
         </div>
       )}

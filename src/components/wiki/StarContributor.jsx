@@ -64,6 +64,9 @@ const StarContributor = ({ sectionId, pageId }) => {
       weights: { COMMIT_WEIGHT, ADDITION_WEIGHT, DELETION_WEIGHT },
     });
 
+    // Get repository owner to exclude their commits
+    const repoOwner = config?.wiki?.repository?.owner;
+
     commits.forEach((commit) => {
       const username = commit.author?.username;
       const stats = commit.stats || { additions: 0, deletions: 0, total: 0 };
@@ -73,9 +76,16 @@ const StarContributor = ({ sectionId, pageId }) => {
         username,
         authorName: commit.author?.name,
         isBotCommit: username === botUsername,
+        isRepoOwner: username === repoOwner,
         stats,
         messagePreview: commit.message?.substring(0, 100),
       });
+
+      // Skip repository owner commits (administrative/cleanup work)
+      if (username === repoOwner) {
+        console.log('[StarContributor] Skipping repository owner commit');
+        return;
+      }
 
       // Calculate score for this commit
       const commitScore = COMMIT_WEIGHT +
