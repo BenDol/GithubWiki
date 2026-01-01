@@ -157,3 +157,61 @@ export async function consistent(userData, context) {
 
   return false;
 }
+
+/**
+ * Donator - User has made a donation to support the wiki
+ */
+export async function donator(userData, context) {
+  try {
+    const { owner, repo, username, userId, octokit } = context;
+
+    // Search for donator issue with user ID label
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: 'donator',
+      state: 'open',
+      per_page: 100,
+    });
+
+    // First try: Search by user ID label (permanent identifier)
+    if (userId) {
+      const donatorIssue = issues.find(issue =>
+        issue.labels.some(label =>
+          (typeof label === 'string' && label === `user-id:${userId}`) ||
+          (typeof label === 'object' && label.name === `user-id:${userId}`)
+        )
+      );
+
+      if (donatorIssue) {
+        try {
+          const donatorData = JSON.parse(donatorIssue.body);
+          return donatorData.isDonator === true;
+        } catch (parseError) {
+          console.error('Failed to parse donator data:', parseError);
+          return false;
+        }
+      }
+    }
+
+    // Second try: Search by username in title (legacy entries)
+    const donatorIssue = issues.find(
+      issue => issue.title === `[Donator] ${username}`
+    );
+
+    if (donatorIssue) {
+      try {
+        const donatorData = JSON.parse(donatorIssue.body);
+        return donatorData.isDonator === true;
+      } catch (parseError) {
+        console.error('Failed to parse donator data:', parseError);
+        return false;
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Failed to check donator status:', error);
+    return false;
+  }
+}

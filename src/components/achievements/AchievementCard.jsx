@@ -13,24 +13,28 @@ const RARITY_COLORS = {
     bg: 'bg-gray-50 dark:bg-gray-900/20',
     badge: 'bg-gray-500',
     text: 'text-gray-700 dark:text-gray-300',
+    glow: '0 0 8px rgba(156, 163, 175, 0.4)', // gray-400
   },
   rare: {
     border: 'border-blue-400',
     bg: 'bg-blue-50 dark:bg-blue-900/20',
     badge: 'bg-blue-500',
     text: 'text-blue-700 dark:text-blue-300',
+    glow: '0 0 10px rgba(96, 165, 250, 0.5)', // blue-400
   },
   epic: {
     border: 'border-purple-400',
     bg: 'bg-purple-50 dark:bg-purple-900/20',
     badge: 'bg-purple-500',
     text: 'text-purple-700 dark:text-purple-300',
+    glow: '0 0 12px rgba(192, 132, 252, 0.5)', // purple-400
   },
   legendary: {
     border: 'border-yellow-400',
     bg: 'bg-yellow-50 dark:bg-yellow-900/20',
     badge: 'bg-yellow-500',
     text: 'text-yellow-700 dark:text-yellow-300',
+    glow: '0 0 15px rgba(250, 204, 21, 0.6)', // yellow-400 - stronger glow
   },
 };
 
@@ -56,10 +60,11 @@ export default function AchievementCard({ achievement, definitions, stats, unloc
   return (
     <div
       className={`
-        relative p-4 rounded-lg border-2 transition-all
+        relative p-4 pb-12 rounded-lg border-2 transition-all
         ${unlocked ? `${rarityColors.border} ${rarityColors.bg}` : 'border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 opacity-50'}
         hover:shadow-lg
       `}
+      style={unlocked ? { boxShadow: rarityColors.glow } : {}}
       title={unlocked ? `Unlocked: ${new Date(achievement.unlockedAt).toLocaleString()}` : 'Locked'}
     >
       {/* Icon - top left */}
@@ -96,7 +101,7 @@ export default function AchievementCard({ achievement, definitions, stats, unloc
 
       {/* Unlock date - only show if unlocked */}
       {unlocked && achievement.unlockedAt && (
-        <div className="mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="mb-3 pb-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             <span className="font-medium">Unlocked:</span>{' '}
             {new Date(achievement.unlockedAt).toLocaleDateString()}

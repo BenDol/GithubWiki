@@ -104,7 +104,7 @@ export default function AchievementsSection({ owner, repo, userId, username }) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 mb-6 overflow-visible">
       {/* Header with stats */}
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -220,9 +220,9 @@ export default function AchievementsSection({ owner, repo, userId, username }) {
       </div>
 
       {/* Achievement Grid - Scrollable Container */}
-      <div className="max-h-[600px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+      <div className="max-h-[600px] overflow-y-auto overflow-x-visible pr-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
         {displayAchievements.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-2 px-6 pb-6">
             {displayAchievements.map((achievement) => {
               const userAchievement = achievements.find((a) => a.id === achievement.id);
               const unlocked = !!userAchievement;
