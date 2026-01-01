@@ -13,7 +13,6 @@ import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen
  */
 const ImageDatabaseManager = () => {
   const [imageIndex, setImageIndex] = useState(null);
-  const [searchIndex, setSearchIndex] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -142,11 +141,6 @@ const ImageDatabaseManager = () => {
       const mainIndex = await mainIndexResponse.json();
       setImageIndex(mainIndex);
 
-      // Load search index
-      const searchIndexResponse = await fetch('/data/image-search-index.json');
-      const searchIndex = await searchIndexResponse.json();
-      setSearchIndex(searchIndex);
-
       // Calculate stats
       const images = mainIndex.images || [];
       const categories = new Set(images.map(img => img.category));
@@ -159,7 +153,7 @@ const ImageDatabaseManager = () => {
 
       return mainIndex; // Return for use in chained operations
     } catch (error) {
-      console.error('Failed to load image indexes:', error);
+      console.error('Failed to load image index:', error);
       return null;
     } finally {
       setLoading(false);
@@ -544,7 +538,7 @@ const ImageDatabaseManager = () => {
     console.log('Updated index:', updatedIndex);
 
     // Simulate saving
-    alert(`Would remove ${orphanedImages.length} orphaned entries from database.\n\nIn production, this would update:\n- /data/image-index.json\n- /data/image-search-index.json`);
+    alert(`Would remove ${orphanedImages.length} orphaned entries from database.\n\nIn production, this would update:\n- /data/image-index.json`);
 
     setOrphanedImages([]);
     setStats(prev => ({ ...prev, orphaned: 0, total: cleanedImages.length }));

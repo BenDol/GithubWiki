@@ -16,41 +16,39 @@ const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.resolve(__dirname, '../../../public');
 const IMAGES_DIR = path.join(PUBLIC_DIR, 'images');
 const DATA_DIR = path.join(PUBLIC_DIR, 'data');
-const INDEX_PATH = path.join(DATA_DIR, 'image-index.json');
-const SEARCH_INDEX_PATH = path.join(DATA_DIR, 'image-search-index.json');
+
+// CDN paths (local clone of CDN repository)
+const CDN_DIR = path.resolve(__dirname, '../../../../cdn');
+const CDN_IMAGES_DIR = path.join(CDN_DIR, 'game-assets', 'images');
+
+// Image index is now stored in the CDN location
+const INDEX_PATH = path.join(CDN_IMAGES_DIR, 'image-index.json');
+
 const EXTERNAL_DIR = path.resolve(__dirname, '../../../external');
 const IMAGE_BACKUP_DIR = path.join(EXTERNAL_DIR, 'image-backup');
 
 /**
- * Load image indexes
+ * Load image index
  */
 export async function loadImageIndexes() {
   try {
-    const [mainIndex, searchIndex] = await Promise.all([
-      fs.readFile(INDEX_PATH, 'utf-8').then(JSON.parse),
-      fs.readFile(SEARCH_INDEX_PATH, 'utf-8').then(JSON.parse)
-    ]);
-
-    return { mainIndex, searchIndex };
+    const mainIndex = await fs.readFile(INDEX_PATH, 'utf-8').then(JSON.parse);
+    return { mainIndex };
   } catch (error) {
-    console.error('Failed to load image indexes:', error);
+    console.error('Failed to load image index:', error);
     throw error;
   }
 }
 
 /**
- * Save image indexes
+ * Save image index
  */
-export async function saveImageIndexes(mainIndex, searchIndex) {
+export async function saveImageIndexes(mainIndex) {
   try {
-    await Promise.all([
-      fs.writeFile(INDEX_PATH, JSON.stringify(mainIndex, null, 2), 'utf-8'),
-      fs.writeFile(SEARCH_INDEX_PATH, JSON.stringify(searchIndex, null, 2), 'utf-8')
-    ]);
-
+    await fs.writeFile(INDEX_PATH, JSON.stringify(mainIndex, null, 2), 'utf-8');
     return { success: true };
   } catch (error) {
-    console.error('Failed to save image indexes:', error);
+    console.error('Failed to save image index:', error);
     throw error;
   }
 }
@@ -95,7 +93,7 @@ export async function scanForOrphans() {
  * Remove orphaned entries from database
  */
 export async function removeOrphanedEntries(orphanedPaths) {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
 
   // Convert paths to a Set for faster lookup
   const pathSet = new Set(orphanedPaths);
@@ -103,29 +101,15 @@ export async function removeOrphanedEntries(orphanedPaths) {
   // Filter out orphaned images from main index
   const cleanedMainImages = mainIndex.images.filter(img => !pathSet.has(img.path));
 
-  // Filter out orphaned images from search index
-  const cleanedSearchImages = {};
-  for (const [id, img] of Object.entries(searchIndex.images)) {
-    if (!pathSet.has(img.path)) {
-      cleanedSearchImages[id] = img;
-    }
-  }
-
-  // Update indexes
+  // Update index
   const updatedMainIndex = {
     ...mainIndex,
     images: cleanedMainImages,
     totalImages: cleanedMainImages.length
   };
 
-  const updatedSearchIndex = {
-    ...searchIndex,
-    images: cleanedSearchImages,
-    totalImages: Object.keys(cleanedSearchImages).length
-  };
-
-  // Save updated indexes
-  await saveImageIndexes(updatedMainIndex, updatedSearchIndex);
+  // Save updated index
+  await saveImageIndexes(updatedMainIndex);
 
   return {
     removed: orphanedPaths.length,
@@ -137,7 +121,7 @@ export async function removeOrphanedEntries(orphanedPaths) {
  * Move images to a new directory
  */
 export async function moveImages(imagePaths, targetCategory) {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
   const movedImages = [];
   const failedMoves = [];
 
@@ -168,7 +152,7 @@ export async function moveImages(imagePaths, targetCategory) {
       // Move file
       await fs.rename(oldPath, newPath);
 
-      // Update image entry
+      // Update image entry (modifies mainIndex.images array directly)
       imageEntry.path = newRelativePath;
       imageEntry.category = targetCategory;
 
@@ -183,17 +167,8 @@ export async function moveImages(imagePaths, targetCategory) {
     }
   }
 
-  // Update search index
-  for (const [id, img] of Object.entries(searchIndex.images)) {
-    const movedImage = movedImages.find(m => m.oldPath === img.path);
-    if (movedImage) {
-      img.path = movedImage.newPath;
-      img.category = targetCategory;
-    }
-  }
-
-  // Save updated indexes
-  await saveImageIndexes(mainIndex, searchIndex);
+  // Save updated index
+  await saveImageIndexes(mainIndex);
 
   return {
     moved: movedImages.length,
@@ -207,7 +182,7 @@ export async function moveImages(imagePaths, targetCategory) {
  * Delete images
  */
 export async function deleteImages(imagePaths) {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
   const deletedImages = [];
   const failedDeletes = [];
 
@@ -234,29 +209,15 @@ export async function deleteImages(imagePaths) {
   const pathSet = new Set(deletedImages);
   const cleanedMainImages = mainIndex.images.filter(img => !pathSet.has(img.path));
 
-  // Remove from search index
-  const cleanedSearchImages = {};
-  for (const [id, img] of Object.entries(searchIndex.images)) {
-    if (!pathSet.has(img.path)) {
-      cleanedSearchImages[id] = img;
-    }
-  }
-
-  // Update indexes
+  // Update index
   const updatedMainIndex = {
     ...mainIndex,
     images: cleanedMainImages,
     totalImages: cleanedMainImages.length
   };
 
-  const updatedSearchIndex = {
-    ...searchIndex,
-    images: cleanedSearchImages,
-    totalImages: Object.keys(cleanedSearchImages).length
-  };
-
-  // Save updated indexes
-  await saveImageIndexes(updatedMainIndex, updatedSearchIndex);
+  // Save updated index
+  await saveImageIndexes(updatedMainIndex);
 
   return {
     deleted: deletedImages.length,
@@ -493,7 +454,7 @@ export async function scanFilesystem() {
  * Apply resolved orphan mappings (update database entries with new paths)
  */
 export async function applyResolvedOrphans(resolved) {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
   let updated = 0;
 
   // Create a map of old path -> new path
@@ -507,30 +468,18 @@ export async function applyResolvedOrphans(resolved) {
 
       // Update category based on new path
       const pathParts = newPath.split('/').filter(p => p);
-      if (pathParts.length > 2 && pathParts[0] === 'images') {
-        image.category = pathParts[1]; // e.g., /images/skills/fire.png -> category: skills
+      if (pathParts.length >= 3 && pathParts[0] === 'images' && pathParts[1] === 'content') {
+        image.category = pathParts[2]; // e.g., /images/content/spirits/... -> 'spirits'
+      } else if (pathParts.length >= 2 && pathParts[0] === 'images') {
+        image.category = pathParts[1]; // Legacy: /images/skills/... -> 'skills'
       }
 
       updated++;
     }
   }
 
-  // Update search index
-  for (const [id, img] of Object.entries(searchIndex.images)) {
-    if (pathMap.has(img.path)) {
-      const newPath = pathMap.get(img.path);
-      img.path = newPath;
-
-      // Update category based on new path
-      const pathParts = newPath.split('/').filter(p => p);
-      if (pathParts.length > 2 && pathParts[0] === 'images') {
-        img.category = pathParts[1];
-      }
-    }
-  }
-
-  // Save updated indexes
-  await saveImageIndexes(mainIndex, searchIndex);
+  // Save updated index
+  await saveImageIndexes(mainIndex);
 
   return {
     updated
@@ -548,7 +497,7 @@ export async function deleteOrphanEntries(paths) {
  * Scan for and fix missing dimension data in image entries
  */
 export async function fixMissingDimensions() {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
   const imagesWithMissingData = [];
   const fixedImages = [];
   const failedImages = [];
@@ -592,20 +541,11 @@ export async function fixMissingDimensions() {
       const metadata = await sharp(fullPath).metadata();
 
       if (metadata.width && metadata.height) {
-        // Update dimensions in image entry
+        // Update dimensions in image entry (modifies mainIndex.images directly)
         image.dimensions = {
           width: metadata.width,
           height: metadata.height
         };
-
-        // Also update in search index
-        const searchEntry = Object.values(searchIndex.images).find(img => img.path === image.path);
-        if (searchEntry) {
-          searchEntry.dimensions = {
-            width: metadata.width,
-            height: metadata.height
-          };
-        }
 
         fixedImages.push({
           path: image.path,
@@ -629,9 +569,9 @@ export async function fixMissingDimensions() {
     }
   }
 
-  // Save updated indexes if any images were fixed
+  // Save updated index if any images were fixed
   if (fixedImages.length > 0) {
-    await saveImageIndexes(mainIndex, searchIndex);
+    await saveImageIndexes(mainIndex);
   }
 
   return {
@@ -648,7 +588,7 @@ export async function fixMissingDimensions() {
  * Add missing database entries for files that exist but aren't in the index
  */
 export async function addMissingEntries(paths) {
-  const { mainIndex, searchIndex } = await loadImageIndexes();
+  const { mainIndex } = await loadImageIndexes();
   let added = 0;
 
   for (const imagePath of paths) {
@@ -667,11 +607,15 @@ export async function addMissingEntries(paths) {
       const stats = await fs.stat(fullPath);
       const filename = path.basename(imagePath);
 
-      // Extract category from path (e.g., /images/skills/fire.png -> skills)
+      // Extract category from path
+      // For /images/content/X/..., category is X (the subdirectory under content)
+      // For /images/X/... (legacy), category is X
       const pathParts = imagePath.split('/').filter(p => p);
       let category = 'uncategorized';
-      if (pathParts.length > 2 && pathParts[0] === 'images') {
-        category = pathParts[1];
+      if (pathParts.length >= 3 && pathParts[0] === 'images' && pathParts[1] === 'content') {
+        category = pathParts[2]; // e.g., /images/content/spirits/... -> 'spirits'
+      } else if (pathParts.length >= 2 && pathParts[0] === 'images') {
+        category = pathParts[1]; // Legacy: /images/skills/... -> 'skills'
       }
 
       // Get dimensions for raster images
@@ -709,13 +653,6 @@ export async function addMissingEntries(paths) {
       // Add to main index
       mainIndex.images.push(newEntry);
 
-      // Add to search index
-      const searchId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      searchIndex.images[searchId] = {
-        ...newEntry,
-        id: searchId
-      };
-
       added++;
 
     } catch (error) {
@@ -723,12 +660,11 @@ export async function addMissingEntries(paths) {
     }
   }
 
-  // Update total counts
+  // Update total count
   mainIndex.totalImages = mainIndex.images.length;
-  searchIndex.totalImages = Object.keys(searchIndex.images).length;
 
-  // Save updated indexes
-  await saveImageIndexes(mainIndex, searchIndex);
+  // Save updated index
+  await saveImageIndexes(mainIndex);
 
   return {
     added

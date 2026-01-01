@@ -70,7 +70,7 @@ body::before {
   left: 0;
   right: 0;
   bottom: 0;
-  background-image: url('/images/backgrounds/page-bg.jpg');
+  background-image: url('/images/page-bg.jpg');
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
@@ -92,7 +92,7 @@ body::before {
   left: 0;
   right: 0;
   bottom: 0;
-  background-image: url('/images/backgrounds/page-bg.jpg');
+  background-image: url('/images/page-bg.jpg');
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;

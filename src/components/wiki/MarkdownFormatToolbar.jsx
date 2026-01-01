@@ -524,7 +524,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
                   title={name}
                 >
                   <img
-                    src={`/images/emoticons/Emoticon_${id}.png`}
+                    src={`/images/content/emoticons/Emoticon_${id}.png`}
                     alt={name}
                     className="w-8 h-8 object-contain"
                     loading="lazy"
