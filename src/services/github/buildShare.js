@@ -555,7 +555,7 @@ export function generateShareUrl(baseUrl, buildType, checksum) {
     throw new Error(`Unknown build type: ${buildType}. Registered types: ${registeredTypes.join(', ')}. Make sure to register build types in main.jsx using registerBuildTypes().`);
   }
 
-  return `${baseUrl}#${route}?share=${checksum}`;
+  return `${baseUrl}${route}?share=${checksum}`;
 }
 
 /**

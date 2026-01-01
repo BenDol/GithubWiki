@@ -38,7 +38,7 @@ class ErrorBoundary extends Component {
           message: `Component Error: ${error.message || 'Unknown error'}`,
           data: {
             componentStack: errorInfo.componentStack,
-            path: window.location.hash,
+            path: window.location.pathname + window.location.search + window.location.hash,
           },
           stack: error.stack,
         }),

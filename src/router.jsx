@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createHashRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
@@ -39,10 +39,10 @@ const SuspenseWrapper = ({ children }) => (
 
 /**
  * Create dynamic routes based on wiki configuration
- * Uses hash-based routing for GitHub Pages compatibility
+ * Uses browser routing for proper SEO and indexing
  */
 export const createWikiRouter = (config) => {
-  return createHashRouter([
+  return createBrowserRouter([
     {
       path: '/',
       element: <Layout />,

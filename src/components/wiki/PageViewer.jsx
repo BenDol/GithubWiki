@@ -272,14 +272,8 @@ const PageViewer = ({
                       const element = document.getElementById(id);
                       if (element) {
                         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        // Update URL without triggering route change
-                        // For hash routing: #/route/path#anchor (max 2 hash symbols)
-                        // Extract just the route part (before any existing anchor)
-                        const hashParts = window.location.hash.split('#');
-                        // hashParts: ['', '/route/path', 'old-anchor'?]
-                        // We want: #/route/path#new-anchor
-                        const routePath = hashParts[1] || '';
-                        const newUrl = `${window.location.pathname}#${routePath}#${id}`;
+                        // Update URL with anchor without triggering route change
+                        const newUrl = `${window.location.pathname}#${id}`;
                         window.history.replaceState(null, '', newUrl);
                       }
                     }}
@@ -301,14 +295,8 @@ const PageViewer = ({
                       const element = document.getElementById(id);
                       if (element) {
                         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        // Update URL without triggering route change
-                        // For hash routing: #/route/path#anchor (max 2 hash symbols)
-                        // Extract just the route part (before any existing anchor)
-                        const hashParts = window.location.hash.split('#');
-                        // hashParts: ['', '/route/path', 'old-anchor'?]
-                        // We want: #/route/path#new-anchor
-                        const routePath = hashParts[1] || '';
-                        const newUrl = `${window.location.pathname}#${routePath}#${id}`;
+                        // Update URL with anchor without triggering route change
+                        const newUrl = `${window.location.pathname}#${id}`;
                         window.history.replaceState(null, '', newUrl);
                       }
                     }}

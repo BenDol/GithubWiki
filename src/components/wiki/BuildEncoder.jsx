@@ -90,8 +90,8 @@ export const generateBuildURL = (build) => {
   const encoded = encodeBuild(build);
   if (!encoded) return null;
 
-  const baseURL = window.location.origin + window.location.pathname;
-  return `${baseURL}#/build?data=${encoded}`;
+  const baseURL = window.location.origin;
+  return `${baseURL}/build?data=${encoded}`;
 };
 
 const BuildEncoder = ({ build, onCopy }) => {

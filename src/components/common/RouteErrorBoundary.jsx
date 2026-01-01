@@ -30,7 +30,7 @@ const RouteErrorBoundary = () => {
                 data: {
                   status: error.status,
                   statusText: error.statusText,
-                  path: window.location.hash,
+                  path: window.location.pathname + window.location.search + window.location.hash,
                 },
                 stack: error.stack || error.error?.stack,
               }),

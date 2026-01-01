@@ -32,8 +32,8 @@ const DonationSystem = ({ MascotComponent = null }) => {
 
   const handleDonateClick = () => {
     handleDonate();
-    // Navigate to donate page using hash navigation (works outside Router context)
-    window.location.hash = '#/donate';
+    // Navigate to donate page
+    window.location.href = '/donate';
   };
 
   // Extract messages from shouldShow (can be true or array of messages)

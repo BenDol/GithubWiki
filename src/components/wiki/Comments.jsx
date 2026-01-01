@@ -81,8 +81,8 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   };
 
   // Use configured production URL if available, otherwise fall back to current location
-  const baseUrl = config?.wiki?.url || `${window.location.origin}${window.location.pathname}`;
-  const pageUrl = `${baseUrl}#/${sectionId}/${pageId}`;
+  const baseUrl = config?.wiki?.url || window.location.origin;
+  const pageUrl = `${baseUrl}/${sectionId}/${pageId}`;
 
   // DEV: Enable fake comments for testing lazy loading (development only)
   const ENABLE_FAKE_COMMENTS = false; // Set to true to enable fake test data

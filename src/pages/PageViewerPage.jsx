@@ -355,14 +355,12 @@ const PageViewerPage = ({ sectionId }) => {
   useEffect(() => {
     if (!loading && content) {
       // Check if there's an anchor in the URL
-      // For hash routing, URL format is: #/route/path#anchor-id
-      // Split by '#' to get: ['', '/route/path', 'anchor-id']
-      const hashParts = window.location.hash.split('#');
-      const anchor = hashParts[2]; // The anchor is the 3rd element (index 2)
+      // For browser routing, URL format is: /route/path#anchor-id
+      // window.location.hash gives us: '#anchor-id'
+      const anchor = window.location.hash.slice(1); // Remove the '#' prefix
 
       logger.trace('Anchor navigation', {
         fullHash: window.location.hash,
-        hashParts,
         anchor
       });
 

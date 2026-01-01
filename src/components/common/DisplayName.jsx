@@ -86,7 +86,7 @@ const DisplayName = ({
   if (link) {
     return (
       <a
-        href={`#/profile/${username}`}
+        href={`/profile/${username}`}
         className="hover:underline"
         onClick={(e) => {
           if (onClick) {
