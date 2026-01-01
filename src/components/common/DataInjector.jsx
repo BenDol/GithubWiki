@@ -8,6 +8,7 @@
  * @param {string|number} id - Item identifier
  * @param {string} fieldOrTemplate - Either a template ('card', 'inline', 'table') or field path ('name', 'skill.cooldown')
  * @param {boolean} showId - Whether to show the ID number (default: true, only affects inline template)
+ * @param {boolean} noStyle - Whether to render field values without styling (default: false, only affects field paths)
  */
 
 import { useState, useEffect } from 'react';
@@ -16,7 +17,7 @@ import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('DataInjector');
 
-const DataInjector = ({ source, id, fieldOrTemplate = 'card', showId = true }) => {
+const DataInjector = ({ source, id, fieldOrTemplate = 'card', showId = true, noStyle = false }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -113,7 +114,7 @@ const DataInjector = ({ source, id, fieldOrTemplate = 'card', showId = true }) =
       );
     }
 
-    return <FieldTemplate value={fieldValue} field={fieldOrTemplate} source={source} id={id} />;
+    return <FieldTemplate value={fieldValue} field={fieldOrTemplate} source={source} id={id} noStyle={noStyle} />;
   }
 
   // Otherwise, render based on template type
@@ -129,7 +130,7 @@ const DataInjector = ({ source, id, fieldOrTemplate = 'card', showId = true }) =
 };
 
 // Field template - Display a single field value inline
-const FieldTemplate = ({ value, field, source, id }) => {
+const FieldTemplate = ({ value, field, source, id, noStyle = false }) => {
   // Format the value based on type
   const formatValue = (val) => {
     if (typeof val === 'object') {
@@ -142,6 +143,13 @@ const FieldTemplate = ({ value, field, source, id }) => {
 
   const displayValue = formatValue(value);
 
+  // If noStyle is true, return just the plain value without any wrapper
+  // This allows markdown formatting (bold, italic) to be applied by parent components
+  if (noStyle) {
+    return displayValue;
+  }
+
+  // Otherwise, return styled value
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded text-sm font-medium"

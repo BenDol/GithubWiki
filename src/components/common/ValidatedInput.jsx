@@ -65,8 +65,10 @@ const ValidatedInput = ({
   // Input styling based on validation state
   const inputClasses = `
     px-3 py-2
-    bg-white dark:bg-gray-800
+    bg-surface-primary dark:bg-gray-800
     border rounded-lg
+    shadow-inset-soft dark:shadow-none
+    focus:shadow-inset-focus
     text-gray-900 dark:text-white text-sm
     focus:outline-none focus:ring-2
     placeholder-gray-400

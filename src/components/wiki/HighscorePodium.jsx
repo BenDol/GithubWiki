@@ -169,7 +169,7 @@ const HighscorePodium = ({ topThree }) => {
             {/* Username */}
             <div className="text-center mb-1 sm:mb-2">
               <div className="flex flex-col items-center space-y-1">
-                <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-500 dark:text-yellow-400 truncate max-w-[100px] sm:max-w-none">
+                <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-600 dark:text-yellow-400 truncate max-w-[100px] sm:max-w-none">
                   {displayNames[first.userId] || first.login}
                 </h3>
                 {displayNames[first.userId] && displayNames[first.userId] !== first.login && (

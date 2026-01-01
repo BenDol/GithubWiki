@@ -133,17 +133,41 @@ const PageViewerPage = ({ sectionId }) => {
 
   /**
    * Toggle fullscreen mode
+   * On mobile: Use CSS-based fullscreen (fixed positioning)
+   * On desktop: Use native fullscreen API
    */
   const toggleFullscreen = async () => {
     if (!contentRef.current) return;
 
     try {
-      if (!document.fullscreenElement) {
-        await contentRef.current.requestFullscreen();
-        setIsFullscreen(true);
+      const isMobile = window.innerWidth < 1024;
+
+      if (!isFullscreen) {
+        // Enter fullscreen
+        if (isMobile) {
+          // Mobile: Use CSS-based fullscreen
+          setIsFullscreen(true);
+          document.body.style.overflow = 'hidden';
+        } else {
+          // Desktop: Use native fullscreen API
+          if (contentRef.current.requestFullscreen) {
+            await contentRef.current.requestFullscreen();
+          }
+          setIsFullscreen(true);
+        }
       } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
+        // Exit fullscreen
+        if (isMobile) {
+          // Mobile: Exit CSS-based fullscreen
+          setIsFullscreen(false);
+          document.body.style.overflow = '';
+        } else {
+          // Desktop: Exit native fullscreen
+          if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen();
+          }
+          setIsFullscreen(false);
+        }
       }
     } catch (error) {
       logger.error('Fullscreen error', { error });
@@ -151,16 +175,29 @@ const PageViewerPage = ({ sectionId }) => {
   };
 
   /**
-   * Listen for fullscreen changes (e.g., ESC key)
+   * Listen for fullscreen changes (e.g., ESC key) - desktop only
    */
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isMobile = window.innerWidth < 1024;
+      // Only update from native fullscreen events on desktop
+      if (!isMobile) {
+        setIsFullscreen(!!document.fullscreenElement);
+      }
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  /**
+   * Cleanup body overflow on unmount
+   */
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = '';
     };
   }, []);
 
@@ -589,31 +626,35 @@ const PageViewerPage = ({ sectionId }) => {
         <div className="flex-1 min-w-0 space-y-12">
           <div
             ref={contentRef}
-            className={`page-viewer-container relative ${isFullscreen ? 'pt-8' : ''}`}
+            className={`page-viewer-container relative group ${
+              isFullscreen
+                ? 'lg:pt-8 fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto bg-white dark:bg-gray-900 overflow-y-auto p-4 lg:p-0'
+                : ''
+            }`}
             onMouseEnter={() => setShowFullscreenButton(true)}
             onMouseLeave={() => setShowFullscreenButton(false)}
           >
-            {/* Fullscreen toggle button */}
-            {showFullscreenButton && (
-              <button
-                onClick={toggleFullscreen}
-                className="absolute top-4 right-4 z-20 p-2 bg-white/90 dark:bg-gray-800/70 text-gray-700 dark:text-white border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-white dark:hover:bg-gray-800/90 transition-all duration-200 shadow-lg backdrop-blur-sm"
-                title={isFullscreen ? 'Exit fullscreen (ESC)' : 'Enter fullscreen'}
-                aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              >
-                {isFullscreen ? (
-                  // Exit fullscreen icon
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                ) : (
-                  // Enter fullscreen icon
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                  </svg>
-                )}
-              </button>
-            )}
+            {/* Fullscreen toggle button - hidden on mobile, hover on desktop */}
+            <button
+              onClick={toggleFullscreen}
+              className={`hidden lg:block absolute top-4 right-4 z-20 p-2 bg-white/90 dark:bg-gray-800/70 text-gray-700 dark:text-white border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-white dark:hover:bg-gray-800/90 transition-all duration-200 shadow-lg backdrop-blur-sm ${
+                isFullscreen ? '' : 'lg:opacity-0 lg:group-hover:opacity-100'
+              }`}
+              title={isFullscreen ? 'Exit fullscreen (ESC)' : 'Enter fullscreen'}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            >
+              {isFullscreen ? (
+                // Exit fullscreen icon
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                // Enter fullscreen icon
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+              )}
+            </button>
 
             <PageViewer
               content={content}

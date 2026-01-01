@@ -55,7 +55,7 @@ const Modal = ({ isOpen, onClose, title, children, maxWidth = '2xl' }) => {
 
       {/* Modal Content */}
       <div
-        className={`relative ${maxWidthClasses[maxWidth] || maxWidthClasses['2xl']} w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}
+        className={`relative ${maxWidthClasses[maxWidth] || maxWidthClasses['2xl']} w-full bg-surface-elevated dark:bg-gray-800 rounded-lg shadow-prominent max-h-[90vh] overflow-hidden flex flex-col`}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
