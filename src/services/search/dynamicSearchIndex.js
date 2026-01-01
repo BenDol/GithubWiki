@@ -16,7 +16,12 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 /**
  * Load search index from GitHub or cache
- * Falls back to static bundled index if unavailable
+ *
+ * The search index is now checked into the repository and automatically
+ * updated by GitHub Actions when content changes. This allows the sidebar
+ * and search to reflect deletions within 1 hour, even without deployments.
+ *
+ * Falls back to static bundled index if GitHub unavailable.
  *
  * @param {Object} config - Wiki configuration
  * @returns {Promise<Object>} Search index data
@@ -30,7 +35,7 @@ export async function loadSearchIndex(config) {
       return cached;
     }
 
-    // Fetch from GitHub
+    // Fetch from GitHub repository (updated by GitHub Actions)
     const { owner, repo } = config.wiki.repository;
     const branch = config.wiki.repository.branch || 'main';
 
@@ -52,7 +57,7 @@ export async function loadSearchIndex(config) {
     return index;
 
   } catch (error) {
-    logger.warn('Failed to fetch dynamic search index, using static', { error: error.message });
+    logger.warn('Failed to fetch search index from GitHub, using static', { error: error.message });
 
     // Fallback to bundled static index
     try {
