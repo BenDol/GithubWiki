@@ -5,6 +5,8 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { getDisplayTitle } from '../../utils/textUtils';
 import { isBanned } from '../../services/github/admin';
+import { loadSearchIndex } from '../../services/search/dynamicSearchIndex';
+import { shouldUseDynamicLoading } from '../../services/github/dynamicPageLoader';
 
 /**
  * TreeNode component for rendering expandable tree items
@@ -224,33 +226,47 @@ const Sidebar = () => {
   useEffect(() => {
     const loadPages = async () => {
       try {
-        const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
-        if (response.ok) {
-          const searchIndex = await response.json();
-          const discoveredPages = searchIndex.filter(page => page.pageId !== 'index');
+        let searchIndex;
 
-          // Add custom pages from section configs
-          const customPages = [];
-          if (config?.sections) {
-            config.sections.forEach(section => {
-              if (section.pages && Array.isArray(section.pages)) {
-                section.pages.forEach(page => {
-                  customPages.push({
-                    id: `${section.id}:${page.path}`,
-                    section: section.id,
-                    pageId: page.path.replace(/^\//, ''), // Remove leading slash
-                    title: page.title,
-                    path: page.path,
-                    isCustomRoute: true,
-                    icon: page.icon,
-                  });
-                });
-              }
-            });
+        // Use dynamic search index if dynamic page loading is enabled
+        const useDynamic = shouldUseDynamicLoading(config);
+
+        if (useDynamic && config?.wiki?.repository) {
+          // Load search index from GitHub with 1-hour cache
+          searchIndex = await loadSearchIndex(config);
+        } else {
+          // Fallback to static bundled search index
+          const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
+          if (response.ok) {
+            searchIndex = await response.json();
+          } else {
+            throw new Error('Failed to load static search index');
           }
-
-          setPages([...discoveredPages, ...customPages]);
         }
+
+        const discoveredPages = searchIndex.filter(page => page.pageId !== 'index');
+
+        // Add custom pages from section configs
+        const customPages = [];
+        if (config?.sections) {
+          config.sections.forEach(section => {
+            if (section.pages && Array.isArray(section.pages)) {
+              section.pages.forEach(page => {
+                customPages.push({
+                  id: `${section.id}:${page.path}`,
+                  section: section.id,
+                  pageId: page.path.replace(/^\//, ''), // Remove leading slash
+                  title: page.title,
+                  path: page.path,
+                  isCustomRoute: true,
+                  icon: page.icon,
+                });
+              });
+            }
+          });
+        }
+
+        setPages([...discoveredPages, ...customPages]);
       } catch (err) {
         console.error('Failed to load pages for sidebar:', err);
       } finally {

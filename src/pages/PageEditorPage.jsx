@@ -784,7 +784,7 @@ Include any supplementary details, notes, or related information.
         // Navigate back to the page view (unless quick save)
         if (!stayInEditMode) {
           setTimeout(() => {
-            navigate(isNewPage ? `/${sectionId}/${currentPageId}` : `/${sectionId}/${pageId}`);
+            navigate(isNewPage ? `/${sectionId}/${currentPageId}` : `/${sectionId}/${pageId}`, { replace: true });
           }, 1000);
         }
 
@@ -1091,7 +1091,8 @@ Include any supplementary details, notes, or related information.
     // PageEditor already handles the unsaved changes confirmation,
     // so we just navigate when called
     // For new pages, go back to section page; for existing pages, go to page view
-    navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`);
+    // Use replace: true to avoid history issues and race conditions
+    navigate(isNewPage ? `/${sectionId}` : `/${sectionId}/${pageId}`, { replace: true });
   };
 
   const handleDelete = async () => {
@@ -1174,7 +1175,7 @@ Include any supplementary details, notes, or related information.
         setIsSaving(false);
 
         setTimeout(() => {
-          navigate(`/${sectionId}`);
+          navigate(`/${sectionId}`, { replace: true });
         }, 1000);
 
         return;
@@ -1329,7 +1330,7 @@ Include any supplementary details, notes, or related information.
 
       // Navigate back to section page after successful deletion PR
       setTimeout(() => {
-        navigate(`/${sectionId}`);
+        navigate(`/${sectionId}`, { replace: true });
       }, 2000);
     } catch (err) {
       console.error('Failed to delete page:', err);

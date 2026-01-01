@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Fuse from 'fuse.js';
+import { loadSearchIndex as loadDynamicSearchIndex } from '../services/search/dynamicSearchIndex';
+import { shouldUseDynamicLoading } from '../services/github/dynamicPageLoader';
+import { useWikiConfig } from './useWikiConfig';
 
 /**
  * Hook for full-text search using Fuse.js
@@ -9,20 +12,33 @@ export const useSearch = () => {
   const [searchIndex, setSearchIndex] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { config } = useWikiConfig();
 
   // Load search index on mount
   useEffect(() => {
-    const loadSearchIndex = async () => {
+    const loadSearchIndexData = async () => {
       try {
         setLoading(true);
-        // Use import.meta.env.BASE_URL to respect Vite's base path
-        const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
 
-        if (!response.ok) {
-          throw new Error('Failed to load search index');
+        let data;
+
+        // Use dynamic search index if dynamic page loading is enabled
+        const useDynamic = shouldUseDynamicLoading(config);
+
+        if (useDynamic && config?.wiki?.repository) {
+          // Load search index from GitHub with 1-hour cache
+          data = await loadDynamicSearchIndex(config);
+        } else {
+          // Fallback to static bundled search index
+          const response = await fetch(`${import.meta.env.BASE_URL}search-index.json`);
+
+          if (!response.ok) {
+            throw new Error('Failed to load search index');
+          }
+
+          data = await response.json();
         }
 
-        const data = await response.json();
         setSearchIndex(data);
         setError(null);
       } catch (err) {
@@ -34,8 +50,8 @@ export const useSearch = () => {
       }
     };
 
-    loadSearchIndex();
-  }, []);
+    loadSearchIndexData();
+  }, [config]);
 
   // Configure Fuse.js
   const fuse = useMemo(() => {
