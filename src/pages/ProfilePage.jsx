@@ -356,6 +356,16 @@ const ProfilePage = () => {
     setCurrentPage(1);
   }, [showClosed]);
 
+  // Auto-switch to achievements tab if no edits and achievements are enabled
+  useEffect(() => {
+    if (pullRequests.length === 0 &&
+        config?.wiki?.repository &&
+        config?.features?.achievements?.enabled !== false &&
+        activeTab === 'edits') {
+      setActiveTab('achievements');
+    }
+  }, [pullRequests.length, config, activeTab]);
+
   // Check achievements when viewing achievements tab (with cooldown)
   useEffect(() => {
     const checkAchievementsOnView = async () => {
@@ -1165,22 +1175,24 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {/* Tab Navigation */}
-      {pullRequests.length > 0 && (
+      {/* Tab Navigation - Show achievements tab even with no edits */}
+      {(pullRequests.length > 0 || (config?.wiki?.repository && config?.features?.achievements?.enabled !== false)) && (
         <div className="mb-6">
           <div className="border-b border-gray-200 dark:border-gray-700">
             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-              <button
-                onClick={() => setActiveTab('edits')}
-                className={`
-                  whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
-                  ${activeTab === 'edits'
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
-                `}
-              >
-                Edit Requests
-              </button>
+              {pullRequests.length > 0 && (
+                <button
+                  onClick={() => setActiveTab('edits')}
+                  className={`
+                    whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                    ${activeTab === 'edits'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+                  `}
+                >
+                  Edit Requests
+                </button>
+              )}
               {config?.wiki?.repository && config?.features?.achievements?.enabled !== false && (
                 <button
                   onClick={() => setActiveTab('achievements')}
