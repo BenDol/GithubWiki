@@ -423,6 +423,7 @@ const Sidebar = () => {
           bg-gray-50 dark:bg-gray-900 transition-all duration-200 lg:relative
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           ${isResizing ? 'select-none' : ''}
+          [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]
         `}
         style={{
           width: typeof window !== 'undefined' && window.innerWidth >= 1024
