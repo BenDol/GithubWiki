@@ -128,11 +128,25 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
 
         const data = await response.json();
 
-        // Prepend /images/content to relative paths from game assets index
-        const imagesWithPrepend = (data.images || []).map(img => ({
-          ...img,
-          path: img.path?.startsWith('http') ? img.path : `/images/content${img.path}`
-        }));
+        // Convert CDN index paths to wiki paths
+        // CDN index has basePath (e.g., "/images") and images have relative paths (e.g., "/icons/fire.png")
+        // Combined: /images/icons/fire.png (matches game-assets/images/ structure)
+        // Wiki uses: /images/content/icons/fire.png
+        const basePath = data.path || '';  // e.g., "/images"
+        const imagesWithPrepend = (data.images || []).map(img => {
+          if (img.path?.startsWith('http')) {
+            return img;
+          }
+          // Combine basePath + image path, then convert to wiki path
+          // CDN: /images + /icons/fire.png = /images/icons/fire.png
+          // Wiki: /images/content/icons/fire.png (strip /images/, prepend /images/content/)
+          const cdnPath = basePath + img.path;  // e.g., "/images/icons/fire.png"
+          const relativePath = cdnPath.replace(/^\/images\//, '/');  // e.g., "/icons/fire.png"
+          return {
+            ...img,
+            path: `/images/content${relativePath}`  // e.g., "/images/content/icons/fire.png"
+          };
+        });
 
         setImages(imagesWithPrepend);
 
