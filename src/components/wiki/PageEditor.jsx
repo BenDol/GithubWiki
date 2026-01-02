@@ -135,6 +135,10 @@ const PageEditor = ({
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shakeValidationError, setShakeValidationError] = useState(false);
+
+  // Scroll sync
+  const syncingScroll = useRef(false);
+
   // Dynamic picker state - stores which picker is currently open (if any)
   const [openPicker, setOpenPicker] = useState(null);
   const [showVideoGuidePicker, setShowVideoGuidePicker] = useState(false);
@@ -651,6 +655,78 @@ const PageEditor = ({
       document.removeEventListener('click', handleLinkClick, true);
     };
   }, [hasUnsavedChanges, isSaving]);
+
+  // Synchronized scrolling between editor and preview
+  useEffect(() => {
+    if (viewMode !== 'split') return;
+
+    const timer = setTimeout(() => {
+      let editor;
+      let preview;
+
+      if (isFullscreen) {
+        // In fullscreen, find both elements more carefully
+        // Find all .cm-scroller elements and pick the visible one
+        const editorCandidates = document.querySelectorAll('.cm-scroller');
+        for (const candidate of editorCandidates) {
+          // Check if this editor is inside a visible container
+          const parent = candidate.closest('.flex.flex-col.overflow-hidden');
+          if (parent && parent.offsetHeight > 0) {
+            editor = candidate;
+            break;
+          }
+        }
+
+        // Find the preview by looking for overflow-y-auto that contains prose
+        const previewCandidates = document.querySelectorAll('.overflow-y-auto.overflow-x-hidden');
+        for (const candidate of previewCandidates) {
+          if (candidate.querySelector('.prose')) {
+            preview = candidate;
+            break;
+          }
+        }
+      } else {
+        editor = document.querySelector('.cm-scroller');
+        preview = document.querySelector('.h-\\[600px\\].overflow-y-auto');
+      }
+
+      if (!editor || !preview) return;
+
+      let scrollTimeout;
+
+      const syncScroll = (source, target) => {
+        if (syncingScroll.current) return;
+
+        syncingScroll.current = true;
+
+        const sourcePercent = source.scrollTop / (source.scrollHeight - source.clientHeight);
+        target.scrollTop = sourcePercent * (target.scrollHeight - target.clientHeight);
+
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          syncingScroll.current = false;
+        }, 16); // ~1 frame at 60fps
+      };
+
+      const onEditorScroll = () => {
+        syncScroll(editor, preview);
+      };
+      const onPreviewScroll = () => {
+        syncScroll(preview, editor);
+      };
+
+      editor.addEventListener('scroll', onEditorScroll);
+      preview.addEventListener('scroll', onPreviewScroll);
+
+      return () => {
+        editor.removeEventListener('scroll', onEditorScroll);
+        preview.removeEventListener('scroll', onPreviewScroll);
+        clearTimeout(scrollTimeout);
+      };
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [viewMode, isFullscreen]);
 
   // Update content when metadata changes
   const updateContentWithMetadata = (newMetadata) => {
@@ -2338,7 +2414,8 @@ const PageEditor = ({
               </span>
             </div>
 
-            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
+            <div
+              className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
               viewMode === 'preview' ? 'p-6 md:p-8' : 'p-6'
             } ${darkMode ? 'dark' : ''}`}>
               {content ? (
@@ -2429,7 +2506,8 @@ const PageEditor = ({
               </span>
             </div>
 
-            <div className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-6 ${darkMode ? 'dark' : ''}`}>
+            <div
+              className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-6 ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
                   key={metadata?.background?.path || 'no-background'}
