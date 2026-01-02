@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { resolveImagePath } from '../../utils/imageResolver';
 import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File, Eye, Copy, CheckSquare, Square, Wrench } from 'lucide-react';
 import { useConfigStore } from '../../store/configStore.js';
 
@@ -1525,7 +1526,7 @@ const ImageDatabaseManager = () => {
                             </td>
                             <td className="p-2 sm:p-3">
                               <img
-                                src={image.path}
+                                src={resolveImagePath(image.path)}
                                 alt={image.filename}
                                 className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded"
                                 onError={(e) => {

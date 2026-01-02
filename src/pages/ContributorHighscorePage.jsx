@@ -184,6 +184,37 @@ const ContributorHighscorePage = () => {
 
   // Error state
   if (error) {
+    // Check if this is a rate limit error
+    const isRateLimit = error.includes('rate limit') || error.includes('403') || error.includes('429');
+
+    if (isRateLimit) {
+      return (
+        <div className="max-w-2xl mx-auto text-center py-12">
+          <div className="text-yellow-500 text-6xl mb-4">⏱️</div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Rate Limit Reached
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Unable to load contributor highscore due to rate limiting. <a href="/login" className="text-blue-600 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 font-medium">Log in with GitHub</a> to remove this limitation.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              Retry
+            </button>
+            <Link
+              to="/"
+              className="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-2xl mx-auto text-center py-12">
         <div className="text-red-500 text-6xl mb-4">⚠️</div>

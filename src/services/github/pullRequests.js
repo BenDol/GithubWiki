@@ -281,8 +281,11 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
   const store = useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
+  // Check authentication status for appropriate cache TTL
+  const { isAuthenticated } = await import('../../store/authStore').then(m => m.useAuthStore.getState());
+
   // Check cache first
-  const cached = store.getCachedPR(cacheKey);
+  const cached = store.getCachedPR(cacheKey, isAuthenticated);
   if (cached) {
     console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username} (page ${page})`);
     return cached;
@@ -295,7 +298,7 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
 
   return deduplicatedRequest(dedupKey, async () => {
     // Double-check cache in case another request completed while we were waiting
-    const recentCache = store.getCachedPR(cacheKey);
+    const recentCache = store.getCachedPR(cacheKey, isAuthenticated);
     if (recentCache) {
       console.log(`[PR Cache] ✓ Cache populated by concurrent request`);
       return recentCache;

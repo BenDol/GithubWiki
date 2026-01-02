@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Heart, CheckCircle, Star, Users, Home, User } from 'lucide-react';
 import { useWikiConfig } from '../hooks/useWikiConfig';
 import { useAuthStore } from '../store/authStore';
+import { useGitHubDataStore } from '../store/githubDataStore';
 import { Helmet } from 'react-helmet-async';
 import DonationPrompt from '../components/donation/DonationPrompt';
 
@@ -58,6 +59,25 @@ const DonationSuccessPage = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // Invalidate donator status cache when user lands on success page
+  // This ensures the badge will appear as soon as the webhook processes
+  useEffect(() => {
+    if (isAuthenticated && user && config?.wiki?.repository) {
+      const store = useGitHubDataStore.getState();
+      const { owner, repo } = config.wiki.repository;
+      const cacheKey = `${owner}/${repo}/${user.id}`;
+
+      // Invalidate cache and disable caching for 5 minutes
+      // This allows the badge state to update after the PayPal webhook processes
+      store.invalidateDonatorStatusAndDisable(cacheKey);
+
+      console.log('[DonationSuccess] Invalidated donator status cache for user', {
+        username: user.login,
+        userId: user.id,
+      });
+    }
+  }, [isAuthenticated, user, config]);
 
   // Show sequential thank you prompts - one after another
   useEffect(() => {

@@ -93,6 +93,22 @@ const PageHistory = ({ sectionId, pageId }) => {
   }
 
   if (error) {
+    // Check if this is a rate limit error
+    const isRateLimit = error.includes('rate limit') || error.includes('403') || error.includes('429');
+
+    if (isRateLimit) {
+      return (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
+            Rate Limit Reached
+          </h3>
+          <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+            Unable to load page history due to rate limiting. <a href="/login" className="underline hover:text-yellow-800 dark:hover:text-yellow-200 font-medium">Log in with GitHub</a> to remove this limitation.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
         <h3 className="text-lg font-semibold text-red-900 dark:text-red-200 mb-2">

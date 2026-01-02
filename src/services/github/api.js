@@ -2,6 +2,7 @@ import { Octokit } from 'octokit';
 import { retryPlugin } from './octokitRetryPlugin.js';
 import { filterByReleaseDate } from '../../utils/releaseDate.js';
 import { createLogger } from '../../utils/logger';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 const logger = createLogger('GitHubAPI');
 
@@ -379,8 +380,37 @@ export const getFileContent = async (owner, repo, path, ref = 'main') => {
  * @returns {Promise<{commits: Array, hasMore: boolean}>}
  */
 export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) => {
+  const store = useGitHubDataStore.getState();
+
+  // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
+  let isAuthenticated = false;
+  if (typeof window !== 'undefined') {
+    try {
+      const { useAuthStore } = await import('../../store/authStore');
+      isAuthenticated = useAuthStore.getState().isAuthenticated;
+    } catch (err) {
+      // Silently fail if authStore can't be loaded
+    }
+  }
+
+  const cacheKey = `${owner}/${repo}/${path}:${page}:${perPage}`;
+
+  console.log(`[getFileCommits] Fetching commits for ${path} (page ${page})`);
+
+  // Check cache first (pass auth status for appropriate TTL)
+  const cached = store.getCachedCommits(cacheKey, isAuthenticated);
+  if (cached) {
+    console.log(`[getFileCommits] ✓ Cache hit - using cached commits (${cached.commits.length} commits)`);
+    return cached;
+  }
+
+  console.log('[getFileCommits] Cache miss - fetching from GitHub API');
   const octokit = getOctokit();
+
   try {
+    // Increment API call counter for the list commits call
+    store.incrementAPICall();
+
     const { data, headers } = await octokit.rest.repos.listCommits({
       owner,
       repo,
@@ -394,6 +424,7 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
       data.map(async (commit) => {
         try {
           // Fetch full commit details to get stats
+          store.incrementAPICall(); // Track each commit detail fetch
           const { data: commitDetails } = await octokit.rest.repos.getCommit({
             owner,
             repo,
@@ -424,6 +455,7 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
               if (isSquashMerge) {
                 const prNumber = parseInt(squashMergeMatch[1], 10);
                 try {
+                  store.incrementAPICall(); // Track PR fetch
                   const { data: prData } = await octokit.rest.pulls.get({
                     owner,
                     repo,
@@ -447,6 +479,7 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
 
               // If not squash merge or PR fetch failed, try to find associated PR
               if (!pr) {
+                store.incrementAPICall(); // Track associated PR fetch
                 const { data: prs } = await octokit.rest.repos.listPullRequestsAssociatedWithCommit({
                   owner,
                   repo,
@@ -564,7 +597,13 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
     // GitHub returns fewer than perPage if it's the last page
     const hasMore = data.length === perPage;
 
-    return { commits, hasMore };
+    const result = { commits, hasMore };
+
+    // Cache the results
+    store.cacheCommits(cacheKey, result);
+    console.log(`[getFileCommits] Cached ${commits.length} commits for ${path} (page ${page})`);
+
+    return result;
   } catch (error) {
     // Handle 404 (file not in repo) or 500 (file path doesn't exist)
     if (error.status === 404 || error.status === 500 || error.status === 409) {

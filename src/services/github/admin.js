@@ -13,11 +13,13 @@ import { getCachedUserId } from './userCache.js';
 
 const ADMIN_LIST_LABEL = 'wiki-admin-list';
 const BANNED_USERS_LABEL = 'wiki-ban-list';
+const TOP_CONTRIBUTOR_LABEL = 'wiki-top-contributor';
 const AUTOMATED_LABEL = 'automated';
 
 // In-flight request tracking to prevent race conditions
 const pendingAdminIssueRequests = new Map();
 const pendingBanIssueRequests = new Map();
+const pendingTopContributorIssueRequests = new Map();
 
 /**
  * Clear in-memory admin issue cache
@@ -40,13 +42,38 @@ function clearBanIssueCache(cacheKey) {
 }
 
 /**
+ * Clear in-memory top contributor issue cache
+ * Used after mutations to force fresh data on next request
+ * @param {string} cacheKey - Cache key to clear
+ */
+function clearTopContributorIssueCache(cacheKey) {
+  pendingTopContributorIssueRequests.delete(cacheKey);
+  console.log(`[Admin] Cleared in-memory top contributor issue cache: ${cacheKey}`);
+}
+
+/**
  * Check if a user is the repository owner
+ * Uses localStorage cache with no TTL (ownership doesn't change)
  * @param {number} userId - User ID to check
  * @param {string} owner - Repository owner username
  * @param {string} repo - Repository name
  * @returns {Promise<boolean>} True if user is the owner
  */
 export const isRepositoryOwner = async (userId, owner, repo) => {
+  // Check localStorage cache first (no TTL - ownership doesn't change)
+  const cacheKey = `cache:repo-owner:${owner}/${repo}:${userId}`;
+
+  try {
+    const cached = localStorage.getItem(cacheKey);
+    if (cached !== null) {
+      const isOwner = cached === 'true';
+      console.log(`[Admin] Using cached owner status for ${owner}/${repo} userId ${userId}: ${isOwner}`);
+      return isOwner;
+    }
+  } catch (err) {
+    console.warn('[Admin] Failed to read owner cache:', err);
+  }
+
   try {
     // Get repository info to get owner's user ID
     const octokit = getOctokit();
@@ -56,8 +83,18 @@ export const isRepositoryOwner = async (userId, owner, repo) => {
     });
 
     const ownerUserId = repoData.owner.id;
-    console.log('[Admin] Owner check:', { userId, ownerUserId, match: userId === ownerUserId });
-    return userId === ownerUserId;
+    const isOwner = userId === ownerUserId;
+    console.log('[Admin] Owner check:', { userId, ownerUserId, match: isOwner });
+
+    // Cache the result in localStorage (no TTL - ownership doesn't change)
+    try {
+      localStorage.setItem(cacheKey, String(isOwner));
+      console.log(`[Admin] Cached owner status for ${owner}/${repo} userId ${userId}: ${isOwner}`);
+    } catch (err) {
+      console.warn('[Admin] Failed to cache owner status:', err);
+    }
+
+    return isOwner;
   } catch (error) {
     console.error('[Admin] Failed to fetch repository owner ID:', error);
     // Fallback: return false for security
@@ -356,6 +393,193 @@ export const getBannedUsers = async (owner, repo, config, botUsername = null) =>
     console.error('Failed to get banned users:', error);
     return [];
   }
+};
+
+/**
+ * Get or create the top contributor issue for a specific page
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} sectionId - Section ID (e.g., "characters")
+ * @param {string} pageId - Page ID (e.g., "skills")
+ * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
+ * @returns {Promise<Object>} Issue object containing top contributor data
+ */
+export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pageId, config, botUsername = null) => {
+  // Detect current branch for namespace isolation
+  const branch = await detectCurrentBranch(config);
+  const branchLabel = `branch:${branch}`;
+  const cacheKey = `${owner}/${repo}/${branch}/${sectionId}/${pageId}`;
+  console.log(`[Admin] getOrCreateTopContributorIssue called - branch: ${branch}, cacheKey: ${cacheKey}`);
+
+  // Check cache first (5-minute TTL to reduce GitHub API calls)
+  const cached = getCacheValue(cacheName('top_contributor_issue', cacheKey));
+  if (cached) {
+    console.log(`[Admin] Using cached top contributor issue #${cached.number}`);
+    return cached;
+  }
+
+  // Check if there's already a request in-flight for this key
+  if (pendingTopContributorIssueRequests.has(cacheKey)) {
+    console.log('[Admin] Waiting for in-flight top contributor issue request...');
+    return pendingTopContributorIssueRequests.get(cacheKey);
+  }
+
+  // Create promise placeholder and track it IMMEDIATELY (before any async work)
+  let resolvePromise, rejectPromise;
+  const requestPromise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  // Set in map IMMEDIATELY
+  pendingTopContributorIssueRequests.set(cacheKey, requestPromise);
+
+  // Now do the actual async work
+  (async () => {
+    try {
+      const octokit = getOctokit();
+
+      // Generate page title for issue
+      const pageTitle = `${sectionId}/${pageId}`;
+
+      // Search for existing top contributor issue using listForRepo (fast, reliable)
+      console.log(`[Admin] Searching for top contributor with labels: "${TOP_CONTRIBUTOR_LABEL},${branchLabel}" in ${owner}/${repo}`);
+      const { data: issues } = await octokit.rest.issues.listForRepo({
+        owner,
+        repo,
+        labels: `${TOP_CONTRIBUTOR_LABEL},${branchLabel}`,
+        state: 'open',
+        per_page: 100, // Should be enough for most wikis
+      });
+      console.log(`[Admin] Search returned ${issues.length} issue(s)`);
+
+      const existingIssue = issues.find(
+        issue => issue.title === `[Top Contributor] ${pageTitle}`
+      );
+
+      if (existingIssue) {
+        // Security: Verify issue was created by wiki bot (top contributor issues are bot-managed)
+        const effectiveBotUsername = botUsername || (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_USERNAME : null);
+        if (effectiveBotUsername && existingIssue.user.login !== effectiveBotUsername) {
+          console.warn(`[Admin] Security: Top contributor issue created by ${existingIssue.user.login}, expected ${effectiveBotUsername}`);
+          throw new Error('Invalid top contributor issue - not created by bot');
+        }
+        console.log(`[Admin] Found existing top contributor issue #${existingIssue.number}`);
+
+        // Cache for 5 minutes
+        setCacheValue(cacheName('top_contributor_issue', cacheKey), existingIssue, 300000);
+        resolvePromise(existingIssue);
+        return;
+      }
+
+      // Create new top contributor issue using bot service
+      console.log(`[Admin] Creating top contributor issue with bot... Labels: [${TOP_CONTRIBUTOR_LABEL}, ${branchLabel}, ${AUTOMATED_LABEL}]`);
+      const newIssue = await createAdminIssueWithBot(
+        owner,
+        repo,
+        `[Top Contributor] ${pageTitle}`,
+        `⭐ **Top Contributor for ${pageTitle}**\n\nThis issue stores the top contributor data for this page.\n\n**Top Contributor:**\n\`\`\`json\n{\n  "username": null,\n  "userId": null,\n  "score": 0,\n  "updatedAt": null\n}\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Top contributor is automatically calculated based on commits.\n\n🤖 *This issue is managed by the wiki bot.*`,
+        [TOP_CONTRIBUTOR_LABEL, branchLabel, AUTOMATED_LABEL],
+        true // Lock the issue
+      );
+
+      console.log(`[Admin] Created top contributor issue #${newIssue.number}`);
+
+      // Cache for 5 minutes
+      setCacheValue(cacheName('top_contributor_issue', cacheKey), newIssue, 300000);
+
+      resolvePromise(newIssue);
+    } catch (error) {
+      console.error('Failed to get/create top contributor issue:', error);
+      rejectPromise(error);
+    } finally {
+      // Keep in-flight entry for 5 seconds after completion to prevent race conditions during GitHub's eventual consistency
+      setTimeout(() => {
+        pendingTopContributorIssueRequests.delete(cacheKey);
+      }, 5000);
+    }
+  })();
+
+  // Promise already tracked above - return it
+  return requestPromise;
+};
+
+/**
+ * Get top contributor data for a page
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} sectionId - Section ID
+ * @param {string} pageId - Page ID
+ * @param {Object} config - Wiki config for branch detection
+ * @param {string} botUsername - Bot username (optional, falls back to env var)
+ * @returns {Promise<Object|null>} Top contributor object or null
+ */
+export const getTopContributor = async (owner, repo, sectionId, pageId, config, botUsername = null) => {
+  try {
+    const issue = await getOrCreateTopContributorIssue(owner, repo, sectionId, pageId, config, botUsername);
+
+    // Parse top contributor data from issue body
+    const jsonMatch = issue.body.match(/```json\n([\s\S]*?)\n```/);
+    if (!jsonMatch) {
+      console.warn('[Admin] No JSON found in top contributor issue body');
+      return null;
+    }
+
+    const jsonStr = jsonMatch[1];
+    const data = JSON.parse(jsonStr);
+
+    // Return null if no contributor set yet
+    if (!data.username || !data.userId) {
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Failed to get top contributor:', error);
+    return null;
+  }
+};
+
+/**
+ * Update top contributor data for a page
+ * @param {string} owner - Repository owner
+ * @param {string} repo - Repository name
+ * @param {string} sectionId - Section ID
+ * @param {string} pageId - Page ID
+ * @param {Object} contributorData - { username, userId, score }
+ * @param {Object} config - Wiki config for branch detection
+ * @returns {Promise<Object>} Updated contributor data
+ */
+export const updateTopContributor = async (owner, repo, sectionId, pageId, contributorData, config) => {
+  const issue = await getOrCreateTopContributorIssue(owner, repo, sectionId, pageId, config);
+
+  // Create updated contributor data
+  const updatedData = {
+    username: contributorData.username,
+    userId: contributorData.userId,
+    score: contributorData.score,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Update issue body
+  const jsonStr = JSON.stringify(updatedData, null, 2);
+  const newBody = issue.body.replace(
+    /```json\n[\s\S]*?\n```/,
+    `\`\`\`json\n${jsonStr}\n\`\`\``
+  );
+
+  await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
+
+  // Clear cache to force refresh on next read
+  const branch = await detectCurrentBranch(config);
+  const issueCacheKey = `${owner}/${repo}/${branch}/${sectionId}/${pageId}`;
+  clearCacheValue(cacheName('top_contributor_issue', issueCacheKey));
+  clearTopContributorIssueCache(issueCacheKey);
+  console.log(`[Admin] Cleared top contributor issue cache after updating ${sectionId}/${pageId}`);
+
+  console.log(`[Admin] Updated top contributor for ${sectionId}/${pageId}: ${contributorData.username} (ID: ${contributorData.userId}, score: ${contributorData.score})`);
+  return updatedData;
 };
 
 /**

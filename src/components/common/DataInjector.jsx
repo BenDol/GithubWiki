@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react';
 import dataRegistry from '../../utils/dataRegistry';
 import { createLogger } from '../../utils/logger';
+import { resolveImagePath } from '../../utils/imageResolver';
 
 const logger = createLogger('DataInjector');
 
@@ -171,7 +172,7 @@ const CardTemplate = ({ data, source }) => {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           {imageUrl ? (
-            <img src={imageUrl} alt="" className="w-16 h-16 object-contain flex-shrink-0" style={{ margin: 0 }} />
+            <img src={resolveImagePath(imageUrl)} alt="" className="w-16 h-16 object-contain flex-shrink-0" style={{ margin: 0 }} />
           ) : (
             displayInfo?.icon && <span className="text-2xl">{displayInfo.icon}</span>
           )}
@@ -294,7 +295,7 @@ const InlineTemplate = ({ data, source, showId = true }) => {
         onMouseLeave={() => setShowTooltip(false)}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt="" className="w-5 h-5 object-contain flex-shrink-0" style={{ maxHeight: '20px', margin: 0 }} />
+          <img src={resolveImagePath(imageUrl)} alt="" className="w-5 h-5 object-contain flex-shrink-0" style={{ maxHeight: '20px', margin: 0 }} />
         ) : (
           displayInfo?.icon && <span>{displayInfo.icon}</span>
         )}
@@ -311,7 +312,7 @@ const InlineTemplate = ({ data, source, showId = true }) => {
               {/* Image */}
               {imageUrl ? (
                 <div className="flex-shrink-0">
-                  <img src={imageUrl} alt="" className="w-12 h-12 object-contain" style={{ margin: 0 }} />
+                  <img src={resolveImagePath(imageUrl)} alt="" className="w-12 h-12 object-contain" style={{ margin: 0 }} />
                 </div>
               ) : (
                 displayInfo?.icon && <span className="text-2xl flex-shrink-0">{displayInfo.icon}</span>

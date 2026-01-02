@@ -45,14 +45,22 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
 
         console.log(`[PendingEditRequests] Fetching PRs for ${sectionId}/${pageId}`);
 
-        // Check cache first
-        let allPRs = store.getCachedPR(cacheKey);
+        // Check cache first (pass auth status for appropriate TTL)
+        let allPRs = store.getCachedPR(cacheKey, isAuthenticated);
 
         if (!allPRs) {
+          // Check if we can make a request (throttling to prevent abuse detection)
+          if (!store.canFetchPRs(cacheKey)) {
+            console.log('[PendingEditRequests] Request throttled - skipping fetch');
+            setLoading(false);
+            return;
+          }
+
           // Cache miss - fetch from API
           console.log('[PendingEditRequests] Cache miss - fetching from GitHub API');
           const octokit = getOctokit();
           store.incrementAPICall();
+          store.recordPRFetch(cacheKey); // Record fetch time
 
           const { data } = await octokit.rest.pulls.list({
             owner,
@@ -135,7 +143,19 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         setPrs(formattedPRs);
       } catch (err) {
         console.error('[PendingEditRequests] Failed to fetch PRs:', err);
-        setError(err.message);
+
+        // Check if this is an abuse detection error
+        const isAbuseDetection = err.message?.includes('abuse detection') ||
+                                 err.message?.includes('secondary rate limit');
+
+        if (isAbuseDetection) {
+          // Silently fail for abuse detection - don't show error to user
+          console.warn('[PendingEditRequests] Abuse detection triggered - hiding component');
+          setError(null); // Don't set error, just hide component
+        } else {
+          // For other errors, set the error (will be hidden by component but logged)
+          setError(err.message);
+        }
       } finally {
         setLoading(false);
       }

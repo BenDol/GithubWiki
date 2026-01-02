@@ -114,6 +114,86 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
     }
   };
 
+  // Cache TTL configuration based on authentication status
+  const CACHE_TTL = {
+    // Authenticated users get shorter cache (they can see updates faster)
+    authenticated: {
+      comments: 3 * 60 * 1000,   // 3 minutes
+      reactions: 2 * 60 * 1000,  // 2 minutes
+    },
+    // Anonymous users get longer cache (reduces API calls, they can't interact anyway)
+    anonymous: {
+      comments: 15 * 60 * 1000,  // 15 minutes
+      reactions: 10 * 60 * 1000, // 10 minutes
+    }
+  };
+
+  // Get appropriate cache TTL based on authentication status
+  const getCacheTTL = (type) => {
+    return isAuthenticated
+      ? CACHE_TTL.authenticated[type]
+      : CACHE_TTL.anonymous[type];
+  };
+
+  // Comment caching helpers (reduces API calls for comment lists)
+  const getCommentsCacheKey = (issueNumber, page) => {
+    return `cache:comments:${issueNumber}:page:${page}`;
+  };
+
+  const getCachedComments = (issueNumber, page) => {
+    try {
+      const key = getCommentsCacheKey(issueNumber, page);
+      const cached = localStorage.getItem(key);
+      if (cached) {
+        const { comments, hasMore, timestamp } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+        const ttl = getCacheTTL('comments');
+
+        if (age < ttl) {
+          console.log(`[Comments] Using cached comments for issue #${issueNumber} page ${page} (age: ${Math.round(age / 1000)}s, auth: ${isAuthenticated})`);
+          return { comments, hasMore };
+        } else {
+          console.log(`[Comments] Cache expired for issue #${issueNumber} page ${page} (age: ${Math.round(age / 1000)}s > ttl: ${Math.round(ttl / 1000)}s)`);
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[Comments] Failed to get cached comments:', err);
+      return null;
+    }
+  };
+
+  const cacheComments = (issueNumber, page, comments, hasMore) => {
+    try {
+      const key = getCommentsCacheKey(issueNumber, page);
+      const data = {
+        comments,
+        hasMore,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+      console.log(`[Comments] Cached ${comments.length} comments for issue #${issueNumber} page ${page}`);
+    } catch (err) {
+      console.warn('[Comments] Failed to cache comments:', err);
+    }
+  };
+
+  // Invalidate comment cache when a new comment is posted
+  const invalidateCommentCache = (issueNumber) => {
+    try {
+      const keys = Object.keys(localStorage);
+      const prefix = `cache:comments:${issueNumber}:`;
+      keys.forEach(key => {
+        if (key.startsWith(prefix)) {
+          localStorage.removeItem(key);
+          console.log(`[Comments] Invalidated cache: ${key}`);
+        }
+      });
+    } catch (err) {
+      console.warn('[Comments] Failed to invalidate comment cache:', err);
+    }
+  };
+
   // Reaction caching helpers (prevents stale reactions after page reload)
   const getReactionsCacheKey = (commentId) => {
     return `cache:reactions:${commentId}`;
@@ -125,11 +205,14 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       const cached = localStorage.getItem(key);
       if (cached) {
         const { reactions, timestamp } = JSON.parse(cached);
-        // Cache valid for 5 minutes
         const age = Date.now() - timestamp;
-        if (age < 5 * 60 * 1000) {
-          console.log(`[Comments] Using cached reactions for comment ${commentId} (age: ${Math.round(age / 1000)}s)`);
+        const ttl = getCacheTTL('reactions');
+
+        if (age < ttl) {
+          console.log(`[Comments] Using cached reactions for comment ${commentId} (age: ${Math.round(age / 1000)}s, auth: ${isAuthenticated})`);
           return reactions;
+        } else {
+          console.log(`[Comments] Reaction cache expired for comment ${commentId} (age: ${Math.round(age / 1000)}s > ttl: ${Math.round(ttl / 1000)}s)`);
         }
       }
       return null;
@@ -150,6 +233,17 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       console.log(`[Comments] Cached ${reactions.length} reactions for comment ${commentId}`);
     } catch (err) {
       console.warn('[Comments] Failed to cache reactions:', err);
+    }
+  };
+
+  // Invalidate single comment's reaction cache when reaction is added/removed
+  const invalidateReactionCache = (commentId) => {
+    try {
+      const key = getReactionsCacheKey(commentId);
+      localStorage.removeItem(key);
+      console.log(`[Comments] Invalidated reaction cache for comment ${commentId}`);
+    } catch (err) {
+      console.warn('[Comments] Failed to invalidate reaction cache:', err);
     }
   };
 
@@ -214,9 +308,22 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
         if (pageIssue) {
           setIssue(pageIssue);
 
-          // Load first page of comments for the issue
-          const result = await getIssueComments(owner, repo, pageIssue.number, 1, PER_PAGE);
-          let issueComments = result.comments;
+          // Try to load comments from cache first
+          const cachedResult = getCachedComments(pageIssue.number, 1);
+          let result;
+          let issueComments;
+
+          if (cachedResult) {
+            // Use cached comments
+            result = cachedResult;
+            issueComments = cachedResult.comments;
+          } else {
+            // Load first page of comments for the issue from API
+            result = await getIssueComments(owner, repo, pageIssue.number, 1, PER_PAGE);
+            issueComments = result.comments;
+            // Cache the fetched comments
+            cacheComments(pageIssue.number, 1, result.comments, result.hasMore);
+          }
 
           // DEV: Add 100 fake comments for testing lazy loading
           if (import.meta.env.DEV && ENABLE_FAKE_COMMENTS) {
@@ -299,10 +406,25 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       const nextPage = currentPage + 1;
 
       console.log(`[Comments] Loading more comments, page ${nextPage}`);
-      const result = await getIssueComments(owner, repo, issue.number, nextPage, PER_PAGE);
+
+      // Try to load from cache first
+      const cachedResult = getCachedComments(issue.number, nextPage);
+      let result;
+      let newComments;
+
+      if (cachedResult) {
+        // Use cached comments
+        result = cachedResult;
+        newComments = cachedResult.comments;
+      } else {
+        // Load from API
+        result = await getIssueComments(owner, repo, issue.number, nextPage, PER_PAGE);
+        newComments = result.comments;
+        // Cache the fetched comments
+        cacheComments(issue.number, nextPage, result.comments, result.hasMore);
+      }
 
       // Append new comments to existing list
-      const newComments = result.comments;
       setComments(prev => [...prev, ...newComments]);
       setHasMore(result.hasMore);
       setCurrentPage(nextPage);
@@ -443,6 +565,9 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       console.log('[Comments] Creating comment on issue #', pageIssue.number);
       const createdComment = await createIssueComment(owner, repo, pageIssue.number, textToSubmit, config);
       console.log('[Comments] Comment created:', createdComment);
+
+      // Invalidate comment cache since we added a new comment
+      invalidateCommentCache(pageIssue.number);
 
       // Reload first page of comments (reset pagination)
       console.log('[Comments] Reloading first page of comments...');
@@ -611,6 +736,11 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
             : c
         )
       );
+
+      // Invalidate comment cache so edited version shows on refresh
+      if (pageIssue?.number) {
+        invalidateCommentCache(pageIssue.number);
+      }
 
       setEditingComment(null);
       setEditedBody('');
@@ -847,7 +977,8 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
       // We keep the optimistic update - no need to validate with slow GitHub cache
       console.log('[Comments] ✓ Reaction update complete - keeping optimistic UI state');
 
-      // Update localStorage cache with the new reaction state (use finalReactions, not state)
+      // Invalidate the old cache and update with new reaction state
+      invalidateReactionCache(commentId);
       cacheReactions(commentId, finalReactions);
     } catch (err) {
       console.error('Failed to handle reaction:', err);
@@ -961,6 +1092,19 @@ const Comments = ({ pageTitle, sectionId, pageId }) => {
   }
 
   if (error) {
+    // Check if this is a rate limit error
+    const isRateLimit = error.includes('rate limit') || error.includes('403') || error.includes('429');
+
+    if (isRateLimit) {
+      return (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+          <p className="text-yellow-700 dark:text-yellow-300 text-sm">
+            Unable to load comments due to rate limiting. <a href="/login" className="underline hover:text-yellow-800 dark:hover:text-yellow-200 font-medium">Log in with GitHub</a> to remove this limitation.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
         <p className="text-red-700 dark:text-red-300 text-sm">

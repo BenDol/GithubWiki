@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveImagePath } from '../../utils/imageResolver';
 
 const TierCard = ({ item, onClick }) => {
   return (
@@ -10,7 +11,7 @@ const TierCard = ({ item, onClick }) => {
     >
       {item.image && (
         <img
-          src={item.image}
+          src={resolveImagePath(item.image)}
           alt={item.name}
           className="w-full h-24 object-cover rounded mb-2"
         />

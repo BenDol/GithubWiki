@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Bold, Italic, Underline, Link, List, ListOrdered, Code, Heading1, Heading2, Quote, Table, Palette, AlignLeft, AlignCenter, AlignRight, X, Smile, Plus } from 'lucide-react';
+import { resolveImagePath } from '../../utils/imageResolver';
 
 /**
  * MarkdownFormatToolbar - Toolbar for markdown formatting and content insertion
@@ -524,7 +525,7 @@ const MarkdownFormatToolbar = ({ contentPickers = [], onFormat, onColorPicker, c
                   title={name}
                 >
                   <img
-                    src={`/images/content/emoticons/Emoticon_${id}.png`}
+                    src={resolveImagePath(`emoticons/Emoticon_${id}.png`)}
                     alt={name}
                     className="w-8 h-8 object-contain"
                     loading="lazy"

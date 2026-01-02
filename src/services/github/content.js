@@ -1,4 +1,5 @@
 import { getOctokit } from './api';
+import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub content/file operations
@@ -13,6 +14,31 @@ import { getOctokit } from './api';
  * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
 export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
+  const store = useGitHubDataStore.getState();
+
+  // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
+  let isAuthenticated = false;
+  if (typeof window !== 'undefined') {
+    try {
+      const { useAuthStore } = await import('../../store/authStore');
+      isAuthenticated = useAuthStore.getState().isAuthenticated;
+    } catch (err) {
+      // Silently fail if authStore can't be loaded
+    }
+  }
+
+  const cacheKey = `${owner}/${repo}/${path}:${branch}`;
+
+  // Check cache first (skip if bustCache is true or in serverless context)
+  if (!bustCache && typeof window !== 'undefined') {
+    const cached = store.getCachedFileContent(cacheKey, isAuthenticated);
+    if (cached) {
+      console.log(`[Content] ✓ Cache hit - using cached content for ${path}`);
+      return cached;
+    }
+  }
+
+  console.log(`[Content] Cache miss - fetching from GitHub API: ${path}`);
   const octokit = getOctokit();
 
   try {
@@ -28,6 +54,11 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
     // headers are not allowed in browser CORS requests to GitHub API
     if (bustCache) {
       console.log('[Content] Cache-busting requested (GitHub CDN may still cache for 2-3 minutes)');
+    }
+
+    // Increment API call counter (only in browser context)
+    if (typeof window !== 'undefined') {
+      store.incrementAPICall();
     }
 
     const { data } = await octokit.rest.repos.getContent(params);
@@ -48,13 +79,20 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
     }
     const utf8Content = new TextDecoder('utf-8').decode(bytes);
 
-    return {
+    const result = {
       content: utf8Content,
       sha: data.sha,
       path: data.path,
       size: data.size,
       url: data.html_url,
     };
+
+    // Cache the result (only in browser context)
+    if (typeof window !== 'undefined') {
+      store.cacheFileContent(cacheKey, result);
+    }
+
+    return result;
   } catch (error) {
     if (error.status === 404) {
       return null;

@@ -1,5 +1,4 @@
 import { getOctokit } from './api.js';
-import { saveUserSnapshotWithBot } from './botService.js';
 
 /**
  * Donator Registry System

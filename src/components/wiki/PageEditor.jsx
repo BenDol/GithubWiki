@@ -1136,26 +1136,8 @@ const PageEditor = ({
     const pickerMeta = registeredPickers.find(p => p.name === pickerName);
 
     if (pickerMeta && pickerMeta.handler) {
-      // Create enhanced API that uses saved cursor position
-      const enhancedApi = {
-        ...editorApiRef.current,
-        insertAtCursor: (text) => {
-          const api = editorApiRef.current;
-          // Use saved cursor position if available
-          if (savedSelection && savedSelection.from !== undefined) {
-            api.replaceRange(savedSelection.from, savedSelection.to, text);
-            setSavedSelection(null); // Clear after use
-          } else {
-            api.insertAtCursor(text);
-          }
-        }
-      };
-
-      // Call the parent-specific handler with enhanced editor API
-      pickerMeta.handler(data, enhancedApi);
-
-      // Clear saved selection if not already cleared
-      setSavedSelection(null);
+      // Pass the real editor API - insertAtCursor already uses lastCursorPosition tracking
+      pickerMeta.handler(data, editorApiRef.current);
     } else {
       logger.warn('No handler registered for picker', { pickerName });
     }

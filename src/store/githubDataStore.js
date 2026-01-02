@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const PR_CACHE_TTL = 30 * 60 * 1000; // 30 minutes (for anonymous users to reduce abuse detection)
+const COMMIT_CACHE_TTL = 3 * 60 * 1000; // 3 minutes (for authenticated users)
+const COMMIT_CACHE_TTL_ANON = 30 * 60 * 1000; // 30 minutes (for anonymous users)
+const CONTENT_CACHE_TTL = 3 * 60 * 1000; // 3 minutes (for authenticated users)
+const CONTENT_CACHE_TTL_ANON = 8 * 60 * 1000; // 8 minutes (for anonymous users)
 
 /**
  * GitHub Data Store
@@ -33,12 +38,32 @@ export const useGitHubDataStore = create((set, get) => ({
   // Fork Data: { owner/repo: { status, cachedAt } }
   forks: {},
 
+  // Commit Data: { cacheKey: { data, cachedAt } }
+  // Cache key format: owner/repo/path:page:perPage
+  commits: {},
+
+  // Star Contributor Data: { cacheKey: { data, cachedAt } }
+  // Cache key format: owner/repo/sectionId/pageId
+  starContributors: {},
+
+  // Donator Status Data: { cacheKey: { data, cachedAt, cachingDisabled } }
+  // Cache key format: owner/repo/userId
+  donatorStatus: {},
+
+  // File Content Data: { cacheKey: { data, cachedAt } }
+  // Cache key format: owner/repo/path:branch
+  fileContent: {},
+
   // Metrics for monitoring cache efficiency
   metrics: {
     cacheHits: 0,
     cacheMisses: 0,
     apiCalls: 0,
   },
+
+  // Request throttling: track last PR list fetch time by cache key
+  // Format: { cacheKey: timestamp }
+  lastPRFetchTimes: {},
 
   // ===== Pull Request Cache Methods =====
 
@@ -52,7 +77,13 @@ export const useGitHubDataStore = create((set, get) => ({
     }));
   },
 
-  getCachedPR: (key) => {
+  /**
+   * Get cached PR data
+   * @param {string} key - Cache key
+   * @param {boolean} isAuthenticated - Whether user is authenticated (affects TTL)
+   * @returns {any|null} Cached data or null if expired/missing
+   */
+  getCachedPR: (key, isAuthenticated = false) => {
     const cached = get().pullRequests[key];
 
     if (!cached) {
@@ -66,9 +97,14 @@ export const useGitHubDataStore = create((set, get) => ({
       return null;
     }
 
+    // Use longer TTL for anonymous users (60 req/hr) vs authenticated (5000 req/hr)
+    // Anonymous: 30min cache = max 2 fetches/hr
+    // Authenticated: 10min cache = max 6 fetches/hr (still well within limits)
+    const ttl = isAuthenticated ? CACHE_TTL : PR_CACHE_TTL;
+
     // Check if expired
-    if (Date.now() - cached.cachedAt > CACHE_TTL) {
-      console.log(`[GitHub Cache] PR cache expired: ${key}`);
+    if (Date.now() - cached.cachedAt > ttl) {
+      console.log(`[GitHub Cache] PR cache expired: ${key} (TTL: ${ttl / 60000}min)`);
       // Clean up expired cache
       set(state => {
         const newPRs = { ...state.pullRequests };
@@ -84,7 +120,7 @@ export const useGitHubDataStore = create((set, get) => ({
       return null;
     }
 
-    console.log(`[GitHub Cache] PR cache hit: ${key}`);
+    console.log(`[GitHub Cache] PR cache hit: ${key} (TTL: ${ttl / 60000}min)`);
     set(state => ({
       metrics: {
         ...state.metrics,
@@ -119,6 +155,41 @@ export const useGitHubDataStore = create((set, get) => ({
       });
       return { pullRequests: newPRs };
     });
+  },
+
+  // ===== Request Throttling Methods =====
+
+  /**
+   * Check if enough time has passed since last PR fetch
+   * Returns true if request should be allowed
+   */
+  canFetchPRs: (key) => {
+    const MIN_FETCH_INTERVAL = 5000; // 5 seconds minimum between fetches
+    const lastFetch = get().lastPRFetchTimes[key];
+
+    if (!lastFetch) {
+      return true; // No previous fetch, allow
+    }
+
+    const timeSinceLastFetch = Date.now() - lastFetch;
+    if (timeSinceLastFetch < MIN_FETCH_INTERVAL) {
+      console.log(`[GitHub Cache] Throttling PR fetch for ${key} (${timeSinceLastFetch}ms < ${MIN_FETCH_INTERVAL}ms)`);
+      return false;
+    }
+
+    return true;
+  },
+
+  /**
+   * Record that a PR fetch was made
+   */
+  recordPRFetch: (key) => {
+    set(state => ({
+      lastPRFetchTimes: {
+        ...state.lastPRFetchTimes,
+        [key]: Date.now()
+      }
+    }));
   },
 
   // ===== Branch Cache Methods =====
@@ -382,6 +453,356 @@ export const useGitHubDataStore = create((set, get) => ({
     }
   },
 
+  // ===== Commit Cache Methods =====
+
+  cacheCommits: (key, data) => {
+    console.log(`[GitHub Cache] Caching commits data: ${key}`);
+    set(state => ({
+      commits: {
+        ...state.commits,
+        [key]: { data, cachedAt: Date.now() }
+      }
+    }));
+  },
+
+  /**
+   * Get cached commit data
+   * @param {string} key - Cache key (format: owner/repo/path:page:perPage)
+   * @param {boolean} isAuthenticated - Whether user is authenticated (affects TTL)
+   * @returns {any|null} Cached data or null if expired/missing
+   */
+  getCachedCommits: (key, isAuthenticated = false) => {
+    const cached = get().commits[key];
+
+    if (!cached) {
+      console.log(`[GitHub Cache] Commits cache miss: ${key}`);
+      set(state => ({
+        metrics: {
+          ...state.metrics,
+          cacheMisses: state.metrics.cacheMisses + 1
+        }
+      }));
+      return null;
+    }
+
+    // Use longer TTL for anonymous users (60 req/hr) vs authenticated (5000 req/hr)
+    // Anonymous: 30min cache = max 2 fetches/hr per file
+    // Authenticated: 3min cache = max 20 fetches/hr per file (still well within 5000 limit)
+    const ttl = isAuthenticated ? COMMIT_CACHE_TTL : COMMIT_CACHE_TTL_ANON;
+
+    // Check if expired
+    if (Date.now() - cached.cachedAt > ttl) {
+      console.log(`[GitHub Cache] Commits cache expired: ${key} (TTL: ${ttl / 60000}min)`);
+      // Clean up expired cache
+      set(state => {
+        const newCommits = { ...state.commits };
+        delete newCommits[key];
+        return {
+          commits: newCommits,
+          metrics: {
+            ...state.metrics,
+            cacheMisses: state.metrics.cacheMisses + 1
+          }
+        };
+      });
+      return null;
+    }
+
+    console.log(`[GitHub Cache] Commits cache hit: ${key} (TTL: ${ttl / 60000}min)`);
+    set(state => ({
+      metrics: {
+        ...state.metrics,
+        cacheHits: state.metrics.cacheHits + 1
+      }
+    }));
+    return cached.data;
+  },
+
+  invalidateCommitsCache: (key) => {
+    if (key) {
+      console.log(`[GitHub Cache] Invalidating commits cache: ${key}`);
+      set(state => {
+        const newCommits = { ...state.commits };
+        delete newCommits[key];
+        return { commits: newCommits };
+      });
+    } else {
+      console.log('[GitHub Cache] Invalidating ALL commits cache');
+      set({ commits: {} });
+    }
+  },
+
+  // ===== File Content Cache Methods =====
+
+  cacheFileContent: (key, data) => {
+    console.log(`[GitHub Cache] Caching file content: ${key}`);
+    set(state => ({
+      fileContent: {
+        ...state.fileContent,
+        [key]: { data, cachedAt: Date.now() }
+      }
+    }));
+  },
+
+  /**
+   * Get cached file content data
+   * @param {string} key - Cache key (format: owner/repo/path:branch)
+   * @param {boolean} isAuthenticated - Whether user is authenticated (affects TTL)
+   * @returns {any|null} Cached data or null if expired/missing
+   */
+  getCachedFileContent: (key, isAuthenticated = false) => {
+    const cached = get().fileContent[key];
+
+    if (!cached) {
+      console.log(`[GitHub Cache] File content cache miss: ${key}`);
+      set(state => ({
+        metrics: {
+          ...state.metrics,
+          cacheMisses: state.metrics.cacheMisses + 1
+        }
+      }));
+      return null;
+    }
+
+    // Use longer TTL for anonymous users (60 req/hr) vs authenticated (5000 req/hr)
+    // Anonymous: 8min cache to reduce API calls
+    // Authenticated: 3min cache for fresher content
+    const ttl = isAuthenticated ? CONTENT_CACHE_TTL : CONTENT_CACHE_TTL_ANON;
+
+    // Check if expired
+    if (Date.now() - cached.cachedAt > ttl) {
+      console.log(`[GitHub Cache] File content cache expired: ${key} (TTL: ${ttl / 60000}min)`);
+      // Clean up expired cache
+      set(state => {
+        const newFileContent = { ...state.fileContent };
+        delete newFileContent[key];
+        return {
+          fileContent: newFileContent,
+          metrics: {
+            ...state.metrics,
+            cacheMisses: state.metrics.cacheMisses + 1
+          }
+        };
+      });
+      return null;
+    }
+
+    console.log(`[GitHub Cache] File content cache hit: ${key} (TTL: ${ttl / 60000}min)`);
+    set(state => ({
+      metrics: {
+        ...state.metrics,
+        cacheHits: state.metrics.cacheHits + 1
+      }
+    }));
+    return cached.data;
+  },
+
+  invalidateFileContentCache: (key) => {
+    if (key) {
+      console.log(`[GitHub Cache] Invalidating file content cache: ${key}`);
+      set(state => {
+        const newFileContent = { ...state.fileContent };
+        delete newFileContent[key];
+        return { fileContent: newFileContent };
+      });
+    } else {
+      console.log('[GitHub Cache] Invalidating ALL file content cache');
+      set({ fileContent: {} });
+    }
+  },
+
+  // ===== Star Contributor Cache Methods =====
+
+  cacheStarContributor: (key, data) => {
+    console.log(`[GitHub Cache] Caching star contributor data: ${key}`);
+    set(state => ({
+      starContributors: {
+        ...state.starContributors,
+        [key]: { data, cachedAt: Date.now() }
+      }
+    }));
+  },
+
+  /**
+   * Get cached star contributor data
+   * @param {string} key - Cache key (format: owner/repo/sectionId/pageId)
+   * @param {boolean} isAuthenticated - Whether user is authenticated (affects TTL)
+   * @returns {any|null} Cached data or null if expired/missing
+   */
+  getCachedStarContributor: (key, isAuthenticated = false) => {
+    const cached = get().starContributors[key];
+
+    if (!cached) {
+      console.log(`[GitHub Cache] Star contributor cache miss: ${key}`);
+      set(state => ({
+        metrics: {
+          ...state.metrics,
+          cacheMisses: state.metrics.cacheMisses + 1
+        }
+      }));
+      return null;
+    }
+
+    // Use longer TTL for anonymous users
+    // Anonymous: 10min cache
+    // Authenticated: 5min cache
+    const STAR_CONTRIBUTOR_TTL = isAuthenticated ? 5 * 60 * 1000 : 10 * 60 * 1000;
+    const ttl = STAR_CONTRIBUTOR_TTL;
+
+    // Check if expired
+    if (Date.now() - cached.cachedAt > ttl) {
+      console.log(`[GitHub Cache] Star contributor cache expired: ${key} (TTL: ${ttl / 60000}min)`);
+      // Clean up expired cache
+      set(state => {
+        const newStarContributors = { ...state.starContributors };
+        delete newStarContributors[key];
+        return {
+          starContributors: newStarContributors,
+          metrics: {
+            ...state.metrics,
+            cacheMisses: state.metrics.cacheMisses + 1
+          }
+        };
+      });
+      return null;
+    }
+
+    console.log(`[GitHub Cache] Star contributor cache hit: ${key} (TTL: ${ttl / 60000}min)`);
+    set(state => ({
+      metrics: {
+        ...state.metrics,
+        cacheHits: state.metrics.cacheHits + 1
+      }
+    }));
+    return cached.data;
+  },
+
+  invalidateStarContributorCache: (key) => {
+    if (key) {
+      console.log(`[GitHub Cache] Invalidating star contributor cache: ${key}`);
+      set(state => {
+        const newStarContributors = { ...state.starContributors };
+        delete newStarContributors[key];
+        return { starContributors: newStarContributors };
+      });
+    } else {
+      console.log('[GitHub Cache] Invalidating ALL star contributor cache');
+      set({ starContributors: {} });
+    }
+  },
+
+  // ===== Donator Status Cache Methods =====
+
+  cacheDonatorStatus: (key, data) => {
+    console.log(`[GitHub Cache] Caching donator status: ${key}`);
+    set(state => ({
+      donatorStatus: {
+        ...state.donatorStatus,
+        [key]: { data, cachedAt: Date.now(), cachingDisabled: false }
+      }
+    }));
+  },
+
+  /**
+   * Get cached donator status
+   * @param {string} key - Cache key (format: owner/repo/userId)
+   * @param {boolean} isAuthenticated - Whether user is authenticated (affects TTL)
+   * @returns {any|null} Cached data or null if expired/missing/disabled
+   */
+  getCachedDonatorStatus: (key, isAuthenticated = false) => {
+    const cached = get().donatorStatus[key];
+
+    if (!cached) {
+      console.log(`[GitHub Cache] Donator status cache miss: ${key}`);
+      set(state => ({
+        metrics: {
+          ...state.metrics,
+          cacheMisses: state.metrics.cacheMisses + 1
+        }
+      }));
+      return null;
+    }
+
+    // Check if caching is temporarily disabled (after donation)
+    if (cached.cachingDisabled && Date.now() - cached.cachedAt < 5 * 60 * 1000) {
+      console.log(`[GitHub Cache] Donator status caching disabled: ${key} (${Math.round((5 * 60 * 1000 - (Date.now() - cached.cachedAt)) / 1000)}s remaining)`);
+      return null;
+    }
+
+    // Re-enable caching after 5 minutes
+    if (cached.cachingDisabled && Date.now() - cached.cachedAt >= 5 * 60 * 1000) {
+      console.log(`[GitHub Cache] Re-enabling donator status caching: ${key}`);
+      set(state => ({
+        donatorStatus: {
+          ...state.donatorStatus,
+          [key]: { ...cached, cachingDisabled: false }
+        }
+      }));
+    }
+
+    // Use longer TTL for anonymous users
+    // Anonymous: 30min cache
+    // Authenticated: 10min cache
+    const DONATOR_STATUS_TTL = isAuthenticated ? 10 * 60 * 1000 : 30 * 60 * 1000;
+    const ttl = DONATOR_STATUS_TTL;
+
+    // Check if expired
+    if (Date.now() - cached.cachedAt > ttl) {
+      console.log(`[GitHub Cache] Donator status cache expired: ${key} (TTL: ${ttl / 60000}min)`);
+      // Clean up expired cache
+      set(state => {
+        const newDonatorStatus = { ...state.donatorStatus };
+        delete newDonatorStatus[key];
+        return {
+          donatorStatus: newDonatorStatus,
+          metrics: {
+            ...state.metrics,
+            cacheMisses: state.metrics.cacheMisses + 1
+          }
+        };
+      });
+      return null;
+    }
+
+    console.log(`[GitHub Cache] Donator status cache hit: ${key} (TTL: ${ttl / 60000}min)`);
+    set(state => ({
+      metrics: {
+        ...state.metrics,
+        cacheHits: state.metrics.cacheHits + 1
+      }
+    }));
+    return cached.data;
+  },
+
+  invalidateDonatorStatusCache: (key) => {
+    if (key) {
+      console.log(`[GitHub Cache] Invalidating donator status cache: ${key}`);
+      set(state => {
+        const newDonatorStatus = { ...state.donatorStatus };
+        delete newDonatorStatus[key];
+        return { donatorStatus: newDonatorStatus };
+      });
+    } else {
+      console.log('[GitHub Cache] Invalidating ALL donator status cache');
+      set({ donatorStatus: {} });
+    }
+  },
+
+  /**
+   * Invalidate donator status cache and disable caching for 5 minutes
+   * Call this after a successful donation to allow badge state to update
+   * @param {string} key - Cache key (format: owner/repo/userId)
+   */
+  invalidateDonatorStatusAndDisable: (key) => {
+    console.log(`[GitHub Cache] Invalidating donator status and disabling caching for 5 minutes: ${key}`);
+    set(state => ({
+      donatorStatus: {
+        ...state.donatorStatus,
+        [key]: { data: null, cachedAt: Date.now(), cachingDisabled: true }
+      }
+    }));
+  },
+
   // ===== Global Cache Methods =====
 
   invalidateAll: () => {
@@ -391,6 +812,9 @@ export const useGitHubDataStore = create((set, get) => ({
       branches: {},
       permissions: {},
       forks: {},
+      commits: {},
+      starContributors: {},
+      donatorStatus: {},
     });
   },
 
@@ -400,10 +824,10 @@ export const useGitHubDataStore = create((set, get) => ({
     const now = Date.now();
 
     set(state => {
-      // Clean PRs
+      // Clean PRs (use longest TTL to be safe - anonymous user cache)
       const newPRs = {};
       Object.entries(state.pullRequests).forEach(([key, value]) => {
-        if (now - value.cachedAt <= CACHE_TTL) {
+        if (now - value.cachedAt <= PR_CACHE_TTL) {
           newPRs[key] = value;
         }
       });
@@ -433,11 +857,41 @@ export const useGitHubDataStore = create((set, get) => ({
         }
       });
 
+      // Clean commits (use longest TTL to be safe - anonymous user cache)
+      const newCommits = {};
+      Object.entries(state.commits).forEach(([key, value]) => {
+        if (now - value.cachedAt <= COMMIT_CACHE_TTL_ANON) {
+          newCommits[key] = value;
+        }
+      });
+
+      // Clean star contributors (10 minute TTL - anonymous user cache)
+      const STAR_CONTRIBUTOR_TTL_ANON = 10 * 60 * 1000;
+      const newStarContributors = {};
+      Object.entries(state.starContributors).forEach(([key, value]) => {
+        if (now - value.cachedAt <= STAR_CONTRIBUTOR_TTL_ANON) {
+          newStarContributors[key] = value;
+        }
+      });
+
+      // Clean donator status (30 minute TTL - anonymous user cache)
+      const DONATOR_STATUS_TTL_ANON = 30 * 60 * 1000;
+      const newDonatorStatus = {};
+      Object.entries(state.donatorStatus).forEach(([key, value]) => {
+        // Keep entries with caching disabled (they have their own 5-minute timer)
+        if (value.cachingDisabled || now - value.cachedAt <= DONATOR_STATUS_TTL_ANON) {
+          newDonatorStatus[key] = value;
+        }
+      });
+
       return {
         pullRequests: newPRs,
         branches: newBranches,
         permissions: newPermissions,
         forks: newForks,
+        commits: newCommits,
+        starContributors: newStarContributors,
+        donatorStatus: newDonatorStatus,
       };
     });
   },
@@ -487,6 +941,9 @@ export const useGitHubDataStore = create((set, get) => ({
       branches: Object.keys(state.branches).length,
       permissions: Object.keys(state.permissions).length,
       forks: Object.keys(state.forks).length,
+      commits: Object.keys(state.commits).length,
+      starContributors: Object.keys(state.starContributors).length,
+      donatorStatus: Object.keys(state.donatorStatus).length,
       metrics: get().getMetrics(),
     };
   },
