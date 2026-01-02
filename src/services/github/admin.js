@@ -459,11 +459,13 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
       );
 
       if (existingIssue) {
-        // Security: Verify issue was created by wiki bot (top contributor issues are bot-managed)
+        // Security: Verify issue was created by authorized bot (wiki bot or GitHub Actions)
         const effectiveBotUsername = botUsername || (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_USERNAME : null);
-        if (effectiveBotUsername && existingIssue.user.login !== effectiveBotUsername) {
-          console.warn(`[Admin] Security: Top contributor issue created by ${existingIssue.user.login}, expected ${effectiveBotUsername}`);
-          throw new Error('Invalid top contributor issue - not created by bot');
+        const authorizedBots = [effectiveBotUsername, 'github-actions[bot]'].filter(Boolean);
+
+        if (authorizedBots.length > 0 && !authorizedBots.includes(existingIssue.user.login)) {
+          console.warn(`[Admin] Security: Top contributor issue created by ${existingIssue.user.login}, expected one of: ${authorizedBots.join(', ')}`);
+          throw new Error('Invalid top contributor issue - not created by authorized bot');
         }
         console.log(`[Admin] Found existing top contributor issue #${existingIssue.number}`);
 
@@ -520,14 +522,23 @@ export const getTopContributor = async (owner, repo, sectionId, pageId, config, 
     const issue = await getOrCreateTopContributorIssue(owner, repo, sectionId, pageId, config, botUsername);
 
     // Parse top contributor data from issue body
+    // Try markdown code block format first (legacy format)
     const jsonMatch = issue.body.match(/```json\n([\s\S]*?)\n```/);
-    if (!jsonMatch) {
-      console.warn('[Admin] No JSON found in top contributor issue body');
-      return null;
-    }
+    let data;
 
-    const jsonStr = jsonMatch[1];
-    const data = JSON.parse(jsonStr);
+    if (jsonMatch) {
+      // Legacy format with markdown code block
+      const jsonStr = jsonMatch[1];
+      data = JSON.parse(jsonStr);
+    } else {
+      // New format: raw JSON
+      try {
+        data = JSON.parse(issue.body);
+      } catch (parseError) {
+        console.warn('[Admin] Failed to parse top contributor issue body as JSON:', parseError.message);
+        return null;
+      }
+    }
 
     // Return null if no contributor set yet
     if (!data.username || !data.userId) {
