@@ -41,14 +41,6 @@ const isServerContext = () => {
   return typeof window === 'undefined';
 };
 
-// Development-only imports - tree-shaken in production builds
-let Octokit;
-if (isDev()) {
-  // Only import Octokit in development mode
-  const module = await import('octokit');
-  Octokit = module.Octokit;
-}
-
 /**
  * Create issue directly with bot token (DEVELOPMENT ONLY - TREE-SHAKEN IN PRODUCTION)
  * This fallback allows local development without running Netlify Functions locally
@@ -67,6 +59,8 @@ const createIssueDirectly = async (owner, repo, title, body, labels, preventDupl
 
   console.log('[Bot Service] 🔧 Using direct API call (development mode)');
 
+  // Lazy-load Octokit only when function is called (avoids top-level await)
+  const { Octokit } = await import('octokit');
   const OctokitWithRetry = Octokit.plugin(retryPlugin);
   const octokit = new OctokitWithRetry({
     auth: botToken,

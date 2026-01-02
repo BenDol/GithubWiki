@@ -928,10 +928,14 @@ Include any supplementary details, notes, or related information.
         console.log(`[PageEditor] Updated stored PR content: ${storageKey}`);
 
         // Invalidate PR cache so the updated PR can be found immediately
-        const store = useGitHubDataStore.getState();
-        store.invalidatePRCache();
-        store.invalidatePRsForUser(user.login);
-        console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+        if (useGitHubDataStore) {
+          const store = useGitHubDataStore.getState();
+          store.invalidatePRCache();
+          store.invalidatePRsForUser(user.login);
+          console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+        } else {
+          console.warn('[PageEditor] useGitHubDataStore not available, skipping cache invalidation');
+        }
 
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
@@ -1044,10 +1048,14 @@ Include any supplementary details, notes, or related information.
         console.log(`[PageEditor] Stored recent PR info: ${recentPRKey}`);
 
         // Invalidate PR cache so the new PR can be found immediately
-        const store = useGitHubDataStore.getState();
-        store.invalidatePRCache();
-        store.invalidatePRsForUser(user.login);
-        console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+        if (useGitHubDataStore) {
+          const store = useGitHubDataStore.getState();
+          store.invalidatePRCache();
+          store.invalidatePRsForUser(user.login);
+          console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+        } else {
+          console.warn('[PageEditor] useGitHubDataStore not available, skipping cache invalidation');
+        }
 
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {

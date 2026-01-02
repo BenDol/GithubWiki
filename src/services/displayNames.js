@@ -19,10 +19,32 @@ import {
 
 const logger = createLogger('DisplayNames');
 
-// In-memory cache for display names (client-side only, 24-hour TTL)
-// Display names rarely change, so we can cache them for longer
-const DISPLAY_NAME_CACHE_TTL = 86400000; // 24 hours
+// In-memory cache for display names (client-side only)
+// Display names can change, so use shorter TTL to avoid stale data
+const DISPLAY_NAME_CACHE_TTL = {
+  authenticated: 10 * 60 * 1000,  // 10 minutes for authenticated users
+  anonymous: 60 * 60 * 1000,      // 1 hour for anonymous users
+};
 const REGISTRY_CACHE_TTL = 60000; // 1 minute for full registry
+
+/**
+ * Get appropriate cache TTL based on authentication status
+ * @returns {number} TTL in milliseconds
+ */
+function getDisplayNameCacheTTL() {
+  // Check if user is authenticated by checking for auth token in localStorage
+  try {
+    const authState = localStorage.getItem('auth-storage');
+    if (authState) {
+      const parsed = JSON.parse(authState);
+      const isAuthenticated = parsed?.state?.isAuthenticated || false;
+      return isAuthenticated ? DISPLAY_NAME_CACHE_TTL.authenticated : DISPLAY_NAME_CACHE_TTL.anonymous;
+    }
+  } catch (err) {
+    // If error reading auth state, assume anonymous
+  }
+  return DISPLAY_NAME_CACHE_TTL.anonymous;
+}
 
 /**
  * Get display name data with metadata for a user
@@ -48,10 +70,11 @@ export async function getDisplayNameData(userId) {
     const data = await response.json();
     const displayNameData = data.displayName || null;
 
-    // Cache result (full data object)
-    setCacheValue(cacheKey, displayNameData, DISPLAY_NAME_CACHE_TTL);
+    // Cache result (full data object) with dynamic TTL based on auth status
+    const ttl = getDisplayNameCacheTTL();
+    setCacheValue(cacheKey, displayNameData, ttl);
 
-    logger.debug('Fetched display name data', { userId, hasData: !!displayNameData });
+    logger.debug('Fetched display name data', { userId, hasData: !!displayNameData, ttl });
     return displayNameData;
   } catch (error) {
     logger.error('Failed to get display name data', { userId, error });

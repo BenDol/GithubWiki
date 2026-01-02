@@ -22,6 +22,9 @@ import { getOctokit } from './api.js';
 const DONATOR_LABEL = 'donator';
 const DONATOR_TITLE_PREFIX = '[Donator]';
 
+// In-flight request tracking to prevent concurrent duplicate requests
+const pendingDonatorRequests = new Map();
+
 /**
  * Validate donator status object structure
  * @param {Object} donatorStatus - Donator status to validate
@@ -82,63 +85,128 @@ function validateDonatorStatus(donatorStatus) {
  * @returns {Object|null} Donator status or null if not found
  */
 export async function getDonatorStatus(owner, repo, username, userId = null) {
-  try {
-    const octokit = getOctokit();
+  const cacheKey = userId ? `${owner}/${repo}/${userId}` : `${owner}/${repo}/${username}`;
 
-    // Search for the user's donator issue
-    const { data: issues } = await octokit.rest.issues.listForRepo({
-      owner,
-      repo,
-      labels: DONATOR_LABEL,
-      state: 'open',
-      per_page: 100,
-    });
+  console.log(`[DonatorRegistry] Fetching donator status for ${username}${userId ? ` (ID: ${userId})` : ''}`);
 
-    let donatorIssue = null;
-
-    // First try: Search by user ID label (permanent identifier, preferred)
-    if (userId) {
-      donatorIssue = issues.find(issue =>
-        issue.labels.some(label =>
-          (typeof label === 'string' && label === `user-id:${userId}`) ||
-          (typeof label === 'object' && label.name === `user-id:${userId}`)
-        )
-      );
-
-      if (donatorIssue) {
-        console.log(`[DonatorRegistry] Found donator status for user ${username} by ID: ${userId}`);
-      }
-    }
-
-    // Second try: Search by username in title (legacy entries or no user ID provided)
-    if (!donatorIssue) {
-      donatorIssue = issues.find(
-        issue => issue.title === `${DONATOR_TITLE_PREFIX} ${username}`
-      );
-
-      if (donatorIssue) {
-        console.log(`[DonatorRegistry] Found legacy donator status for ${username} by title`);
-      }
-    }
-
-    if (!donatorIssue) {
-      console.log(`[DonatorRegistry] No donator status found for user: ${username}`);
-      return null;
-    }
-
-    // Parse JSON from issue body
+  // Check cache first (only in browser context)
+  if (typeof window !== 'undefined') {
     try {
-      const donatorData = JSON.parse(donatorIssue.body);
-      console.log(`[DonatorRegistry] Loaded donator status for ${username}`);
-      return donatorData;
-    } catch (parseError) {
-      console.error(`[DonatorRegistry] Failed to parse donator data for ${username}:`, parseError);
-      return null;
+      const { useGitHubDataStore } = await import('../../store/githubDataStore');
+      const { useAuthStore } = await import('../../store/authStore');
+
+      const store = useGitHubDataStore.getState();
+      const isAuthenticated = useAuthStore.getState().isAuthenticated;
+
+      const cached = store.getCachedDonatorStatus(cacheKey, isAuthenticated);
+      if (cached !== null) {
+        console.log(`[DonatorRegistry] ✓ Cache hit - using cached donator status for ${username}`);
+        return cached;
+      }
+    } catch (err) {
+      // Silently fail if stores can't be loaded (serverless context)
     }
-  } catch (error) {
-    console.error(`[DonatorRegistry] Failed to get donator status for ${username}:`, error);
-    return null;
   }
+
+  // Check if there's already a request in-flight for this user (prevent duplicate concurrent requests)
+  if (pendingDonatorRequests.has(cacheKey)) {
+    console.log(`[DonatorRegistry] Request already in-flight for ${username}, waiting...`);
+    return pendingDonatorRequests.get(cacheKey);
+  }
+
+  console.log('[DonatorRegistry] Cache miss - fetching from GitHub issues');
+
+  // Create the request promise
+  const requestPromise = (async () => {
+    try {
+      const octokit = getOctokit();
+
+      // Increment API call counter (only in browser)
+      if (typeof window !== 'undefined') {
+        try {
+          const { useGitHubDataStore } = await import('../../store/githubDataStore');
+          useGitHubDataStore.getState().incrementAPICall();
+        } catch (err) {
+          // Silently fail
+        }
+      }
+
+      // Search for the user's donator issue
+      const { data: issues } = await octokit.rest.issues.listForRepo({
+        owner,
+        repo,
+        labels: DONATOR_LABEL,
+        state: 'open',
+        per_page: 100,
+      });
+
+      let donatorIssue = null;
+
+      // First try: Search by user ID label (permanent identifier, preferred)
+      if (userId) {
+        donatorIssue = issues.find(issue =>
+          issue.labels.some(label =>
+            (typeof label === 'string' && label === `user-id:${userId}`) ||
+            (typeof label === 'object' && label.name === `user-id:${userId}`)
+          )
+        );
+
+        if (donatorIssue) {
+          console.log(`[DonatorRegistry] Found donator status for user ${username} by ID: ${userId}`);
+        }
+      }
+
+      // Second try: Search by username in title (legacy entries or no user ID provided)
+      if (!donatorIssue) {
+        donatorIssue = issues.find(
+          issue => issue.title === `${DONATOR_TITLE_PREFIX} ${username}`
+        );
+
+        if (donatorIssue) {
+          console.log(`[DonatorRegistry] Found legacy donator status for ${username} by title`);
+        }
+      }
+
+      let donatorData = null;
+
+      if (!donatorIssue) {
+        console.log(`[DonatorRegistry] No donator status found for user: ${username}`);
+      } else {
+        // Parse JSON from issue body
+        try {
+          donatorData = JSON.parse(donatorIssue.body);
+          console.log(`[DonatorRegistry] Loaded donator status for ${username}`);
+        } catch (parseError) {
+          console.error(`[DonatorRegistry] Failed to parse donator data for ${username}:`, parseError);
+        }
+      }
+
+      // Cache the result (including null for non-donators) - only in browser context
+      if (typeof window !== 'undefined') {
+        try {
+          const { useGitHubDataStore } = await import('../../store/githubDataStore');
+          const store = useGitHubDataStore.getState();
+          store.cacheDonatorStatus(cacheKey, donatorData);
+          console.log(`[DonatorRegistry] Cached donator status for ${username}`);
+        } catch (err) {
+          // Silently fail if store can't be loaded
+        }
+      }
+
+      return donatorData;
+    } catch (error) {
+      console.error(`[DonatorRegistry] Failed to get donator status for ${username}:`, error);
+      return null;
+    } finally {
+      // Clear the in-flight request
+      pendingDonatorRequests.delete(cacheKey);
+    }
+  })();
+
+  // Track the in-flight request
+  pendingDonatorRequests.set(cacheKey, requestPromise);
+
+  return requestPromise;
 }
 
 /**
@@ -231,6 +299,20 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       });
 
       console.log(`[DonatorRegistry] ✓ Donator status updated for ${username} (issue #${updatedIssue.number})`);
+
+      // Invalidate cache (only in browser context)
+      if (typeof window !== 'undefined') {
+        try {
+          const { useGitHubDataStore } = await import('../../store/githubDataStore');
+          const store = useGitHubDataStore.getState();
+          const cacheKey = `${owner}/${repo}/${userId}`;
+          store.invalidateDonatorStatusCache(cacheKey);
+          console.log(`[DonatorRegistry] Invalidated donator status cache for ${username}`);
+        } catch (err) {
+          // Silently fail if not in browser context
+        }
+      }
+
       return updatedIssue;
     } else {
       console.log(`[DonatorRegistry] Creating donator status for ${username}...`);
@@ -254,6 +336,20 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       });
 
       console.log(`[DonatorRegistry] ✓ Donator status created for ${username} (issue #${createdIssue.number})`);
+
+      // Invalidate cache (only in browser context)
+      if (typeof window !== 'undefined') {
+        try {
+          const { useGitHubDataStore } = await import('../../store/githubDataStore');
+          const store = useGitHubDataStore.getState();
+          const cacheKey = `${owner}/${repo}/${userId}`;
+          store.invalidateDonatorStatusCache(cacheKey);
+          console.log(`[DonatorRegistry] Invalidated donator status cache for ${username}`);
+        } catch (err) {
+          // Silently fail if not in browser context
+        }
+      }
+
       return createdIssue;
     }
   } catch (error) {
