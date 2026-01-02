@@ -1,5 +1,4 @@
 import { getOctokit, deduplicatedRequest } from './api';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub fork management operations
@@ -14,6 +13,7 @@ import { useGitHubDataStore } from '../../store/githubDataStore';
  * @returns {Promise<Object|null>} Fork repository object if exists, null otherwise
  */
 export const getUserFork = async (owner, repo, username) => {
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   const cacheKey = `${username}/${repo}`;
 
@@ -102,6 +102,7 @@ export const getUserFork = async (owner, repo, username) => {
  */
 export const createFork = async (owner, repo) => {
   const octokit = getOctokit();
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   store.incrementAPICall();
 

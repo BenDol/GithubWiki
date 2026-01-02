@@ -1,5 +1,4 @@
 import { getOctokit, deduplicatedRequest } from './api';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub permissions and repository access operations
@@ -20,6 +19,7 @@ import { useGitHubDataStore } from '../../store/githubDataStore';
  * @returns {Promise<string>} Permission level: 'admin', 'write', 'read', 'none'
  */
 export const getUserPermission = async (owner, repo, username, userId = null) => {
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/${username}`;
 

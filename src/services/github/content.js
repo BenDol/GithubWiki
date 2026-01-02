@@ -1,5 +1,4 @@
 import { getOctokit } from './api';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 
 /**
  * GitHub content/file operations
@@ -14,6 +13,7 @@ import { useGitHubDataStore } from '../../store/githubDataStore';
  * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
 export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
 
   // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)

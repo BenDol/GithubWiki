@@ -1,6 +1,5 @@
 import { getOctokit, getAuthenticatedUser, deduplicatedRequest } from './api';
 import { updateFileContent } from './content';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 import { isBanned } from './admin';
 import { filterByReleaseDate } from '../../utils/releaseDate';
 import { queueAchievementCheck } from '../achievements/achievementQueue';
@@ -25,6 +24,7 @@ export const createPullRequest = async (
   config = null
 ) => {
   const octokit = getOctokit();
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
 
   // Check if user is banned
@@ -126,6 +126,7 @@ export const createCrossRepoPR = async (
   baseBranch = 'main'
 ) => {
   const octokit = getOctokit();
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   store.incrementAPICall();
 
@@ -278,6 +279,7 @@ export const isPRForUser = (pr, username, userId) => {
  * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
 export const getUserPullRequests = async (owner, repo, username, userId, baseBranch = null, page = 1, perPage = 10) => {
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
@@ -460,6 +462,7 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
  */
 export const closePullRequest = async (owner, repo, pullNumber) => {
   const octokit = getOctokit();
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   store.incrementAPICall();
 
@@ -618,6 +621,7 @@ export const createWikiEditPR = async (
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch, config);
 
   // Invalidate PR cache immediately so new PR shows up in pending edits
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
   store.invalidatePRCache();
   console.log('[PR] Invalidated PR cache after PR creation');

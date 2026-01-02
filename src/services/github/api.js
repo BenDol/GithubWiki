@@ -2,7 +2,6 @@ import { Octokit } from 'octokit';
 import { retryPlugin } from './octokitRetryPlugin.js';
 import { filterByReleaseDate } from '../../utils/releaseDate.js';
 import { createLogger } from '../../utils/logger';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 
 const logger = createLogger('GitHubAPI');
 
@@ -380,6 +379,7 @@ export const getFileContent = async (owner, repo, path, ref = 'main') => {
  * @returns {Promise<{commits: Array, hasMore: boolean}>}
  */
 export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) => {
+  const { useGitHubDataStore } = await import('../../store/githubDataStore');
   const store = useGitHubDataStore.getState();
 
   // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
