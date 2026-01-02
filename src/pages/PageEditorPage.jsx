@@ -23,7 +23,6 @@ import { getDisplayTitle } from '../utils/textUtils';
 import { generatePageId } from '../utils/pageIdUtils';
 import { getContentProcessor, getCustomComponents, getSkillPreview, getEquipmentPreview, getDataAutocompleteSearch } from '../utils/contentRendererRegistry';
 import { useInvalidatePrestige } from '../hooks/usePrestige';
-import { useGitHubDataStore } from '../store/githubDataStore';
 
 /**
  * PageEditorPage
@@ -928,13 +927,16 @@ Include any supplementary details, notes, or related information.
         console.log(`[PageEditor] Updated stored PR content: ${storageKey}`);
 
         // Invalidate PR cache so the updated PR can be found immediately
-        if (useGitHubDataStore) {
-          const store = useGitHubDataStore.getState();
-          store.invalidatePRCache();
-          store.invalidatePRsForUser(user.login);
-          console.log(`[PageEditor] Invalidated PR cache for immediate access`);
-        } else {
-          console.warn('[PageEditor] useGitHubDataStore not available, skipping cache invalidation');
+        try {
+          const { useGitHubDataStore: store } = await import('../store/githubDataStore');
+          if (store) {
+            const storeState = store.getState();
+            storeState.invalidatePRCache();
+            storeState.invalidatePRsForUser(user.login);
+            console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+          }
+        } catch (err) {
+          console.warn('[PageEditor] Could not invalidate PR cache:', err);
         }
 
         // Invalidate prestige cache to reflect new contribution
@@ -1048,13 +1050,16 @@ Include any supplementary details, notes, or related information.
         console.log(`[PageEditor] Stored recent PR info: ${recentPRKey}`);
 
         // Invalidate PR cache so the new PR can be found immediately
-        if (useGitHubDataStore) {
-          const store = useGitHubDataStore.getState();
-          store.invalidatePRCache();
-          store.invalidatePRsForUser(user.login);
-          console.log(`[PageEditor] Invalidated PR cache for immediate access`);
-        } else {
-          console.warn('[PageEditor] useGitHubDataStore not available, skipping cache invalidation');
+        try {
+          const { useGitHubDataStore: store } = await import('../store/githubDataStore');
+          if (store) {
+            const storeState = store.getState();
+            storeState.invalidatePRCache();
+            storeState.invalidatePRsForUser(user.login);
+            console.log(`[PageEditor] Invalidated PR cache for immediate access`);
+          }
+        } catch (err) {
+          console.warn('[PageEditor] Could not invalidate PR cache:', err);
         }
 
         // Invalidate prestige cache to reflect new contribution
