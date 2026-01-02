@@ -64,8 +64,8 @@ const DonationSuccessPage = () => {
   useEffect(() => {
     if (isAuthenticated && user && config?.wiki?.repository) {
       const invalidateCache = async () => {
-        const { useGitHubDataStore } = await import('../store/githubDataStore');
-        const store = useGitHubDataStore.getState();
+        const githubDataStoreModule = await import('../store/githubDataStore');
+        const store = githubDataStoreModule.useGitHubDataStore.getState();
         const { owner, repo } = config.wiki.repository;
         const cacheKey = `${owner}/${repo}/${user.id}`;
 

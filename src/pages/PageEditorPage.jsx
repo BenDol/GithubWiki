@@ -928,9 +928,9 @@ Include any supplementary details, notes, or related information.
 
         // Invalidate PR cache so the updated PR can be found immediately
         try {
-          const { useGitHubDataStore: store } = await import('../store/githubDataStore');
-          if (store) {
-            const storeState = store.getState();
+          const githubDataStoreModule = await import('../store/githubDataStore');
+          if (githubDataStoreModule.useGitHubDataStore) {
+            const storeState = githubDataStoreModule.useGitHubDataStore.getState();
             storeState.invalidatePRCache();
             storeState.invalidatePRsForUser(user.login);
             console.log(`[PageEditor] Invalidated PR cache for immediate access`);
@@ -1051,9 +1051,9 @@ Include any supplementary details, notes, or related information.
 
         // Invalidate PR cache so the new PR can be found immediately
         try {
-          const { useGitHubDataStore: store } = await import('../store/githubDataStore');
-          if (store) {
-            const storeState = store.getState();
+          const githubDataStoreModule = await import('../store/githubDataStore');
+          if (githubDataStoreModule.useGitHubDataStore) {
+            const storeState = githubDataStoreModule.useGitHubDataStore.getState();
             storeState.invalidatePRCache();
             storeState.invalidatePRsForUser(user.login);
             console.log(`[PageEditor] Invalidated PR cache for immediate access`);

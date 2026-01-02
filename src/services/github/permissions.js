@@ -19,8 +19,8 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<string>} Permission level: 'admin', 'write', 'read', 'none'
  */
 export const getUserPermission = async (owner, repo, username, userId = null) => {
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/${username}`;
 
   // Track username changes if user ID provided

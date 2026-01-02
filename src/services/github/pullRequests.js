@@ -24,8 +24,8 @@ export const createPullRequest = async (
   config = null
 ) => {
   const octokit = getOctokit();
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
 
   // Check if user is banned
   if (config) {
@@ -126,8 +126,8 @@ export const createCrossRepoPR = async (
   baseBranch = 'main'
 ) => {
   const octokit = getOctokit();
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   store.incrementAPICall();
 
   console.log(`[PR] Creating cross-repo PR from ${forkOwner}:${headBranch} to ${upstreamOwner}/${upstreamRepo}:${baseBranch}`);
@@ -279,8 +279,8 @@ export const isPRForUser = (pr, username, userId) => {
  * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
 export const getUserPullRequests = async (owner, repo, username, userId, baseBranch = null, page = 1, perPage = 10) => {
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
   // Check authentication status for appropriate cache TTL
@@ -462,8 +462,8 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
  */
 export const closePullRequest = async (owner, repo, pullNumber) => {
   const octokit = getOctokit();
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   store.incrementAPICall();
 
   const { data } = await octokit.rest.pulls.update({
@@ -621,8 +621,8 @@ export const createWikiEditPR = async (
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch, config);
 
   // Invalidate PR cache immediately so new PR shows up in pending edits
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   store.invalidatePRCache();
   console.log('[PR] Invalidated PR cache after PR creation');
 

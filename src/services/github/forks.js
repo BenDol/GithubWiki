@@ -13,8 +13,8 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<Object|null>} Fork repository object if exists, null otherwise
  */
 export const getUserFork = async (owner, repo, username) => {
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   const cacheKey = `${username}/${repo}`;
 
   // Check cache first
@@ -102,8 +102,8 @@ export const getUserFork = async (owner, repo, username) => {
  */
 export const createFork = async (owner, repo) => {
   const octokit = getOctokit();
-  const { useGitHubDataStore } = await import('../../store/githubDataStore');
-  const store = useGitHubDataStore.getState();
+  const githubDataStoreModule = await import('../../store/githubDataStore');
+  const store = githubDataStoreModule.useGitHubDataStore.getState();
   store.incrementAPICall();
 
   try {

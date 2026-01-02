@@ -42,8 +42,8 @@ const StarContributor = ({ sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        const { useGitHubDataStore } = await import('../../store/githubDataStore');
-        const store = useGitHubDataStore.getState();
+        const githubDataStoreModule = await import('../../store/githubDataStore');
+        const store = githubDataStoreModule.useGitHubDataStore.getState();
         const cacheKey = `${owner}/${repo}/${sectionId}/${pageId}`;
 
         console.log(`[StarContributor] Fetching top contributor for ${sectionId}/${pageId}`);

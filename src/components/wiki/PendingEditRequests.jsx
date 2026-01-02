@@ -39,8 +39,8 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
-        const { useGitHubDataStore } = await import('../../store/githubDataStore');
-        const store = useGitHubDataStore.getState();
+        const githubDataStoreModule = await import('../../store/githubDataStore');
+        const store = githubDataStoreModule.useGitHubDataStore.getState();
         const cacheKey = `${owner}/${repo}/open-prs`;
 
         console.log(`[PendingEditRequests] Fetching PRs for ${sectionId}/${pageId}`);
@@ -179,8 +179,8 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
     try {
       setClosingPR(pr.number);
       const { owner, repo } = config.wiki.repository;
-      const { useGitHubDataStore } = await import('../../store/githubDataStore');
-      const store = useGitHubDataStore.getState();
+      const githubDataStoreModule = await import('../../store/githubDataStore');
+      const store = githubDataStoreModule.useGitHubDataStore.getState();
       const octokit = getOctokit();
 
       console.log(`[PendingEditRequests] Closing PR #${pr.number}`);
