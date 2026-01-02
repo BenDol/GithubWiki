@@ -141,6 +141,7 @@ const DefaultMaintenanceView = () => (
 /**
  * Estimated return time component
  * Handles both ISO 8601 timestamps and plain text
+ * Shows only time if return is same day, otherwise shows full date + time
  */
 const EstimatedReturnTime = ({ time }) => {
   // Try to parse as ISO 8601 timestamp
@@ -148,6 +149,18 @@ const EstimatedReturnTime = ({ time }) => {
   const isValidDate = !isNaN(date.getTime());
 
   if (isValidDate) {
+    // Check if the return time is on the same day as today
+    const now = new Date();
+    const isSameDay =
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+
+    // Format: Show only time if same day, otherwise show full date + time
+    const formattedTime = isSameDay
+      ? date.toLocaleTimeString()
+      : date.toLocaleString();
+
     return (
       <div className="inline-flex items-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
         <svg
@@ -165,7 +178,7 @@ const EstimatedReturnTime = ({ time }) => {
           />
         </svg>
         <span className="text-sm font-medium text-blue-900 dark:text-blue-200">
-          Expected back: {date.toLocaleString()}
+          Expected back: {formattedTime}
         </span>
       </div>
     );
