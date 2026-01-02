@@ -26,16 +26,16 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
   //   console.warn('[Content] Could not access githubDataStore (will continue without cache):', err.message);
   // }
 
-  // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
+  // DISABLED: Auth check temporarily disabled due to circular dependency
   let isAuthenticated = false;
-  if (typeof window !== 'undefined') {
-    try {
-      const { useAuthStore } = await import('../../store/authStore');
-      isAuthenticated = useAuthStore.getState().isAuthenticated;
-    } catch (err) {
-      // Silently fail if authStore can't be loaded
-    }
-  }
+  // if (typeof window !== 'undefined') {
+  //   try {
+  //     const { useAuthStore } = await import('../../store/authStore');
+  //     isAuthenticated = useAuthStore.getState().isAuthenticated;
+  //   } catch (err) {
+  //     // Silently fail if authStore can't be loaded
+  //   }
+  // }
 
   const cacheKey = `${owner}/${repo}/${path}:${branch}`;
 

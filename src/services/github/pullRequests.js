@@ -325,8 +325,9 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
 
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
-  // Check authentication status for appropriate cache TTL
-  const { isAuthenticated } = await import('../../store/authStore').then(m => m.useAuthStore.getState());
+  // DISABLED: Authentication check temporarily disabled due to circular dependency
+  // const { isAuthenticated } = await import('../../store/authStore').then(m => m.useAuthStore.getState());
+  const isAuthenticated = false; // Assume not authenticated for cache purposes
 
   // Check cache first (if store is available)
   if (store) {
@@ -689,19 +690,19 @@ export const createWikiEditPR = async (
   // Create PR
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch, config);
 
-  // Invalidate PR cache immediately so new PR shows up in pending edits (if store is available)
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
-      const store = githubDataStoreModule.useGitHubDataStore.getState();
-      if (store) {
-        store.invalidatePRCache();
-        console.log('[PR] Invalidated PR cache after PR creation');
-      }
-    }
-  } catch (err) {
-    console.warn('[PR] Could not invalidate cache (will continue):', err.message);
-  }
+  // DISABLED: PR cache invalidation temporarily disabled due to circular dependency
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore) {
+  //     const store = githubDataStoreModule.useGitHubDataStore.getState();
+  //     if (store) {
+  //       store.invalidatePRCache();
+  //       console.log('[PR] Invalidated PR cache after PR creation');
+  //     }
+  //   }
+  // } catch (err) {
+  //   console.warn('[PR] Could not invalidate cache (will continue):', err.message);
+  // }
 
   // Build label list
   const labels = ['wiki-edit', 'documentation'];
