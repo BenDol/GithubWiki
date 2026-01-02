@@ -63,73 +63,94 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
 
   // Load CDN images
   const loadCdnImages = async () => {
-    const cdnBaseUrl = 'https://raw.githubusercontent.com/BenDol/SlayerLegendCDN/main';
-    let data = null;
-    let source = null;
-
     try {
-      // Try GitHub Contents API first (most up-to-date, but rate limited)
-      logger.debug('Loading CDN image index from GitHub API');
-      const apiUrl = 'https://api.github.com/repos/BenDol/SlayerLegendCDN/contents/user-content/images/image-index.json';
-      const response = await fetch(apiUrl, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json'
-        },
-        cache: 'no-store'
-      });
+      // Load config to get CDN settings
+      const config = await useConfigStore.getState().loadConfig();
+      const imageUploads = config?.features?.imageUploads;
+      const cdnConfig = imageUploads?.cdn;
 
-      if (!response.ok) {
-        throw new Error(`GitHub API returned ${response.status}`);
+      if (!imageUploads?.enabled || !cdnConfig?.github) {
+        logger.warn('Image uploads or CDN not configured, skipping CDN image load');
+        setCdnImages([]);
+        return [];
       }
 
-      const apiData = await response.json();
+      const { owner, repo, basePath, branch = 'main', servingMode = 'raw' } = cdnConfig.github;
 
-      // Decode base64 content
-      const content = atob(apiData.content.replace(/\s/g, '')); // Remove whitespace from base64
-      data = JSON.parse(content);
-      source = 'GitHub API';
+      // Build URLs from config
+      const rawBaseUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}`;
+      const cdnBaseUrl = servingMode === 'jsdelivr'
+        ? `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}`
+        : rawBaseUrl;
 
-      logger.debug('Fetched image index from GitHub API', {
-        sha: apiData.sha,
-        size: apiData.size,
-        imageCount: data.images?.length
-      });
-    } catch (githubError) {
-      // Fallback to jsDelivr CDN if GitHub API fails (rate limiting, etc.)
-      logger.warn('GitHub API failed, falling back to jsDelivr CDN', { error: githubError.message });
+      let data = null;
+      let source = null;
 
       try {
-        const cdnUrl = 'https://cdn.jsdelivr.net/gh/BenDol/SlayerLegendCDN@main/user-content/images/image-index.json';
-        const response = await fetch(cdnUrl, {
+        // Try GitHub Contents API first (most up-to-date, but rate limited)
+        logger.debug('Loading CDN image index from GitHub API');
+        const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${basePath}/image-index.json`;
+        const response = await fetch(apiUrl, {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json'
+          },
           cache: 'no-store'
         });
 
         if (!response.ok) {
-          throw new Error(`jsDelivr CDN returned ${response.status}`);
+          throw new Error(`GitHub API returned ${response.status}`);
         }
 
-        data = await response.json();
-        source = 'jsDelivr CDN';
+        const apiData = await response.json();
 
-        logger.debug('Fetched image index from jsDelivr CDN', {
+        // Decode base64 content
+        const content = atob(apiData.content.replace(/\s/g, '')); // Remove whitespace from base64
+        data = JSON.parse(content);
+        source = 'GitHub API';
+
+        logger.debug('Fetched image index from GitHub API', {
+          sha: apiData.sha,
+          size: apiData.size,
           imageCount: data.images?.length
         });
-      } catch (cdnError) {
-        logger.error('Both GitHub API and jsDelivr CDN failed', {
-          githubError: githubError.message,
-          cdnError: cdnError.message
-        });
-        setCdnImages([]);
-        return [];
-      }
-    }
+      } catch (githubError) {
+        // Fallback to jsDelivr CDN if GitHub API fails (rate limiting, etc.)
+        logger.warn('GitHub API failed, falling back to jsDelivr CDN', { error: githubError.message });
 
-    try {
+        try {
+          // Use configured indexUrl if available, otherwise build from config
+          const cdnUrl = cdnConfig.github.indexUrl ||
+            `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${basePath}/image-index.json`;
+
+          const response = await fetch(cdnUrl, {
+            cache: 'no-store'
+          });
+
+          if (!response.ok) {
+            throw new Error(`jsDelivr CDN returned ${response.status}`);
+          }
+
+          data = await response.json();
+          source = 'jsDelivr CDN';
+
+          logger.debug('Fetched image index from jsDelivr CDN', {
+            imageCount: data.images?.length
+          });
+        } catch (cdnError) {
+          logger.error('Both GitHub API and jsDelivr CDN failed', {
+            githubError: githubError.message,
+            cdnError: cdnError.message
+          });
+          setCdnImages([]);
+          return [];
+        }
+      }
+
       // Prepend CDN base URL to relative paths
       const imagesWithCdnUrls = (data.images || []).map(img => ({
         ...img,
-        path: img.path?.startsWith('http') ? img.path : `${cdnBaseUrl}/${img.path}`,
-        webpPath: img.webpPath?.startsWith('http') ? img.webpPath : `${cdnBaseUrl}/${img.webpPath}`
+        path: img.path?.startsWith('http') ? img.path : `${rawBaseUrl}/${img.path}`,
+        webpPath: img.webpPath?.startsWith('http') ? img.webpPath : `${rawBaseUrl}/${img.webpPath}`
       }));
 
       setCdnImages(imagesWithCdnUrls);
@@ -141,7 +162,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
 
       return imagesWithCdnUrls;
     } catch (error) {
-      logger.error('Failed to process CDN images', { error: error.message });
+      logger.error('Failed to load CDN images', { error: error.message });
       setCdnImages([]);
       return [];
     }
