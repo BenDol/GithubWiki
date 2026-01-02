@@ -30,6 +30,7 @@ const PageViewerPage = ({ sectionId }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isRateLimitError, setIsRateLimitError] = useState(false);
   const [content, setContent] = useState('');
   const [metadata, setMetadata] = useState(null);
   const [existsOnGitHub, setExistsOnGitHub] = useState(false);
@@ -205,6 +206,7 @@ const PageViewerPage = ({ sectionId }) => {
       try {
         setLoading(true);
         setError(null);
+        setIsRateLimitError(false); // Reset rate limit error state
         setExistsOnGitHub(false); // Reset GitHub existence state on each page load
         setCacheWarning(null); // Reset cache warning
 
@@ -277,42 +279,49 @@ const PageViewerPage = ({ sectionId }) => {
       } catch (err) {
         logger.error('Error loading page', { error: err, message: err?.message });
 
-        // Check if the file exists on GitHub but hasn't been deployed yet
-        if (config?.wiki?.repository?.owner && config?.wiki?.repository?.repo && branch) {
-          try {
-            logger.debug('Checking if file exists on GitHub', {
-              path: `public/content/${sectionId}/${pageId}.md`,
-              branch
-            });
-            const filePath = `public/content/${sectionId}/${pageId}.md`;
-            // Use cache-busting to get fresh content (especially important for recent PRs)
-            const fileData = await getFileContent(
-              config.wiki.repository.owner,
-              config.wiki.repository.repo,
-              filePath,
-              branch,
-              true // bustCache = true for fresh content
-            );
+        // Check if this is a rate limit error (no cache or static available)
+        if (err.isRateLimit) {
+          logger.info('Rate limit error with no fallback content available');
+          setIsRateLimitError(true);
+          setError(err.message || 'GitHub API rate limit exceeded');
+        } else {
+          // Check if the file exists on GitHub but hasn't been deployed yet
+          if (config?.wiki?.repository?.owner && config?.wiki?.repository?.repo && branch) {
+            try {
+              logger.debug('Checking if file exists on GitHub', {
+                path: `public/content/${sectionId}/${pageId}.md`,
+                branch
+              });
+              const filePath = `public/content/${sectionId}/${pageId}.md`;
+              // Use cache-busting to get fresh content (especially important for recent PRs)
+              const fileData = await getFileContent(
+                config.wiki.repository.owner,
+                config.wiki.repository.repo,
+                filePath,
+                branch,
+                true // bustCache = true for fresh content
+              );
 
-            // getFileContent returns null for 404 errors instead of throwing
-            if (fileData === null) {
-              logger.debug('File does NOT exist on GitHub (returned null)');
+              // getFileContent returns null for 404 errors instead of throwing
+              if (fileData === null) {
+                logger.debug('File does NOT exist on GitHub (returned null)');
+                setExistsOnGitHub(false);
+              } else {
+                // If we get here, the file exists on GitHub
+                logger.debug('File EXISTS on GitHub but not deployed yet');
+                setExistsOnGitHub(true);
+              }
+            } catch (githubErr) {
+              logger.debug('File does NOT exist on GitHub (error)', { error: githubErr.message });
               setExistsOnGitHub(false);
-            } else {
-              // If we get here, the file exists on GitHub
-              logger.debug('File EXISTS on GitHub but not deployed yet');
-              setExistsOnGitHub(true);
             }
-          } catch (githubErr) {
-            logger.debug('File does NOT exist on GitHub (error)', { error: githubErr.message });
+          } else {
+            logger.debug('Cannot check GitHub - missing config or branch');
             setExistsOnGitHub(false);
           }
-        } else {
-          logger.debug('Cannot check GitHub - missing config or branch');
-          setExistsOnGitHub(false);
-        }
 
-        setError(err.message || 'Failed to load page');
+          setError(err.message || 'Failed to load page');
+        }
       } finally {
         setLoading(false);
       }
@@ -414,6 +423,51 @@ const PageViewerPage = ({ sectionId }) => {
   }
 
   if (error) {
+    // Show rate limit error page (only when not authenticated and no cached/static content available)
+    if (isRateLimitError && !isAuthenticated) {
+      return (
+        <div className="max-w-2xl mx-auto text-center py-12">
+          <div className="text-gray-400 text-6xl mb-4">⏱️</div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Rate Limit Reached
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            GitHub API rate limit has been reached and no cached content is available.
+          </p>
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6 text-left">
+            <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
+              What can I do?
+            </h3>
+            <ul className="text-sm text-yellow-800 dark:text-yellow-300 space-y-1 list-disc list-inside">
+              <li>Log in with GitHub to get higher rate limits</li>
+              <li>Wait a few minutes and try again</li>
+              <li>Browse other pages that may be cached</li>
+            </ul>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Try Again
+            </button>
+            <Link
+              to={`/${sectionId}`}
+              className="inline-flex items-center px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Section
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     // If file exists on GitHub but not deployed → Show "deploying" message with comments
     if (existsOnGitHub) {
       return (

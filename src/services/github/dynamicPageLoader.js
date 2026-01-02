@@ -298,7 +298,8 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
     }
 
     // Handle rate limiting
-    if (error.status === 403 || error.status === 429) {
+    const isRateLimit = error.status === 403 || error.status === 429;
+    if (isRateLimit) {
       logger.warn('GitHub rate limit reached', { sectionId, pageId });
 
       // Try stale cache
@@ -316,6 +317,9 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
           };
         }
       }
+
+      // No cache - continue to try static fallback below
+      logger.debug('No stale cache available, will try static fallback');
     }
 
     // Fall back to static bundled file (only for network/rate limit issues, not 404s)
@@ -325,12 +329,20 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
       if (staticResult) {
         return {
           ...staticResult,
-          warning: 'github-unavailable',
+          warning: isRateLimit ? 'rate-limited' : 'github-unavailable',
         };
       }
     }
 
-    // No fallback worked
+    // No fallback worked - if rate limit, throw special error
+    if (isRateLimit) {
+      const rateLimitError = new Error('GitHub API rate limit exceeded');
+      rateLimitError.isRateLimit = true;
+      rateLimitError.status = error.status;
+      throw rateLimitError;
+    }
+
+    // Otherwise throw original error
     throw error;
   }
 }

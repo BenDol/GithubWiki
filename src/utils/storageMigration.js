@@ -49,6 +49,11 @@ const frameworkMigrations = [
     matcher: (key) => key === 'dev-banner-dismissed',
     migrator: (key) => 'cache:dev_banner_dismissed',
   },
+  {
+    name: 'search-index',
+    matcher: (key) => key === 'search-index',
+    migrator: (key) => 'cache:search_index',
+  },
 
   // Framework page editor (generic wiki feature)
   {

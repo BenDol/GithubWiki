@@ -8,6 +8,7 @@ import rehypeSlug from 'rehype-slug';
 import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import { defaultSchema } from 'rehype-sanitize';
 import PageBackground from '../common/PageBackground';
+import { rehypeResolveImages } from '../../utils/rehypeResolveImages.js';
 import 'highlight.js/styles/github-dark.css';
 
 /**
@@ -242,6 +243,7 @@ const PageViewer = ({
           rehypePlugins={[
             rehypeRaw, // Must be first to parse HTML in markdown
             [rehypeSanitize, sanitizeSchema], // Sanitize HTML to prevent XSS attacks
+            rehypeResolveImages, // Resolve image paths to CDN URLs
             rehypeHighlight,
             rehypeSlug,
             [

@@ -1,5 +1,5 @@
 import { getFileContent } from '../github/content';
-import { getCached, setCached } from '../../utils/storageManager';
+import { getCached, setCached, StorageKeys, removeItem } from '../../utils/storageManager';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('DynamicSearchIndex');
@@ -11,7 +11,8 @@ const logger = createLogger('DynamicSearchIndex');
  * Falls back to static bundled index if GitHub unavailable.
  */
 
-const CACHE_KEY = 'search-index';
+const CACHE_NAME = 'search_index';
+const CACHE_KEY = StorageKeys.cache(CACHE_NAME);
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 /**
@@ -90,7 +91,6 @@ export async function loadSearchIndex(config) {
  * Useful when index needs to be refreshed immediately
  */
 export function clearSearchIndexCache() {
-  const { removeItem, StorageKeys } = require('../../utils/storageManager');
-  removeItem(StorageKeys.cache(CACHE_KEY));
+  removeItem(CACHE_KEY);
   logger.info('Search index cache cleared');
 }

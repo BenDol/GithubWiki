@@ -4,6 +4,7 @@ import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, Al
 import ImageUploadModal from './ImageUploadModal.jsx';
 import { createLogger } from '../../utils/logger.js';
 import { useConfigStore } from '../../store/configStore.js';
+import { resolveImagePath } from '../../utils/imageResolver.js';
 
 const logger = createLogger('ImagePicker');
 
@@ -835,7 +836,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
                       disabled={isPending}
                     >
                       <img
-                        src={image.path}
+                        src={resolveImagePath(image.path)}
                         alt={image.filename || image.name}
                         className="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
                         loading="lazy"
@@ -882,7 +883,7 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-start gap-2">
                   <img
-                    src={selectedImage.path}
+                    src={resolveImagePath(selectedImage.path)}
                     alt={selectedImage.filename}
                     className="w-24 h-24 flex-shrink-0 object-contain bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
                     style={{
