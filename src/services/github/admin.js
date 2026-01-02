@@ -13,7 +13,7 @@ import { getCachedUserId } from './userCache.js';
 
 const ADMIN_LIST_LABEL = 'wiki-admin-list';
 const BANNED_USERS_LABEL = 'wiki-ban-list';
-const TOP_CONTRIBUTOR_LABEL = 'wiki-top-contributor';
+const TOP_CONTRIBUTOR_LABEL = 'top-contributor';
 const AUTOMATED_LABEL = 'automated';
 
 // In-flight request tracking to prevent race conditions
