@@ -49,6 +49,26 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           //logger.trace('getSelection called', { hasView: !!view });
           if (!view) return { text: '', from: 0, to: 0, empty: true };
           const selection = view.state.selection.main;
+
+          // If current selection is empty but we have a saved selection (from blur),
+          // use the saved selection (this happens when toolbar buttons are clicked)
+          if (selection.empty && editorApi.current?.lastSelection && !editorApi.current.lastSelection.empty) {
+            logger.trace('Using saved selection', {
+              savedFrom: editorApi.current.lastSelection.from,
+              savedTo: editorApi.current.lastSelection.to
+            });
+            const savedText = view.state.doc.sliceString(
+              editorApi.current.lastSelection.from,
+              editorApi.current.lastSelection.to
+            );
+            return {
+              text: savedText,
+              from: editorApi.current.lastSelection.from,
+              to: editorApi.current.lastSelection.to,
+              empty: false
+            };
+          }
+
           const selectedText = view.state.doc.sliceString(selection.from, selection.to);
           return {
             text: selectedText,
@@ -64,10 +84,24 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             logger.error('View not available for replaceSelection');
             return;
           }
-          const selection = view.state.selection.main;
+
+          // Use saved selection if available (from blur event when toolbar clicked)
+          let from, to;
+          if (editorApi.current?.lastSelection && !editorApi.current.lastSelection.empty) {
+            from = editorApi.current.lastSelection.from;
+            to = editorApi.current.lastSelection.to;
+            logger.trace('Using saved selection for replacement', { from, to });
+            // Clear saved selection after using it
+            editorApi.current.lastSelection = null;
+          } else {
+            const selection = view.state.selection.main;
+            from = selection.from;
+            to = selection.to;
+          }
+
           view.dispatch({
-            changes: { from: selection.from, to: selection.to, insert: text },
-            selection: { anchor: selection.from + text.length }
+            changes: { from, to, insert: text },
+            selection: { anchor: from + text.length }
           });
         },
         replaceRange: (from, to, text) => {
@@ -81,6 +115,10 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             changes: { from, to, insert: text },
             selection: { anchor: from + text.length }
           });
+          // Clear saved selection after any replacement operation
+          if (editorApi.current?.lastSelection) {
+            editorApi.current.lastSelection = null;
+          }
           logger.trace('replaceRange dispatch complete');
         },
         insertAtCursor: (text) => {
@@ -258,15 +296,29 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
             // Check for data autocomplete pattern
             checkDataAutocomplete();
           }
-          // Track cursor position changes
+          // Track cursor position and selection changes
           if (update.selectionSet || update.docChanged) {
-            const cursorPos = update.state.selection.main.head;
+            const selection = update.state.selection.main;
+            const cursorPos = selection.head;
 
             // Always update cursor position to track user's latest position
             // Blur handler will preserve position when editor loses focus
-            logger.trace('Cursor position update', { cursorPos });
+            logger.trace('Cursor/selection update', {
+              cursorPos,
+              from: selection.from,
+              to: selection.to,
+              empty: selection.empty
+            });
             if (editorApi.current) {
               editorApi.current.lastCursorPosition = cursorPos;
+              // Save selection range for toolbar operations
+              if (!selection.empty) {
+                editorApi.current.lastSelection = {
+                  from: selection.from,
+                  to: selection.to,
+                  empty: false
+                };
+              }
             }
 
             checkDataAutocomplete();
@@ -304,13 +356,28 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
 
     viewRef.current = view;
 
-    // Track cursor position when editor loses focus (blur)
-    // This ensures we save position before toolbar buttons are clicked
+    // Track cursor position and selection when editor loses focus (blur)
+    // This ensures we save position/selection before toolbar buttons are clicked
     const handleBlur = () => {
       if (view && editorApi.current) {
-        const cursorPos = view.state.selection.main.head;
-        logger.trace('Editor blur - save cursor', { cursorPos });
+        const selection = view.state.selection.main;
+        const cursorPos = selection.head;
+        logger.trace('Editor blur - save cursor/selection', {
+          cursorPos,
+          from: selection.from,
+          to: selection.to,
+          empty: selection.empty
+        });
         editorApi.current.lastCursorPosition = cursorPos;
+        // Save selection range if text is selected
+        if (!selection.empty) {
+          editorApi.current.lastSelection = {
+            from: selection.from,
+            to: selection.to,
+            empty: false
+          };
+          logger.trace('Saved selection on blur', editorApi.current.lastSelection);
+        }
       }
     };
 
@@ -782,11 +849,25 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       setTimeout(() => {
         checkCursorOnImage();
 
-        // Also update cursor position tracking on click/touch
+        // Also update cursor position and selection tracking on click/touch
         if (viewRef.current && editorApi.current) {
-          const cursorPos = viewRef.current.state.selection.main.head;
-          logger.trace('Click/Touch - save cursor', { cursorPos });
+          const selection = viewRef.current.state.selection.main;
+          const cursorPos = selection.head;
+          logger.trace('Click/Touch - save cursor/selection', {
+            cursorPos,
+            from: selection.from,
+            to: selection.to,
+            empty: selection.empty
+          });
           editorApi.current.lastCursorPosition = cursorPos;
+          // Save selection range if text is selected
+          if (!selection.empty) {
+            editorApi.current.lastSelection = {
+              from: selection.from,
+              to: selection.to,
+              empty: false
+            };
+          }
         }
       }, 50);
     };
