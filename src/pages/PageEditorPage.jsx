@@ -62,6 +62,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false, emoticonMap = null }) =>
   const [pendingAnonymousEdit, setPendingAnonymousEdit] = useState(null); // Store content awaiting anonymous submission
   const [clearDraftFn, setClearDraftFn] = useState(null); // Store clearDraft function from PageEditor
   const [draftWasLoaded, setDraftWasLoaded] = useState(false); // Track if draft was loaded to show banner
+  const [successMessage, setSuccessMessage] = useState(null); // For inline success messages (quick save)
 
   // Use newPageId for new pages, urlPageId for editing existing pages
   const pageId = isNewPage ? newPageId : urlPageId;
@@ -627,6 +628,7 @@ Include any supplementary details, notes, or related information.
     try {
       setIsSaving(true);
       setError(null);
+      setSuccessMessage(null); // Clear any previous success message
 
       const { owner, repo, contentPath } = config.wiki.repository;
       const baseBranch = currentBranch; // Use detected branch from context
@@ -926,19 +928,6 @@ Include any supplementary details, notes, or related information.
         localStorage.setItem(storageKey, JSON.stringify(storageData));
         console.log(`[PageEditor] Updated stored PR content: ${storageKey}`);
 
-        // Invalidate PR cache so the updated PR can be found immediately
-        try {
-          const githubDataStoreModule = await import('../store/githubDataStore');
-          if (githubDataStoreModule.useGitHubDataStore) {
-            const storeState = githubDataStoreModule.useGitHubDataStore.getState();
-            storeState.invalidatePRCache();
-            storeState.invalidatePRsForUser(user.login);
-            console.log(`[PageEditor] Invalidated PR cache for immediate access`);
-          }
-        } catch (err) {
-          console.warn('[PageEditor] Could not invalidate PR cache:', err);
-        }
-
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
           invalidatePrestige(user.login);
@@ -1049,19 +1038,6 @@ Include any supplementary details, notes, or related information.
         localStorage.setItem(recentPRKey, JSON.stringify(recentPRData));
         console.log(`[PageEditor] Stored recent PR info: ${recentPRKey}`);
 
-        // Invalidate PR cache so the new PR can be found immediately
-        try {
-          const githubDataStoreModule = await import('../store/githubDataStore');
-          if (githubDataStoreModule.useGitHubDataStore) {
-            const storeState = githubDataStoreModule.useGitHubDataStore.getState();
-            storeState.invalidatePRCache();
-            storeState.invalidatePRsForUser(user.login);
-            console.log(`[PageEditor] Invalidated PR cache for immediate access`);
-          }
-        } catch (err) {
-          console.warn('[PageEditor] Could not invalidate PR cache:', err);
-        }
-
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
           invalidatePrestige(user.login);
@@ -1089,12 +1065,29 @@ Include any supplementary details, notes, or related information.
       }
 
       setSavingStatus(''); // Clear saving status on success
-      setPrUrl(pr.url);
+
+      // For quick save (stayInEditMode), show inline success message instead of navigating
+      if (stayInEditMode) {
+        const message = existingPR
+          ? 'Changes saved! Your edit request has been updated.'
+          : 'Changes saved! Your edit request has been created.';
+        setSuccessMessage(message);
+        setIsSaving(false);
+
+        // Auto-hide success message after 5 seconds
+        setTimeout(() => {
+          setSuccessMessage(null);
+        }, 5000);
+      } else {
+        // Normal save - show full success screen
+        setPrUrl(pr.url);
+      }
     } catch (err) {
       console.error('Failed to save changes:', err);
       setError(handleGitHubError(err));
       setIsSaving(false);
       setSavingStatus(''); // Clear saving status on error
+      setSuccessMessage(null); // Clear any success message when error occurs
     }
   };
 
@@ -1862,6 +1855,33 @@ Include any supplementary details, notes, or related information.
                 {savingStatus}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message Banner (Quick Save) */}
+      {successMessage && (
+        <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-900 dark:text-green-200">
+                {successMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="flex-shrink-0 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200 transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

@@ -13,8 +13,16 @@ import { getOctokit } from './api';
  * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
 export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[Content] Could not access githubDataStore (will continue without cache):', err.message);
+  }
 
   // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
   let isAuthenticated = false;
@@ -29,8 +37,8 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
 
   const cacheKey = `${owner}/${repo}/${path}:${branch}`;
 
-  // Check cache first (skip if bustCache is true or in serverless context)
-  if (!bustCache && typeof window !== 'undefined') {
+  // Check cache first (skip if bustCache is true or in serverless context or store unavailable)
+  if (!bustCache && typeof window !== 'undefined' && store) {
     const cached = store.getCachedFileContent(cacheKey, isAuthenticated);
     if (cached) {
       console.log(`[Content] ✓ Cache hit - using cached content for ${path}`);
@@ -56,8 +64,8 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
       console.log('[Content] Cache-busting requested (GitHub CDN may still cache for 2-3 minutes)');
     }
 
-    // Increment API call counter (only in browser context)
-    if (typeof window !== 'undefined') {
+    // Increment API call counter (only in browser context and if store is available)
+    if (typeof window !== 'undefined' && store) {
       store.incrementAPICall();
     }
 
@@ -87,8 +95,8 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
       url: data.html_url,
     };
 
-    // Cache the result (only in browser context)
-    if (typeof window !== 'undefined') {
+    // Cache the result (only in browser context and if store is available)
+    if (typeof window !== 'undefined' && store) {
       store.cacheFileContent(cacheKey, result);
     }
 

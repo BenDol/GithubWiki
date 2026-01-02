@@ -19,37 +19,53 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<string>} Permission level: 'admin', 'write', 'read', 'none'
  */
 export const getUserPermission = async (owner, repo, username, userId = null) => {
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[Permissions] Could not access githubDataStore (will continue without cache):', err.message);
+  }
+
   const cacheKey = `${owner}/${repo}/${username}`;
 
-  // Track username changes if user ID provided
-  if (userId) {
+  // Track username changes if user ID provided (if store is available)
+  if (userId && store) {
     store.updateUserMapping(userId, username);
   }
 
-  // Check cache first
-  const cached = store.getCachedPermission(cacheKey);
-  if (cached) {
-    console.log(`[Permissions] ✓ Cache hit for ${username}: ${cached}`);
-    return cached;
+  // Check cache first (if store is available)
+  if (store) {
+    const cached = store.getCachedPermission(cacheKey);
+    if (cached) {
+      console.log(`[Permissions] ✓ Cache hit for ${username}: ${cached}`);
+      return cached;
+    }
+    console.log(`[Permissions] ✗ Cache miss for ${username} - checking API`);
+  } else {
+    console.log(`[Permissions] No cache available - checking API`);
   }
-
-  console.log(`[Permissions] ✗ Cache miss for ${username} - checking API`);
 
   // Use de-duplication to prevent concurrent duplicate requests
   const dedupKey = `getUserPermission:${cacheKey}`;
 
   return deduplicatedRequest(dedupKey, async () => {
-    // Double-check cache in case another request completed while we were waiting
-    const recentCache = store.getCachedPermission(cacheKey);
-    if (recentCache) {
-      console.log(`[Permissions] ✓ Cache populated by concurrent request`);
-      return recentCache;
+    // Double-check cache in case another request completed while we were waiting (if store is available)
+    if (store) {
+      const recentCache = store.getCachedPermission(cacheKey);
+      if (recentCache) {
+        console.log(`[Permissions] ✓ Cache populated by concurrent request`);
+        return recentCache;
+      }
     }
 
     const octokit = getOctokit();
-    store.incrementAPICall();
+    if (store) {
+      store.incrementAPICall();
+    }
 
     let permission;
 
@@ -73,7 +89,9 @@ export const getUserPermission = async (owner, repo, username, userId = null) =>
         // This is the expected behavior for users without write access
         console.log(`[Permissions] ${username} cannot check permissions (no push access) - assuming 'read' or 'none'`);
 
-        store.incrementAPICall(); // Count the fallback call
+        if (store) {
+          store.incrementAPICall(); // Count the fallback call
+        }
 
         // Try to check if repo is accessible at all by getting repo info
         try {
@@ -95,9 +113,11 @@ export const getUserPermission = async (owner, repo, username, userId = null) =>
       }
     }
 
-    // Cache the permission level
-    store.cachePermission(cacheKey, permission);
-    console.log(`[Permissions] Cached permission for ${username}: ${permission}`);
+    // Cache the permission level (if store is available)
+    if (store) {
+      store.cachePermission(cacheKey, permission);
+      console.log(`[Permissions] Cached permission for ${username}: ${permission}`);
+    }
 
     return permission;
   });

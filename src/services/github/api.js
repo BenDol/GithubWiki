@@ -379,8 +379,16 @@ export const getFileContent = async (owner, repo, path, ref = 'main') => {
  * @returns {Promise<{commits: Array, hasMore: boolean}>}
  */
 export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) => {
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[getFileCommits] Could not access githubDataStore (will continue without cache):', err.message);
+  }
 
   // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
   let isAuthenticated = false;
@@ -397,19 +405,25 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
 
   console.log(`[getFileCommits] Fetching commits for ${path} (page ${page})`);
 
-  // Check cache first (pass auth status for appropriate TTL)
-  const cached = store.getCachedCommits(cacheKey, isAuthenticated);
-  if (cached) {
-    console.log(`[getFileCommits] ✓ Cache hit - using cached commits (${cached.commits.length} commits)`);
-    return cached;
+  // Check cache first (pass auth status for appropriate TTL) - if store is available
+  if (store) {
+    const cached = store.getCachedCommits(cacheKey, isAuthenticated);
+    if (cached) {
+      console.log(`[getFileCommits] ✓ Cache hit - using cached commits (${cached.commits.length} commits)`);
+      return cached;
+    }
+    console.log('[getFileCommits] Cache miss - fetching from GitHub API');
+  } else {
+    console.log('[getFileCommits] No cache available - fetching from GitHub API');
   }
 
-  console.log('[getFileCommits] Cache miss - fetching from GitHub API');
   const octokit = getOctokit();
 
   try {
-    // Increment API call counter for the list commits call
-    store.incrementAPICall();
+    // Increment API call counter for the list commits call (if store is available)
+    if (store) {
+      store.incrementAPICall();
+    }
 
     const { data, headers } = await octokit.rest.repos.listCommits({
       owner,
@@ -423,8 +437,10 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
     const commitsWithStats = await Promise.all(
       data.map(async (commit) => {
         try {
-          // Fetch full commit details to get stats
-          store.incrementAPICall(); // Track each commit detail fetch
+          // Fetch full commit details to get stats (track if store is available)
+          if (store) {
+            store.incrementAPICall(); // Track each commit detail fetch
+          }
           const { data: commitDetails } = await octokit.rest.repos.getCommit({
             owner,
             repo,
@@ -599,9 +615,11 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
 
     const result = { commits, hasMore };
 
-    // Cache the results
-    store.cacheCommits(cacheKey, result);
-    console.log(`[getFileCommits] Cached ${commits.length} commits for ${path} (page ${page})`);
+    // Cache the results (if store is available)
+    if (store) {
+      store.cacheCommits(cacheKey, result);
+      console.log(`[getFileCommits] Cached ${commits.length} commits for ${path} (page ${page})`);
+    }
 
     return result;
   } catch (error) {

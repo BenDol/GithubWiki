@@ -13,32 +13,48 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<Object|null>} Fork repository object if exists, null otherwise
  */
 export const getUserFork = async (owner, repo, username) => {
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
-  const cacheKey = `${username}/${repo}`;
-
-  // Check cache first
-  const cached = store.getCachedFork(cacheKey);
-  if (cached) {
-    console.log(`[Forks] ✓ Cache hit for fork: ${username}/${repo}`);
-    return cached;
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
   }
 
-  console.log(`[Forks] ✗ Cache miss for fork - checking API`);
+  const cacheKey = `${username}/${repo}`;
+
+  // Check cache first (if store is available)
+  if (store) {
+    const cached = store.getCachedFork(cacheKey);
+    if (cached) {
+      console.log(`[Forks] ✓ Cache hit for fork: ${username}/${repo}`);
+      return cached;
+    }
+    console.log(`[Forks] ✗ Cache miss for fork - checking API`);
+  } else {
+    console.log(`[Forks] No cache available - checking API`);
+  }
 
   // Use de-duplication to prevent concurrent duplicate requests
   const dedupKey = `getUserFork:${cacheKey}`;
 
   return deduplicatedRequest(dedupKey, async () => {
-    // Double-check cache in case another request completed while we were waiting
-    const recentCache = store.getCachedFork(cacheKey);
-    if (recentCache) {
-      console.log(`[Forks] ✓ Cache populated by concurrent request`);
-      return recentCache;
+    // Double-check cache in case another request completed while we were waiting (if store is available)
+    if (store) {
+      const recentCache = store.getCachedFork(cacheKey);
+      if (recentCache) {
+        console.log(`[Forks] ✓ Cache populated by concurrent request`);
+        return recentCache;
+      }
     }
 
     const octokit = getOctokit();
-    store.incrementAPICall();
+    if (store) {
+      store.incrementAPICall();
+    }
 
     try {
       console.log(`[Forks] Checking if ${username} has a fork of ${owner}/${repo}`);
@@ -66,9 +82,11 @@ export const getUserFork = async (owner, repo, username) => {
             cloneUrl: data.clone_url,
           };
 
-          // Cache the fork data
-          store.cacheFork(cacheKey, forkData);
-          console.log(`[Forks] Cached fork data for ${username}/${repo}`);
+          // Cache the fork data (if store is available)
+          if (store) {
+            store.cacheFork(cacheKey, forkData);
+            console.log(`[Forks] Cached fork data for ${username}/${repo}`);
+          }
 
           return forkData;
         }
@@ -76,8 +94,10 @@ export const getUserFork = async (owner, repo, username) => {
 
       console.log(`[Forks] Repository ${username}/${repo} exists but is not a fork of ${owner}/${repo}`);
 
-      // Cache null result to avoid repeated checks
-      store.cacheFork(cacheKey, null);
+      // Cache null result to avoid repeated checks (if store is available)
+      if (store) {
+        store.cacheFork(cacheKey, null);
+      }
 
       return null;
     } catch (error) {
@@ -102,9 +122,21 @@ export const getUserFork = async (owner, repo, username) => {
  */
 export const createFork = async (owner, repo) => {
   const octokit = getOctokit();
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
-  store.incrementAPICall();
+
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
+  }
+
+  if (store) {
+    store.incrementAPICall();
+  }
 
   try {
     console.log(`[Forks] Creating fork of ${owner}/${repo}`);

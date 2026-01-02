@@ -24,8 +24,17 @@ export const createPullRequest = async (
   config = null
 ) => {
   const octokit = getOctokit();
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
+
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  }
 
   // Check if user is banned
   if (config) {
@@ -47,7 +56,9 @@ export const createPullRequest = async (
     }
   }
 
-  store.incrementAPICall();
+  if (store) {
+    store.incrementAPICall();
+  }
 
   const { data } = await octokit.rest.pulls.create({
     owner,
@@ -58,9 +69,11 @@ export const createPullRequest = async (
     base: baseBranch,
   });
 
-  // Invalidate PR cache for this user
-  console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
-  store.invalidatePRsForUser(data.user.login);
+  // Invalidate PR cache for this user (if store is available)
+  if (store) {
+    console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+    store.invalidatePRsForUser(data.user.login);
+  }
 
   // Queue achievement checks for all PR-related achievements
   if (data.user.id && data.user.login) {
@@ -126,9 +139,21 @@ export const createCrossRepoPR = async (
   baseBranch = 'main'
 ) => {
   const octokit = getOctokit();
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
-  store.incrementAPICall();
+
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  }
+
+  if (store) {
+    store.incrementAPICall();
+  }
 
   console.log(`[PR] Creating cross-repo PR from ${forkOwner}:${headBranch} to ${upstreamOwner}/${upstreamRepo}:${baseBranch}`);
 
@@ -144,9 +169,11 @@ export const createCrossRepoPR = async (
 
     console.log(`[PR] Cross-repo PR created successfully: #${data.number}`);
 
-    // Invalidate PR cache for this user
-    console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
-    store.invalidatePRsForUser(data.user.login);
+    // Invalidate PR cache for this user (if store is available)
+    if (store) {
+      console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+      store.invalidatePRsForUser(data.user.login);
+    }
 
     return {
       number: data.number,
@@ -279,35 +306,51 @@ export const isPRForUser = (pr, username, userId) => {
  * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
 export const getUserPullRequests = async (owner, repo, username, userId, baseBranch = null, page = 1, perPage = 10) => {
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  }
+
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
   // Check authentication status for appropriate cache TTL
   const { isAuthenticated } = await import('../../store/authStore').then(m => m.useAuthStore.getState());
 
-  // Check cache first
-  const cached = store.getCachedPR(cacheKey, isAuthenticated);
-  if (cached) {
-    console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username} (page ${page})`);
-    return cached;
+  // Check cache first (if store is available)
+  if (store) {
+    const cached = store.getCachedPR(cacheKey, isAuthenticated);
+    if (cached) {
+      console.log(`[PR Cache] ✓ Cache hit for user PRs: ${username} (page ${page})`);
+      return cached;
+    }
+    console.log(`[PR Cache] ✗ Cache miss for user PRs: ${username} (page ${page}) - fetching from API`);
+  } else {
+    console.log(`[PR] No cache available - fetching from API`);
   }
-
-  console.log(`[PR Cache] ✗ Cache miss for user PRs: ${username} (page ${page}) - fetching from API`);
 
   // Use de-duplication to prevent concurrent duplicate requests
   const dedupKey = `getUserPullRequests:${cacheKey}`;
 
   return deduplicatedRequest(dedupKey, async () => {
-    // Double-check cache in case another request completed while we were waiting
-    const recentCache = store.getCachedPR(cacheKey, isAuthenticated);
-    if (recentCache) {
-      console.log(`[PR Cache] ✓ Cache populated by concurrent request`);
-      return recentCache;
+    // Double-check cache in case another request completed while we were waiting (if store is available)
+    if (store) {
+      const recentCache = store.getCachedPR(cacheKey, isAuthenticated);
+      if (recentCache) {
+        console.log(`[PR Cache] ✓ Cache populated by concurrent request`);
+        return recentCache;
+      }
     }
 
     const octokit = getOctokit();
-    store.incrementAPICall();
+    if (store) {
+      store.incrementAPICall();
+    }
 
     // Fetch more than requested to account for filtering by username
     // We'll fetch pages until we have enough user PRs or run out
@@ -439,8 +482,10 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
       })
     );
 
-    // Increment API call count for the additional .get() calls
-    store.incrementAPICall(paginatedPRs.length);
+    // Increment API call count for the additional .get() calls (if store is available)
+    if (store) {
+      store.incrementAPICall(paginatedPRs.length);
+    }
 
     // Prepare result with pagination metadata
     const result = {
@@ -449,9 +494,11 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
       totalCount: allUserPRs.length, // Total count we know about (may be incomplete if we stopped fetching)
     };
 
-    // Cache the results
-    store.cachePR(cacheKey, result);
-    console.log(`[PR Cache] Cached ${detailedPRs.length} PRs with detailed stats for user: ${username} (page ${page})`);
+    // Cache the results (if store is available)
+    if (store) {
+      store.cachePR(cacheKey, result);
+      console.log(`[PR Cache] Cached ${detailedPRs.length} PRs with detailed stats for user: ${username} (page ${page})`);
+    }
 
     return result;
   });
@@ -462,9 +509,21 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
  */
 export const closePullRequest = async (owner, repo, pullNumber) => {
   const octokit = getOctokit();
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
-  store.incrementAPICall();
+
+  // Try to get store, but don't fail if unavailable
+  let store = null;
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      store = githubDataStoreModule.useGitHubDataStore.getState();
+    }
+  } catch (err) {
+    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  }
+
+  if (store) {
+    store.incrementAPICall();
+  }
 
   const { data } = await octokit.rest.pulls.update({
     owner,
@@ -473,9 +532,11 @@ export const closePullRequest = async (owner, repo, pullNumber) => {
     state: 'closed',
   });
 
-  // Invalidate PR cache for this user
-  console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
-  store.invalidatePRsForUser(data.user.login);
+  // Invalidate PR cache for this user (if store is available)
+  if (store) {
+    console.log(`[PR Cache] Invalidating cache for user: ${data.user.login}`);
+    store.invalidatePRsForUser(data.user.login);
+  }
 
   return {
     number: data.number,
@@ -620,11 +681,19 @@ export const createWikiEditPR = async (
   // Create PR
   const pr = await createPullRequest(owner, repo, title, body, headBranch, baseBranch, config);
 
-  // Invalidate PR cache immediately so new PR shows up in pending edits
-  const githubDataStoreModule = await import('../../store/githubDataStore');
-  const store = githubDataStoreModule.useGitHubDataStore.getState();
-  store.invalidatePRCache();
-  console.log('[PR] Invalidated PR cache after PR creation');
+  // Invalidate PR cache immediately so new PR shows up in pending edits (if store is available)
+  try {
+    const githubDataStoreModule = await import('../../store/githubDataStore');
+    if (githubDataStoreModule?.useGitHubDataStore) {
+      const store = githubDataStoreModule.useGitHubDataStore.getState();
+      if (store) {
+        store.invalidatePRCache();
+        console.log('[PR] Invalidated PR cache after PR creation');
+      }
+    }
+  } catch (err) {
+    console.warn('[PR] Could not invalidate cache (will continue):', err.message);
+  }
 
   // Build label list
   const labels = ['wiki-edit', 'documentation'];
