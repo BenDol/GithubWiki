@@ -45,7 +45,6 @@ const PageViewerPage = ({ sectionId }) => {
   const [checkingBanStatus, setCheckingBanStatus] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showFullscreenButton, setShowFullscreenButton] = useState(false);
   const [loadingSource, setLoadingSource] = useState(null);
   const [cacheWarning, setCacheWarning] = useState(null);
   const contentRef = useRef(null);
@@ -629,8 +628,6 @@ const PageViewerPage = ({ sectionId }) => {
                 ? 'lg:pt-8 fixed inset-0 z-50 lg:relative lg:inset-auto lg:z-auto bg-white dark:bg-gray-900 overflow-y-auto p-4 lg:p-0'
                 : ''
             }`}
-            onMouseEnter={() => setShowFullscreenButton(true)}
-            onMouseLeave={() => setShowFullscreenButton(false)}
           >
             {/* Fullscreen toggle button - hidden on mobile, hover on desktop */}
             <button
