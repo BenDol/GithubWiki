@@ -249,7 +249,7 @@ export async function loadDynamicPage(sectionId, pageId, config, branch = 'main'
 
     // Check if we have a fresh commit SHA to bypass GitHub CDN cache
     const latestSha = getLatestCommitSha(sectionId, pageId);
-    const refToFetch = latestSha || branch;
+    const refToFetch = latestSha || branch || 'main';
 
     if (latestSha) {
       logger.debug('Fetching from GitHub using commit SHA', {
