@@ -29,8 +29,10 @@ export const createPullRequest = async (
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
@@ -144,8 +146,10 @@ export const createCrossRepoPR = async (
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
@@ -310,8 +314,10 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
@@ -514,8 +520,10 @@ export const closePullRequest = async (owner, repo, pullNumber) => {
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);

@@ -17,8 +17,10 @@ export const getFileContent = async (owner, repo, path, branch = 'main', bustCac
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[Content] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[Content] Could not access githubDataStore (will continue without cache):', err.message);

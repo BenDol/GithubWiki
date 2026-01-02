@@ -23,8 +23,10 @@ export const getUserPermission = async (owner, repo, username, userId = null) =>
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[Permissions] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[Permissions] Could not access githubDataStore (will continue without cache):', err.message);

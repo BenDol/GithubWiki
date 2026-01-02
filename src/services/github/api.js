@@ -383,8 +383,10 @@ export const getFileCommits = async (owner, repo, path, page = 1, perPage = 10) 
   let store = null;
   try {
     const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore) {
+    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
       store = githubDataStoreModule.useGitHubDataStore.getState();
+    } else {
+      console.warn('[getFileCommits] githubDataStore module loaded but useGitHubDataStore.getState is not available');
     }
   } catch (err) {
     console.warn('[getFileCommits] Could not access githubDataStore (will continue without cache):', err.message);
