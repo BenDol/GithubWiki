@@ -13,18 +13,18 @@ import { getOctokit } from './api';
  * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
 export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[Content] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[Content] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[Content] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[Content] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   // Lazy-load authStore only in browser context (avoid top-level await issues in serverless)
   let isAuthenticated = false;

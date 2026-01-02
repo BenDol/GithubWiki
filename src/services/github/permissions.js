@@ -19,18 +19,18 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<string>} Permission level: 'admin', 'write', 'read', 'none'
  */
 export const getUserPermission = async (owner, repo, username, userId = null) => {
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[Permissions] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[Permissions] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[Permissions] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[Permissions] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   const cacheKey = `${owner}/${repo}/${username}`;
 

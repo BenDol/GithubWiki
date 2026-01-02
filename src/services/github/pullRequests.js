@@ -25,18 +25,18 @@ export const createPullRequest = async (
 ) => {
   const octokit = getOctokit();
 
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   // Check if user is banned
   if (config) {
@@ -142,18 +142,18 @@ export const createCrossRepoPR = async (
 ) => {
   const octokit = getOctokit();
 
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   if (store) {
     store.incrementAPICall();
@@ -310,18 +310,18 @@ export const isPRForUser = (pr, username, userId) => {
  * @returns {Promise<{prs: Array, hasMore: boolean, totalCount: number}>}
  */
 export const getUserPullRequests = async (owner, repo, username, userId, baseBranch = null, page = 1, perPage = 10) => {
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   const cacheKey = `${owner}/${repo}/user/${username}${baseBranch ? `/${baseBranch}` : ''}/page/${page}/per/${perPage}`;
 
@@ -516,18 +516,18 @@ export const getUserPullRequests = async (owner, repo, username, userId, baseBra
 export const closePullRequest = async (owner, repo, pullNumber) => {
   const octokit = getOctokit();
 
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[PR] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[PR] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   if (store) {
     store.incrementAPICall();

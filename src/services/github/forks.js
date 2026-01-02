@@ -13,18 +13,18 @@ import { getOctokit, deduplicatedRequest } from './api';
  * @returns {Promise<Object|null>} Fork repository object if exists, null otherwise
  */
 export const getUserFork = async (owner, repo, username) => {
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[Forks] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[Forks] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   const cacheKey = `${username}/${repo}`;
 
@@ -125,18 +125,18 @@ export const getUserFork = async (owner, repo, username) => {
 export const createFork = async (owner, repo) => {
   const octokit = getOctokit();
 
-  // Try to get store, but don't fail if unavailable
+  // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
-  try {
-    const githubDataStoreModule = await import('../../store/githubDataStore');
-    if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
-      store = githubDataStoreModule.useGitHubDataStore.getState();
-    } else {
-      console.warn('[Forks] githubDataStore module loaded but useGitHubDataStore.getState is not available');
-    }
-  } catch (err) {
-    console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
-  }
+  // try {
+  //   const githubDataStoreModule = await import('../../store/githubDataStore');
+  //   if (githubDataStoreModule?.useGitHubDataStore && typeof githubDataStoreModule.useGitHubDataStore.getState === 'function') {
+  //     store = githubDataStoreModule.useGitHubDataStore.getState();
+  //   } else {
+  //     console.warn('[Forks] githubDataStore module loaded but useGitHubDataStore.getState is not available');
+  //   }
+  // } catch (err) {
+  //   console.warn('[Forks] Could not access githubDataStore (will continue without cache):', err.message);
+  // }
 
   if (store) {
     store.incrementAPICall();
