@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Search, Image as ImageIcon, ChevronLeft, ChevronRight, AlignLeft, AlignCenter, AlignRight, Upload, Loader } from 'lucide-react';
 import ImageUploadModal from './ImageUploadModal.jsx';
 import { createLogger } from '../../utils/logger.js';
+import { useConfigStore } from '../../store/configStore.js';
 
 const logger = createLogger('ImagePicker');
 
@@ -121,12 +122,40 @@ const ImagePicker = ({ isOpen, onClose, onSelect, mode = 'default' }) => {
       setError(null);
 
       try {
-        const response = await fetch('/data/image-index.json');
-        if (!response.ok) {
-          throw new Error('Failed to load image database');
+        // Fetch image-index from CDN if configured, fallback to local
+        let data;
+
+        // Try CDN first if gameAssets CDN is configured
+        const config = await useConfigStore.getState().loadConfig();
+        const gameAssets = config?.features?.gameAssets;
+        const cdnConfig = gameAssets?.cdn;
+
+        if (gameAssets?.enabled && cdnConfig?.github) {
+          const { owner, repo, basePath, branch = 'main' } = cdnConfig.github;
+          const cdnBaseUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${basePath}`;
+          const cdnIndexUrl = `${cdnBaseUrl}/images/image-index.json`;
+
+          try {
+            logger.debug('Fetching image index from CDN', { url: cdnIndexUrl });
+            const response = await fetch(cdnIndexUrl);
+            if (response.ok) {
+              data = await response.json();
+              logger.info('Loaded image index from CDN', { images: data.images?.length });
+            }
+          } catch (cdnError) {
+            logger.warn('Failed to load from CDN, will try local fallback', { error: cdnError.message });
+          }
         }
 
-        const data = await response.json();
+        // Fallback to local if CDN failed or not configured
+        if (!data) {
+          const response = await fetch('/data/image-index.json');
+          if (!response.ok) {
+            throw new Error('Failed to load image database');
+          }
+          data = await response.json();
+          logger.info('Loaded image index from local fallback');
+        }
 
         // Convert CDN index paths to wiki paths
         // CDN index has basePath (e.g., "/images") and images have relative paths (e.g., "/icons/fire.png")

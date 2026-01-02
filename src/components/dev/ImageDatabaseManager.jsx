@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Trash2, Move, RefreshCw, AlertTriangle, CheckCircle, FolderOpen, Database, Sparkles, HardDrive, ChevronRight, ChevronDown, Folder, File, Eye, Copy, CheckSquare, Square, Wrench } from 'lucide-react';
+import { useConfigStore } from '../../store/configStore.js';
 
 /**
  * Image Database Manager - Dev Tool
@@ -136,9 +137,35 @@ const ImageDatabaseManager = () => {
   const loadImageIndexes = async () => {
     setLoading(true);
     try {
-      // Load main index
-      const mainIndexResponse = await fetch('/data/image-index.json');
-      const mainIndex = await mainIndexResponse.json();
+      // Try to load from CDN first if configured
+      let mainIndex;
+      const config = await useConfigStore.getState().loadConfig();
+      const gameAssets = config?.features?.gameAssets;
+      const cdnConfig = gameAssets?.cdn;
+
+      if (gameAssets?.enabled && cdnConfig?.github) {
+        const { owner, repo, basePath, branch = 'main' } = cdnConfig.github;
+        const cdnBaseUrl = `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${basePath}`;
+        const cdnIndexUrl = `${cdnBaseUrl}/images/image-index.json`;
+
+        try {
+          const mainIndexResponse = await fetch(cdnIndexUrl);
+          if (mainIndexResponse.ok) {
+            mainIndex = await mainIndexResponse.json();
+            console.log('Loaded image index from CDN');
+          }
+        } catch (cdnError) {
+          console.warn('Failed to load from CDN, trying local fallback', cdnError);
+        }
+      }
+
+      // Fallback to local if CDN failed or not configured
+      if (!mainIndex) {
+        const mainIndexResponse = await fetch('/data/image-index.json');
+        mainIndex = await mainIndexResponse.json();
+        console.log('Loaded image index from local fallback');
+      }
+
       setImageIndex(mainIndex);
 
       // Calculate stats

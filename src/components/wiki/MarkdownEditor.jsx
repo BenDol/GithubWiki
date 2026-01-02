@@ -46,7 +46,7 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
       editorApi.current = {
         getSelection: () => {
           const view = viewRef.current;
-          logger.trace('getSelection called', { hasView: !!view });
+          //logger.trace('getSelection called', { hasView: !!view });
           if (!view) return { text: '', from: 0, to: 0, empty: true };
           const selection = view.state.selection.main;
           const selectedText = view.state.doc.sliceString(selection.from, selection.to);
