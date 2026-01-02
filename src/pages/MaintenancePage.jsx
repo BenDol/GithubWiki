@@ -156,10 +156,16 @@ const EstimatedReturnTime = ({ time }) => {
       date.getMonth() === now.getMonth() &&
       date.getDate() === now.getDate();
 
-    // Format: Show only time if same day, otherwise show full date + time
+    // Format: Show only time if same day, otherwise show full date + time (without seconds)
     const formattedTime = isSameDay
-      ? date.toLocaleTimeString()
-      : date.toLocaleString();
+      ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : date.toLocaleString([], {
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        });
 
     return (
       <div className="inline-flex items-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
