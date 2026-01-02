@@ -3,7 +3,6 @@ import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useAuthStore } from '../../store/authStore';
 import { useDisplayNames } from '../../hooks/useDisplayName';
 import { getOctokit } from '../../services/github/api';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 
 /**
@@ -40,6 +39,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
+        const { useGitHubDataStore } = await import('../../store/githubDataStore');
         const store = useGitHubDataStore.getState();
         const cacheKey = `${owner}/${repo}/open-prs`;
 
@@ -179,6 +179,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
     try {
       setClosingPR(pr.number);
       const { owner, repo } = config.wiki.repository;
+      const { useGitHubDataStore } = await import('../../store/githubDataStore');
       const store = useGitHubDataStore.getState();
       const octokit = getOctokit();
 

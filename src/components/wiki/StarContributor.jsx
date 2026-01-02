@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useWikiConfig } from '../../hooks/useWikiConfig';
 import { useDisplayName } from '../../hooks/useDisplayName';
 import { useAuthStore } from '../../store/authStore';
-import { useGitHubDataStore } from '../../store/githubDataStore';
 import { getTopContributor } from '../../services/github/admin';
 import PrestigeAvatar from '../common/PrestigeAvatar';
 import UserActionMenu from '../common/UserActionMenu';
@@ -18,7 +17,6 @@ import UserActionMenu from '../common/UserActionMenu';
 const StarContributor = ({ sectionId, pageId }) => {
   const { config } = useWikiConfig();
   const { user, isAuthenticated } = useAuthStore();
-  const store = useGitHubDataStore.getState();
   const [topContributor, setTopContributor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,6 +42,8 @@ const StarContributor = ({ sectionId, pageId }) => {
         setError(null);
 
         const { owner, repo } = config.wiki.repository;
+        const { useGitHubDataStore } = await import('../../store/githubDataStore');
+        const store = useGitHubDataStore.getState();
         const cacheKey = `${owner}/${repo}/${sectionId}/${pageId}`;
 
         console.log(`[StarContributor] Fetching top contributor for ${sectionId}/${pageId}`);
