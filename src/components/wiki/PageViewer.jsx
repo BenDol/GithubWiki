@@ -1,3 +1,4 @@
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
@@ -9,7 +10,11 @@ import rehypeAutolinkHeadings from 'rehype-autolink-headings';
 import { defaultSchema } from 'rehype-sanitize';
 import PageBackground from '../common/PageBackground';
 import { rehypeResolveImages } from '../../utils/rehypeResolveImages.js';
+import { rehypeAddSourcePositions } from '../../utils/rehypeAddSourcePositions.js';
+import { createLogger } from '../../utils/logger';
 import 'highlight.js/styles/github-dark.css';
+
+const logger = createLogger('PageViewer');
 
 /**
  * Remove duplicate first header if it matches the page title
@@ -77,6 +82,14 @@ const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
+    // Allow source position data on ALL elements for cursor highlighting
+    '*': [
+      ...(defaultSchema.attributes?.['*'] || []),
+      'dataSourceStart',
+      'dataSourceEnd',
+      'data-source-start',  // kebab-case version for DOM
+      'data-source-end'
+    ],
     // Allow class and style attributes on span (needed for text colors and custom styling)
     span: [...(defaultSchema.attributes?.span || []), 'className', 'class', 'style'],
     // Allow src, alt, style, and data attributes on img
@@ -117,6 +130,12 @@ const PageViewer = ({
   customComponents = {},
   isPreview = false // Flag to indicate if rendering in editor preview
 }) => {
+  // Log renders to detect if preview is re-rendering constantly (reduced to trace)
+  logger.trace('PageViewer render', {
+    isPreview,
+    contentLength: content?.length
+  });
+
   // Process content to remove duplicate header
   let processedContent = removeDuplicateHeader(content, metadata?.title);
 
@@ -242,6 +261,7 @@ const PageViewer = ({
           remarkPlugins={[remarkGfm, remarkFrontmatter]}
           rehypePlugins={[
             rehypeRaw, // Must be first to parse HTML in markdown
+            rehypeAddSourcePositions, // Inject source position data for cursor highlighting
             [rehypeSanitize, sanitizeSchema], // Sanitize HTML to prevent XSS attacks
             rehypeResolveImages, // Resolve image paths to CDN URLs
             rehypeHighlight,
@@ -414,4 +434,12 @@ const PageViewer = ({
   );
 };
 
-export default PageViewer;
+// Wrap in React.memo to prevent re-renders when parent re-renders
+// Only re-render if content or metadata actually changes
+export default React.memo(PageViewer, (prevProps, nextProps) => {
+  // Return true if props are equal (don't re-render)
+  // Return false if props changed (do re-render)
+  return prevProps.content === nextProps.content &&
+         prevProps.metadata === nextProps.metadata &&
+         prevProps.className === nextProps.className;
+});

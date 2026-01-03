@@ -19,6 +19,7 @@ import { getDataSelector, hasDataSelector } from '../../utils/dataSelectorRegist
 import { getPicker, hasPicker, getAllPickers } from '../../utils/contentRendererRegistry';
 import { resolveShortcuts, getShortcutDisplayMap } from '../../utils/keyboardShortcutResolver';
 import { useEnhancedKeyboardShortcuts } from '../../hooks/useEnhancedKeyboardShortcuts';
+import { useCursorHighlight } from '../../hooks/useCursorHighlight';
 import { Image as ImageIcon, Database, Save } from 'lucide-react';
 import { createLogger } from '../../utils/logger';
 
@@ -137,6 +138,7 @@ const PageEditor = ({
   const [showFrontmatter, setShowFrontmatter] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [shakeValidationError, setShakeValidationError] = useState(false);
+  const [wordAtCursor, setWordAtCursor] = useState(null); // Track word at cursor for highlighting
 
   // Scroll sync
   const syncingScroll = useRef(false);
@@ -419,6 +421,7 @@ const PageEditor = ({
   const editorApiRef = useRef({ lastCursorPosition: 0 }); // Initialize with lastCursorPosition shared across all editor instances
   const colorButtonRef = useRef(null);
   const metadataRef = useRef(metadata); // Track latest metadata to prevent loss during race conditions
+  const previewContainerRef = useRef(null); // Ref for preview container for cursor highlighting
 
   // Keyboard shortcuts - resolve from defaults, config, and localStorage
   const resolvedShortcutMap = useMemo(() => {
@@ -429,14 +432,74 @@ const PageEditor = ({
     return getShortcutDisplayMap(resolvedShortcutMap);
   }, [resolvedShortcutMap]);
 
+  // Store handleFormat in a ref so the callback can use it without dependency
+  const handleFormatRef = useRef(null);
+
+  // Stable callback for keyboard shortcuts to prevent re-initialization
+  const handleShortcutCallback = useCallback((action) => {
+    console.log('[PageEditor] Shortcut callback triggered', { action, hasHandleFormat: !!handleFormatRef.current });
+    // Use a ref to call handleFormat to avoid needing it as a dependency
+    handleFormatRef.current?.(action);
+  }, []);
+
+  // Keep handleFormat ref updated (done later after handleFormat is defined)
+  useEffect(() => {
+    handleFormatRef.current = handleFormat;
+  });
+
   // Setup keyboard shortcuts
   useEnhancedKeyboardShortcuts(
     resolvedShortcutMap,
-    (action) => {
-      handleFormat(action);
-    },
+    handleShortcutCallback,
     editorApiRef,
     true // enabled
+  );
+
+  // Poll word at cursor from editor API and update state
+  useEffect(() => {
+    let lastWord = null;
+
+    const interval = setInterval(() => {
+      if (editorApiRef.current?.getWordAtCursor) {
+        const newWord = editorApiRef.current.getWordAtCursor();
+
+        // If we previously had an image (word: null) and new word is close to old position,
+        // keep the image to prevent flicker
+        if (lastWord && lastWord.word === null && newWord && newWord.word !== null) {
+          const positionSimilar =
+            lastWord.start !== undefined && newWord.start !== undefined &&
+            Math.abs(lastWord.start - newWord.start) < 100;
+
+          if (positionSimilar) {
+            // Keep the image, don't switch to word
+            console.log('[PageEditor] Keeping image detection, ignoring word:', newWord.word);
+            return;
+          }
+        }
+
+        // Compare with last polled word (not state) to avoid dependency issues
+        const wordChanged = newWord?.word !== lastWord?.word;
+        const startChanged = newWord?.start !== lastWord?.start;
+        const endChanged = newWord?.end !== lastWord?.end;
+        const positionChanged = newWord?.position !== lastWord?.position;
+        const nullChanged = (newWord === null) !== (lastWord === null);
+
+        if (wordChanged || startChanged || endChanged || positionChanged || nullChanged) {
+          lastWord = newWord;
+          setWordAtCursor(newWord);
+        }
+      }
+    }, 300); // Poll every 300ms - reduced frequency for stability
+
+    return () => clearInterval(interval);
+  }, []); // No dependencies - stable interval
+
+  // Cursor highlighting in preview
+  useCursorHighlight(
+    wordAtCursor,
+    previewContainerRef,
+    (config?.features?.editor?.previewHighlight?.enabled !== false) && // Feature flag (enabled by default)
+    (viewMode === 'split' || viewMode === 'preview') // Only enable in split/preview mode
   );
 
   // Get available categories from sections
@@ -2426,6 +2489,7 @@ const PageEditor = ({
             </div>
 
             <div
+              ref={previewContainerRef}
               className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg ${
               viewMode === 'preview' ? 'p-6 md:p-8' : 'p-6'
             } ${darkMode ? 'dark' : ''}`}>
@@ -2518,6 +2582,7 @@ const PageEditor = ({
             </div>
 
             <div
+              ref={previewContainerRef}
               className={`h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-6 ${darkMode ? 'dark' : ''}`}>
               {content ? (
                 <PageViewer
@@ -2904,6 +2969,7 @@ const PageEditor = ({
                 {/* Preview */}
                 {(viewMode === 'preview' || viewMode === 'split') && (
                   <div
+                    ref={previewContainerRef}
                     className={`overflow-y-auto overflow-x-hidden ${
                       viewMode === 'split'
                         ? 'h-1/2 md:h-full w-full md:w-[var(--right-panel-width)]'

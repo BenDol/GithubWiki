@@ -44,8 +44,49 @@ const RouteErrorBoundary = () => {
     }
   }, [error]);
 
+  // Check if this is a chunk loading error and attempt recovery
+  useEffect(() => {
+    if (error) {
+      const isChunkLoadError =
+        error?.message?.includes('Failed to fetch dynamically imported module') ||
+        error?.message?.includes('Failed to fetch module') ||
+        error?.message?.includes('error loading dynamically imported module') ||
+        error?.name === 'ChunkLoadError';
+
+      if (isChunkLoadError) {
+        const hasRefreshed = sessionStorage.getItem('chunk-load-error-refreshed') === 'true';
+
+        if (!hasRefreshed) {
+          console.warn('[RouteErrorBoundary] Chunk load error detected, reloading page...', error);
+          sessionStorage.setItem('chunk-load-error-refreshed', 'true');
+          window.location.reload();
+        } else {
+          // Already tried reload, clear flag and show error
+          console.error('[RouteErrorBoundary] Chunk load error persists after reload', error);
+          sessionStorage.removeItem('chunk-load-error-refreshed');
+        }
+      }
+    }
+  }, [error]);
+
   // Determine error type and message
   const getErrorInfo = () => {
+    // Check for chunk loading errors
+    const isChunkLoadError =
+      error?.message?.includes('Failed to fetch dynamically imported module') ||
+      error?.message?.includes('Failed to fetch module') ||
+      error?.message?.includes('error loading dynamically imported module') ||
+      error?.name === 'ChunkLoadError';
+
+    if (isChunkLoadError) {
+      return {
+        title: 'Update Required',
+        message: 'The application has been updated. The page will reload automatically to get the latest version.',
+        icon: '🔄',
+        showBackButton: false,
+      };
+    }
+
     if (error?.status === 404) {
       return {
         title: '404 - Page Not Found',

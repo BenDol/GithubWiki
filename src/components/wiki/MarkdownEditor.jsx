@@ -178,6 +178,152 @@ const MarkdownEditor = ({ value, onChange, darkMode = false, placeholder = 'Writ
           const view = viewRef.current;
           if (!view) return 0;
           return view.state.selection.main.head;
+        },
+        getWordAtCursor: () => {
+          const view = viewRef.current;
+          if (!view) return null;
+
+          const pos = view.state.selection.main.head;
+          const doc = view.state.doc.toString();
+
+          // Check if cursor is inside image or link syntax
+          // Look for context around cursor
+          const contextBefore = doc.substring(Math.max(0, pos - 200), pos);
+          const contextAfter = doc.substring(pos, Math.min(doc.length, pos + 200));
+
+          // Log context for debugging
+          logger.trace('getWordAtCursor context', {
+            pos,
+            contextBefore: contextBefore.slice(-50),
+            contextAfter: contextAfter.slice(0, 50)
+          });
+
+          // Check if inside or near markdown image syntax ![alt](path)
+          const mdImageStartBefore = contextBefore.lastIndexOf('![');
+          const mdImageStartAfter = contextAfter.indexOf('![');
+          const mdImageCloseAfter = contextAfter.indexOf(')');
+
+          let mdImageStart = -1;
+          let mdImageBegin = -1;
+
+          // Check if cursor is inside markdown image (![  is before cursor)
+          if (mdImageStartBefore !== -1 && mdImageCloseAfter !== -1) {
+            const afterBracket = contextBefore.substring(mdImageStartBefore + 2);
+            if (!afterBracket.includes('![') && afterBracket.includes('](')) {
+              mdImageStart = mdImageStartBefore;
+              mdImageBegin = pos - contextBefore.length + mdImageStartBefore;
+            }
+          }
+
+          // Check if cursor is right before markdown image (within 10 chars)
+          if (mdImageStart === -1 && mdImageStartAfter !== -1 && mdImageStartAfter < 10 && mdImageCloseAfter !== -1) {
+            mdImageStart = 0; // Dummy value
+            mdImageBegin = pos + mdImageStartAfter;
+          }
+
+          if (mdImageStart !== -1 && mdImageCloseAfter !== -1) {
+            const imageEnd = pos + mdImageCloseAfter + 1;
+            logger.debug('Detected markdown image', { imageStart: mdImageBegin, imageEnd, pos });
+            return {
+              word: null, // No word, this is an image
+              start: mdImageBegin,
+              end: imageEnd,
+              position: pos
+            };
+          }
+
+          // Check if inside or near HTML img tag <img src="..." /> or <img src="...">
+          // Check in contextBefore
+          const htmlImgStartBefore = contextBefore.lastIndexOf('<img');
+          // Also check in contextAfter (cursor might be at start of tag)
+          const htmlImgStartAfter = contextAfter.indexOf('<img');
+
+          logger.debug('Checking for HTML img tag', {
+            htmlImgStartBefore,
+            htmlImgStartAfter,
+            contextBeforeSlice: contextBefore.slice(-20),
+            contextAfterSlice: contextAfter.slice(0, 20)
+          });
+
+          let htmlImgStart = -1;
+          let imageStart = -1;
+
+          // Prioritize tag in contextBefore (cursor inside tag)
+          if (htmlImgStartBefore !== -1) {
+            const afterTag = contextBefore.substring(htmlImgStartBefore + 4);
+            if (!afterTag.includes('<img') && !afterTag.includes('>')) {
+              htmlImgStart = htmlImgStartBefore;
+              imageStart = pos - contextBefore.length + htmlImgStartBefore;
+              logger.debug('Found img tag in contextBefore', { htmlImgStart, imageStart });
+            }
+          }
+
+          // If not found before, check if tag starts right after cursor (within 20 chars)
+          if (htmlImgStart === -1 && htmlImgStartAfter !== -1 && htmlImgStartAfter < 20) {
+            htmlImgStart = 0; // Dummy value to indicate we found it
+            imageStart = pos + htmlImgStartAfter;
+            logger.debug('Found img tag in contextAfter', { htmlImgStartAfter, imageStart });
+          }
+
+          if (htmlImgStart !== -1) {
+            // Find the end of the tag
+            let htmlImgEnd = contextAfter.indexOf('/>');
+            if (htmlImgEnd === -1) {
+              htmlImgEnd = contextAfter.indexOf('>');
+            }
+
+            logger.debug('Looking for end of img tag', { htmlImgEnd });
+
+            if (htmlImgEnd !== -1) {
+              const imageEnd = pos + htmlImgEnd + (contextAfter[htmlImgEnd - 1] === '/' ? 2 : 1);
+              logger.debug('Detected HTML image', { imageStart, imageEnd, pos });
+              return {
+                word: null, // No word, this is an image
+                start: imageStart,
+                end: imageEnd,
+                position: pos
+              };
+            }
+          }
+
+          // Word character regex (letters, numbers, hyphens)
+          const wordChar = /[\w\-]/;
+
+          let start = pos;
+          let end = pos;
+
+          // Move backward to find word start
+          while (start > 0 && wordChar.test(doc[start - 1])) {
+            start--;
+          }
+
+          // Move forward to find word end
+          while (end < doc.length && wordChar.test(doc[end])) {
+            end++;
+          }
+
+          if (end > start) {
+            const word = doc.substring(start, end);
+
+            // Skip single character words (too short to be meaningful)
+            if (word.length < 2) {
+              return null;
+            }
+
+            // Skip CSS class names and technical identifiers
+            if (word.includes('-') && (word.startsWith('text-') || word.startsWith('bg-') || word.startsWith('ui_'))) {
+              return null;
+            }
+
+            return {
+              word,
+              start,
+              end,
+              position: pos
+            };
+          }
+
+          return null;
         }
       };
       logger.trace('Editor API set up successfully');

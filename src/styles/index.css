@@ -288,3 +288,68 @@ html {
   animation: glow-pulse 3s ease-in-out infinite;
 }
 
+/* Cursor highlight in preview - subtle background */
+.cursor-highlight {
+  background-color: rgba(255, 252, 220, 0.5); /* Light yellow */
+  transition: background-color 0.2s ease-out;
+  border-radius: 2px;
+  padding: 0 2px;
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Dark mode variant */
+.dark .cursor-highlight {
+  background-color: rgba(59, 130, 246, 0.2); /* Subtle blue */
+}
+
+/* Lighter highlight for code blocks */
+pre .cursor-highlight,
+code .cursor-highlight {
+  background-color: rgba(255, 252, 220, 0.2);
+}
+
+.dark pre .cursor-highlight,
+.dark code .cursor-highlight {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Border instead of background for images */
+img.cursor-highlight {
+  background-color: transparent;
+  outline: 2px solid rgba(255, 252, 220, 0.8);
+  outline-offset: 2px;
+}
+
+.dark img.cursor-highlight {
+  outline-color: rgba(59, 130, 246, 0.6);
+}
+
+/* Word-level cursor highlight - more precise highlighting for individual words */
+.cursor-highlight-word {
+  background-color: rgba(255, 252, 220, 0.7); /* Slightly more opaque for word-level */
+  transition: background-color 0.15s ease-out;
+  border-radius: 3px;
+  padding: 1px 3px;
+  display: inline;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.dark .cursor-highlight-word {
+  background-color: rgba(59, 130, 246, 0.3); /* Slightly more opaque for dark mode */
+}
+
+/* Word highlight in code blocks */
+pre .cursor-highlight-word,
+code .cursor-highlight-word {
+  background-color: rgba(255, 252, 220, 0.3);
+  padding: 2px 4px;
+}
+
+.dark pre .cursor-highlight-word,
+.dark code .cursor-highlight-word {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+

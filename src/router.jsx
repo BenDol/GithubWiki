@@ -4,22 +4,23 @@ import Layout from './components/layout/Layout';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { getCustomRoutes } from './utils/routeRegistry';
+import lazyWithRetry from './utils/lazyWithRetry';
 
-// Lazy load page components for code splitting
-const HomePage = lazy(() => import('./pages/HomePage'));
-const PageViewerPage = lazy(() => import('./pages/PageViewerPage'));
-const PageHistoryPage = lazy(() => import('./pages/PageHistoryPage'));
-const PageEditorPage = lazy(() => import('./pages/PageEditorPage'));
-const SectionPage = lazy(() => import('./pages/SectionPage'));
-const SearchPage = lazy(() => import('./pages/SearchPage'));
-const BuildViewerPage = lazy(() => import('./pages/BuildViewerPage'));
-const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const DevToolsPage = lazy(() => import('./pages/DevToolsPage'));
-const ContributorHighscorePage = lazy(() => import('./pages/ContributorHighscorePage'));
-const AdminPanel = lazy(() => import('./pages/AdminPanel'));
-const DonatePage = lazy(() => import('./pages/DonatePage'));
-const DonationSuccessPage = lazy(() => import('./pages/DonationSuccessPage'));
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+// Lazy load page components for code splitting with automatic retry on chunk load failure
+const HomePage = lazy(() => lazyWithRetry(() => import('./pages/HomePage'), 'HomePage'));
+const PageViewerPage = lazy(() => lazyWithRetry(() => import('./pages/PageViewerPage'), 'PageViewerPage'));
+const PageHistoryPage = lazy(() => lazyWithRetry(() => import('./pages/PageHistoryPage'), 'PageHistoryPage'));
+const PageEditorPage = lazy(() => lazyWithRetry(() => import('./pages/PageEditorPage'), 'PageEditorPage'));
+const SectionPage = lazy(() => lazyWithRetry(() => import('./pages/SectionPage'), 'SectionPage'));
+const SearchPage = lazy(() => lazyWithRetry(() => import('./pages/SearchPage'), 'SearchPage'));
+const BuildViewerPage = lazy(() => lazyWithRetry(() => import('./pages/BuildViewerPage'), 'BuildViewerPage'));
+const ProfilePage = lazy(() => lazyWithRetry(() => import('./pages/ProfilePage'), 'ProfilePage'));
+const DevToolsPage = lazy(() => lazyWithRetry(() => import('./pages/DevToolsPage'), 'DevToolsPage'));
+const ContributorHighscorePage = lazy(() => lazyWithRetry(() => import('./pages/ContributorHighscorePage'), 'ContributorHighscorePage'));
+const AdminPanel = lazy(() => lazyWithRetry(() => import('./pages/AdminPanel'), 'AdminPanel'));
+const DonatePage = lazy(() => lazyWithRetry(() => import('./pages/DonatePage'), 'DonatePage'));
+const DonationSuccessPage = lazy(() => lazyWithRetry(() => import('./pages/DonationSuccessPage'), 'DonationSuccessPage'));
+const NotFoundPage = lazy(() => lazyWithRetry(() => import('./pages/NotFoundPage'), 'NotFoundPage'));
 
 // Suspense wrapper component for lazy-loaded pages
 const SuspenseWrapper = ({ children }) => (

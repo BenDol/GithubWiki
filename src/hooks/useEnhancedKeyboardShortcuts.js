@@ -55,6 +55,14 @@ export const useEnhancedKeyboardShortcuts = (
       const pressedShift = event.shiftKey;
       const pressedAlt = event.altKey;
 
+      logger.debug('Key pressed in editor', {
+        key: pressedKey,
+        ctrl: pressedCtrl,
+        shift: pressedShift,
+        alt: pressedAlt,
+        shortcutMapSize: shortcutMapRef.current.size
+      });
+
       // Check each enabled shortcut
       shortcutMapRef.current.forEach((shortcut, action) => {
         if (!shortcut.enabled) return;
@@ -70,7 +78,7 @@ export const useEnhancedKeyboardShortcuts = (
           event.preventDefault();
           event.stopPropagation();
 
-          logger.debug('Shortcut triggered', { action, shortcut });
+          logger.info('Shortcut triggered', { action, shortcut });
           onShortcut(action);
         }
       });
