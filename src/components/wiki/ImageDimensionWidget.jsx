@@ -19,6 +19,7 @@ const ImageDimensionWidget = ({
   const [height, setHeight] = useState('');
   const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
   const widgetRef = useRef(null);
 
   // Detect mobile viewport
@@ -30,6 +31,30 @@ const ImageDimensionWidget = ({
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Adjust position to keep widget within viewport bounds
+  useEffect(() => {
+    if (!visible || isMobile) {
+      setAdjustedPosition(position);
+      return;
+    }
+
+    const WIDGET_WIDTH = 200;
+    const WIDGET_HEIGHT = 90;
+    const PADDING = 10; // Padding from edges
+
+    let top = position.top - WIDGET_HEIGHT;
+    let left = position.left - WIDGET_WIDTH;
+
+    // Clamp to viewport bounds
+    const maxTop = window.innerHeight - WIDGET_HEIGHT - PADDING;
+    const maxLeft = window.innerWidth - WIDGET_WIDTH - PADDING;
+
+    top = Math.max(PADDING, Math.min(top, maxTop));
+    left = Math.max(PADDING, Math.min(left, maxLeft));
+
+    setAdjustedPosition({ top, left });
+  }, [visible, position, isMobile]);
 
   // Initialize dimensions when widget becomes visible
   useEffect(() => {
@@ -125,8 +150,8 @@ const ImageDimensionWidget = ({
                 width: '280px',
               }
             : {
-                top: `${position.top - 90}px`,
-                left: `${position.left - 200}px`,
+                top: `${adjustedPosition.top}px`,
+                left: `${adjustedPosition.left}px`,
                 width: '200px',
               }
         }

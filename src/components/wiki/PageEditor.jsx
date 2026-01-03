@@ -119,6 +119,7 @@ const PageEditor = ({
   isNewPage = false,
   onDraftLoaded = null,
   onGetClearDraft = null,
+  onGetResetUnsavedChanges = null,
   isAnonymousMode = false,
   editingExistingPR = false
 }) => {
@@ -126,6 +127,7 @@ const PageEditor = ({
   const fixedInitialContent = fixDuplicateYAMLKeys(initialContent || '');
 
   const [content, setContent] = useState(fixedInitialContent);
+  const [lastSavedContent, setLastSavedContent] = useState(fixedInitialContent);
   const [viewMode, setViewMode] = useState('split'); // 'split', 'edit', 'preview'
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [editSummary, setEditSummary] = useState('');
@@ -287,6 +289,15 @@ const PageEditor = ({
       onGetClearDraft(clearDraft);
     }
   }, [clearDraft, onGetClearDraft]);
+
+  // Pass reset unsaved changes function to parent so it can be called after successful quick save
+  useEffect(() => {
+    if (onGetResetUnsavedChanges) {
+      onGetResetUnsavedChanges(() => {
+        setLastSavedContent(content);
+      });
+    }
+  }, [content, onGetResetUnsavedChanges]);
 
   // Get framework-level picker components
   const VideoGuidePicker = getPicker('video-guide');
@@ -583,11 +594,11 @@ const PageEditor = ({
     };
 
     const currentNormalized = normalizeContent(content);
-    const initialNormalized = normalizeContent(initialContent);
+    const savedNormalized = normalizeContent(lastSavedContent);
 
-    const hasChanged = currentNormalized !== initialNormalized;
+    const hasChanged = currentNormalized !== savedNormalized;
     setHasUnsavedChanges(hasChanged);
-  }, [content, initialContent]);
+  }, [content, lastSavedContent]);
 
   // Block browser navigation (refresh, close tab, etc.)
   useBeforeUnload(

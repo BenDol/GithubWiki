@@ -79,13 +79,13 @@ export const useEnhancedKeyboardShortcuts = (
     // Use capture phase to intercept before CodeMirror handles the event
     window.addEventListener('keydown', handleKeyDown, true);
 
-    logger.debug('Keyboard shortcuts initialized', {
+    logger.trace('Keyboard shortcuts initialized', {
       shortcutCount: shortcutMapRef.current.size
     });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
-      logger.debug('Keyboard shortcuts cleanup');
+      logger.trace('Keyboard shortcuts cleanup');
     };
   }, [onShortcut, enabled]);
 };

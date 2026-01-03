@@ -13,6 +13,7 @@ import { getOrCreateFork } from '../services/github/forks';
 import { submitAnonymousEdit } from '../services/github/anonymousEdits';
 import { isBanned } from '../services/github/admin';
 import { invalidatePageCache } from '../services/github/dynamicPageLoader';
+import { clearSearchIndexCache } from '../services/search/dynamicSearchIndex';
 import { useWikiStore } from '../store/wikiStore';
 import PageEditor from '../components/wiki/PageEditor';
 import PendingEditRequests from '../components/wiki/PendingEditRequests';
@@ -61,6 +62,7 @@ const PageEditorPage = ({ sectionId, isNewPage = false, emoticonMap = null }) =>
   const [showAnonymousForm, setShowAnonymousForm] = useState(false); // Track if showing anonymous edit form
   const [pendingAnonymousEdit, setPendingAnonymousEdit] = useState(null); // Store content awaiting anonymous submission
   const [clearDraftFn, setClearDraftFn] = useState(null); // Store clearDraft function from PageEditor
+  const [resetUnsavedChangesFn, setResetUnsavedChangesFn] = useState(null); // Store reset function from PageEditor
   const [draftWasLoaded, setDraftWasLoaded] = useState(false); // Track if draft was loaded to show banner
   const [successMessage, setSuccessMessage] = useState(null); // For inline success messages (quick save)
 
@@ -766,6 +768,10 @@ Include any supplementary details, notes, or related information.
         clearPageCache(`${sectionId}/${currentPageId}`);
         console.log(`[PageEditor] Invalidated page cache for ${sectionId}/${currentPageId} (commit: ${commitResult.commit.sha})`);
 
+        // Invalidate search index cache so new/updated pages appear in search immediately
+        clearSearchIndexCache();
+        console.log('[PageEditor] Cleared search index cache');
+
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
           invalidatePrestige(user.login);
@@ -781,6 +787,12 @@ Include any supplementary details, notes, or related information.
         // Show success message without PR
         setSavingStatus('');
         setIsSaving(false);
+
+        // Reset unsaved changes indicator for quick save
+        if (stayInEditMode && resetUnsavedChangesFn) {
+          resetUnsavedChangesFn();
+          console.log('[PageEditorPage] Reset unsaved changes after direct commit quick save');
+        }
 
         // Navigate back to the page view (unless quick save)
         if (!stayInEditMode) {
@@ -928,6 +940,10 @@ Include any supplementary details, notes, or related information.
         localStorage.setItem(storageKey, JSON.stringify(storageData));
         console.log(`[PageEditor] Updated stored PR content: ${storageKey}`);
 
+        // Invalidate search index cache so updated pages appear in search immediately
+        clearSearchIndexCache();
+        console.log('[PageEditor] Cleared search index cache');
+
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
           invalidatePrestige(user.login);
@@ -1026,6 +1042,10 @@ Include any supplementary details, notes, or related information.
         localStorage.setItem(storageKey, JSON.stringify(storageData));
         console.log(`[PageEditor] Stored PR content locally: ${storageKey}`);
 
+        // Invalidate search index cache so new pages appear in search immediately
+        clearSearchIndexCache();
+        console.log('[PageEditor] Cleared search index cache');
+
         // Also store as "recently created" so we can find it even if GitHub API doesn't show it yet
         const recentPRKey = `recent-pr-${sectionId}-${pageIdFromMetadata}-${user.login}`;
         const recentPRData = {
@@ -1073,6 +1093,12 @@ Include any supplementary details, notes, or related information.
           : 'Changes saved! Your edit request has been created.';
         setSuccessMessage(message);
         setIsSaving(false);
+
+        // Reset unsaved changes indicator since we just saved
+        if (resetUnsavedChangesFn) {
+          resetUnsavedChangesFn();
+          console.log('[PageEditorPage] Reset unsaved changes after quick save');
+        }
 
         // Auto-hide success message after 5 seconds
         setTimeout(() => {
@@ -1163,6 +1189,10 @@ Include any supplementary details, notes, or related information.
         );
 
         console.log(`\n[PageEditor] ✓ Successfully deleted from ${baseBranch}`);
+
+        // Invalidate search index cache so deleted pages are removed from search immediately
+        clearSearchIndexCache();
+        console.log('[PageEditor] Cleared search index cache');
 
         // Invalidate prestige cache to reflect new contribution
         if (user?.login) {
@@ -1318,6 +1348,10 @@ Include any supplementary details, notes, or related information.
 
       console.log(`\n[PageEditor] ✓ Successfully created deletion PR #${pr.number}`);
       console.log(`[PageEditor] URL: ${pr.url}\n`);
+
+      // Invalidate search index cache so deleted pages are removed from search immediately
+      clearSearchIndexCache();
+      console.log('[PageEditor] Cleared search index cache');
 
       // Invalidate prestige cache to reflect new contribution
       if (user?.login) {
@@ -1937,6 +1971,10 @@ Include any supplementary details, notes, or related information.
             onGetClearDraft={(clearDraft) => {
               // Store clearDraft function so we can call it after successful save
               setClearDraftFn(() => clearDraft);
+            }}
+            onGetResetUnsavedChanges={(resetFn) => {
+              // Store reset function so we can call it after successful quick save
+              setResetUnsavedChangesFn(() => resetFn);
             }}
           />
         </div>
