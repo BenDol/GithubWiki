@@ -13,6 +13,11 @@ export function rehypeAddSourcePositions() {
 
       const { start, end } = node.position;
 
+      // Skip if start/end don't have offset information
+      if (!start || !end || start.offset === undefined || end.offset === undefined) {
+        return;
+      }
+
       // Add data attributes for character offsets
       if (!node.properties) node.properties = {};
 
@@ -26,6 +31,12 @@ export function rehypeAddSourcePositions() {
     visit(tree, 'text', (node, index, parent) => {
       if (!node.position) return;
 
+      // Skip if position doesn't have offset information
+      const { start, end } = node.position;
+      if (!start || !end || start.offset === undefined || end.offset === undefined) {
+        return;
+      }
+
       // For text nodes, ensure parent element has position data
       if (parent && parent.type === 'element') {
         if (!parent.properties) parent.properties = {};
@@ -34,11 +45,11 @@ export function rehypeAddSourcePositions() {
         const existingStart = parent.properties.dataSourceStart;
         const existingEnd = parent.properties.dataSourceEnd;
 
-        if (!existingStart || node.position.start.offset < existingStart) {
-          parent.properties.dataSourceStart = node.position.start.offset;
+        if (!existingStart || start.offset < existingStart) {
+          parent.properties.dataSourceStart = start.offset;
         }
-        if (!existingEnd || node.position.end.offset > existingEnd) {
-          parent.properties.dataSourceEnd = node.position.end.offset;
+        if (!existingEnd || end.offset > existingEnd) {
+          parent.properties.dataSourceEnd = end.offset;
         }
       }
     });
