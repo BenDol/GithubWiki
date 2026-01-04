@@ -20,7 +20,14 @@ const StructuredData = ({ type, data }) => {
     '@type': 'Organization',
     name: wikiConfig.title || 'Wiki',
     url: wikiConfig.url || '',
-    logo: wikiConfig.logo ? `${wikiConfig.url}${wikiConfig.logo}` : undefined,
+    logo: wikiConfig.logo ? {
+      '@type': 'ImageObject',
+      url: `${wikiConfig.url}${wikiConfig.logo}`,
+      contentUrl: `${wikiConfig.url}${wikiConfig.logo}`,
+      // Google recommends logo be 600x60px for search results, but accepts square logos 160px+
+      width: 512,
+      height: 512
+    } : undefined,
     description: wikiConfig.description,
   };
 

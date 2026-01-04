@@ -52,7 +52,7 @@ const Footer = () => {
             {/* GitHub Link */}
             {config.wiki.repository && (
               <a
-                href={`https://github.com/${config.wiki.repository.owner}/${config.wiki.repository.repo}`}
+              href={`https://github.com/${config.wiki.repository.owner}/${config.wiki.repository.repo}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white flex items-center space-x-1 transition-colors"
