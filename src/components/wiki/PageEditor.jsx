@@ -456,7 +456,18 @@ const PageEditor = ({
   );
 
   // Poll word at cursor from editor API and update state
+  // ONLY runs when previewHighlight feature is enabled to avoid performance impact
   useEffect(() => {
+    // CRITICAL: Check if feature is enabled before starting expensive polling
+    const isHighlightEnabled = config?.features?.editor?.previewHighlight?.enabled !== false;
+    const isRelevantMode = viewMode === 'split' || viewMode === 'preview';
+
+    if (!isHighlightEnabled || !isRelevantMode) {
+      // Feature disabled or not in relevant view mode - don't poll
+      setWordAtCursor(null);
+      return;
+    }
+
     let lastWord = null;
 
     const interval = setInterval(() => {
@@ -492,7 +503,7 @@ const PageEditor = ({
     }, 300); // Poll every 300ms - reduced frequency for stability
 
     return () => clearInterval(interval);
-  }, []); // No dependencies - stable interval
+  }, [config?.features?.editor?.previewHighlight?.enabled, viewMode]); // Re-run when feature flag or view mode changes
 
   // Cursor highlighting in preview
   useCursorHighlight(

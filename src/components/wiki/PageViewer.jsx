@@ -136,6 +136,31 @@ const PageViewer = ({
     contentLength: content?.length
   });
 
+  // Get config to check if preview highlight feature is enabled
+  const config = typeof window !== 'undefined' ? window.__WIKI_CONFIG__ : null;
+  const isHighlightEnabled = config?.features?.editor?.previewHighlight?.enabled !== false;
+
+  // Build rehype plugins array conditionally
+  // CRITICAL: Only include rehypeAddSourcePositions if preview highlight is enabled
+  // This plugin traverses the entire AST and adds data attributes to every element
+  const rehypePlugins = [
+    rehypeRaw, // Must be first to parse HTML in markdown
+    ...(isPreview && isHighlightEnabled ? [rehypeAddSourcePositions] : []), // Only add source positions if feature is enabled
+    [rehypeSanitize, sanitizeSchema], // Sanitize HTML to prevent XSS attacks
+    rehypeResolveImages, // Resolve image paths to CDN URLs
+    rehypeHighlight,
+    rehypeSlug,
+    [
+      rehypeAutolinkHeadings,
+      {
+        behavior: 'wrap',
+        properties: {
+          className: ['anchor'],
+        },
+      },
+    ],
+  ];
+
   // Process content to remove duplicate header
   let processedContent = removeDuplicateHeader(content, metadata?.title);
 
@@ -259,23 +284,7 @@ const PageViewer = ({
       <div className="prose prose-lg dark:prose-dark max-w-none prose-headings:scroll-mt-20">
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkFrontmatter]}
-          rehypePlugins={[
-            rehypeRaw, // Must be first to parse HTML in markdown
-            rehypeAddSourcePositions, // Inject source position data for cursor highlighting
-            [rehypeSanitize, sanitizeSchema], // Sanitize HTML to prevent XSS attacks
-            rehypeResolveImages, // Resolve image paths to CDN URLs
-            rehypeHighlight,
-            rehypeSlug,
-            [
-              rehypeAutolinkHeadings,
-              {
-                behavior: 'wrap',
-                properties: {
-                  className: ['anchor'],
-                },
-              },
-            ],
-          ]}
+          rehypePlugins={rehypePlugins}
           components={{
             // Custom link rendering
             a: ({ node, ...props }) => {
