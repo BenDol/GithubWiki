@@ -154,6 +154,12 @@ export const useNetworkDebugStore = create((set, get) => {
      * @param {Object} callData - Network call data (id, type, method, url, duration, cached, etc.)
      */
     recordCall: (callData) => {
+      // CRITICAL: Check if network debug is enabled
+      const config = getConfig();
+      if (!config || !config.enabled) {
+        return; // Silently exit if debug mode is not enabled
+      }
+
       const state = get();
       const { currentRoute, currentLoadPhase, routeData } = state;
 
@@ -162,7 +168,6 @@ export const useNetworkDebugStore = create((set, get) => {
         return;
       }
 
-      const config = getConfig();
       const maxCalls = config.maxCallsPerRoute || 1000;
 
       set((state) => {
@@ -222,9 +227,15 @@ export const useNetworkDebugStore = create((set, get) => {
      * @param {string} newRoute - The new route path
      */
     handleRouteChange: (newRoute) => {
+      // CRITICAL: Check if network debug is enabled
+      // This prevents auto-reloads when debug mode is OFF
+      const config = getConfig();
+      if (!config || !config.enabled) {
+        return; // Silently exit if debug mode is not enabled
+      }
+
       const state = get();
       const { routeData, autoReloadTimeout } = state;
-      const config = getConfig();
 
       logger.info('handleRouteChange called', {
         route: newRoute,
@@ -358,6 +369,12 @@ export const useNetworkDebugStore = create((set, get) => {
      * @param {string} route - The route to retrack
      */
     retrackRoute: (route) => {
+      // CRITICAL: Check if network debug is enabled
+      const config = getConfig();
+      if (!config || !config.enabled) {
+        return; // Silently exit if debug mode is not enabled
+      }
+
       const state = get();
 
       if (!state.routeData[route]) {
@@ -404,6 +421,12 @@ export const useNetworkDebugStore = create((set, get) => {
      * @param {string} route - The route to reload
      */
     triggerAutoReload: (route) => {
+      // CRITICAL: Check if network debug is enabled
+      const config = getConfig();
+      if (!config || !config.enabled) {
+        return; // Silently exit if debug mode is not enabled
+      }
+
       const state = get();
       const routeData = state.routeData[route];
 
