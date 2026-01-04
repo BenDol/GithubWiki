@@ -16,6 +16,7 @@ const SearchPage = lazy(() => lazyWithRetry(() => import('./pages/SearchPage'), 
 const BuildViewerPage = lazy(() => lazyWithRetry(() => import('./pages/BuildViewerPage'), 'BuildViewerPage'));
 const ProfilePage = lazy(() => lazyWithRetry(() => import('./pages/ProfilePage'), 'ProfilePage'));
 const DevToolsPage = lazy(() => lazyWithRetry(() => import('./pages/DevToolsPage'), 'DevToolsPage'));
+const NetworkDebugPage = lazy(() => lazyWithRetry(() => import('./pages/NetworkDebugPage'), 'NetworkDebugPage'));
 const ContributorHighscorePage = lazy(() => lazyWithRetry(() => import('./pages/ContributorHighscorePage'), 'ContributorHighscorePage'));
 const AdminPanel = lazy(() => lazyWithRetry(() => import('./pages/AdminPanel'), 'AdminPanel'));
 const DonatePage = lazy(() => lazyWithRetry(() => import('./pages/DonatePage'), 'DonatePage'));
@@ -99,6 +100,14 @@ export const createWikiRouter = (config) => {
           element: (
             <SuspenseWrapper>
               <DevToolsPage />
+            </SuspenseWrapper>
+          ),
+        },
+        {
+          path: 'debug/network',
+          element: (
+            <SuspenseWrapper>
+              <NetworkDebugPage />
             </SuspenseWrapper>
           ),
         },

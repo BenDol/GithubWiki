@@ -18,6 +18,16 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [closingPR, setClosingPR] = useState(null);
 
+  // Extract repository config to avoid re-running on every config change
+  const repositoryOwner = config?.wiki?.repository?.owner;
+  const repositoryRepo = config?.wiki?.repository?.repo;
+
+  // Stable repository config
+  const stableRepo = useMemo(() => ({
+    owner: repositoryOwner,
+    repo: repositoryRepo,
+  }), [repositoryOwner, repositoryRepo]);
+
   // Fetch display names for PR authors (exclude anonymous)
   const prAuthors = useMemo(() =>
     prs
@@ -29,7 +39,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
 
   useEffect(() => {
     const fetchPendingPRs = async () => {
-      if (!config?.wiki?.repository?.owner || !config?.wiki?.repository?.repo || !sectionId || !pageId) {
+      if (!stableRepo.owner || !stableRepo.repo || !sectionId || !pageId) {
         setLoading(false);
         return;
       }
@@ -38,19 +48,42 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
         setLoading(true);
         setError(null);
 
-        const { owner, repo } = config.wiki.repository;
+        const { owner, repo } = stableRepo;
         const githubDataStoreModule = await import('../../store/githubDataStore');
         const store = githubDataStoreModule.useGitHubDataStore.getState();
-        const cacheKey = `${owner}/${repo}/open-prs`;
+        const allPRsCacheKey = `${owner}/${repo}/open-prs`;
+        const pagePRsCacheKey = `${owner}/${repo}/pending-edit-requests/${sectionId}/${pageId}`;
 
         console.log(`[PendingEditRequests] Fetching PRs for ${sectionId}/${pageId}`);
 
-        // Check cache first (pass auth status for appropriate TTL)
-        let allPRs = store.getCachedPR(cacheKey, isAuthenticated);
+        // Check per-page cache first (5-minute TTL in localStorage)
+        try {
+          const cached = localStorage.getItem(pagePRsCacheKey);
+          if (cached) {
+            const { data, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+            const FIVE_MINUTES = 5 * 60 * 1000;
+
+            if (age < FIVE_MINUTES) {
+              console.log(`[PendingEditRequests] ✓ Page cache hit - using cached PRs (age: ${Math.round(age / 1000)}s)`);
+              setPrs(data);
+              setLoading(false);
+              return;
+            } else {
+              console.log(`[PendingEditRequests] Page cache expired (age: ${Math.round(age / 1000)}s)`);
+              localStorage.removeItem(pagePRsCacheKey);
+            }
+          }
+        } catch (err) {
+          console.warn('[PendingEditRequests] Failed to read page cache:', err);
+        }
+
+        // Check cache for all PRs (pass auth status for appropriate TTL)
+        let allPRs = store.getCachedPR(allPRsCacheKey, isAuthenticated);
 
         if (!allPRs) {
           // Check if we can make a request (throttling to prevent abuse detection)
-          if (!store.canFetchPRs(cacheKey)) {
+          if (!store.canFetchPRs(allPRsCacheKey)) {
             console.log('[PendingEditRequests] Request throttled - skipping fetch');
             setLoading(false);
             return;
@@ -60,7 +93,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           console.log('[PendingEditRequests] Cache miss - fetching from GitHub API');
           const octokit = getOctokit();
           store.incrementAPICall();
-          store.recordPRFetch(cacheKey); // Record fetch time
+          store.recordPRFetch(allPRsCacheKey); // Record fetch time
 
           const { data } = await octokit.rest.pulls.list({
             owner,
@@ -75,7 +108,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           allPRs = data;
 
           // Cache the results
-          store.cachePR(cacheKey, allPRs);
+          store.cachePR(allPRsCacheKey, allPRs);
           console.log(`[PendingEditRequests] Cached ${allPRs.length} open PRs`);
         } else {
           console.log(`[PendingEditRequests] ✓ Cache hit - using cached PRs (${allPRs.length} PRs)`);
@@ -140,6 +173,17 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
           };
         });
 
+        // Cache filtered PRs for this page (5-minute TTL in localStorage)
+        try {
+          localStorage.setItem(pagePRsCacheKey, JSON.stringify({
+            data: formattedPRs,
+            timestamp: Date.now(),
+          }));
+          console.log(`[PendingEditRequests] Cached ${formattedPRs.length} PRs for page ${sectionId}/${pageId}`);
+        } catch (err) {
+          console.warn('[PendingEditRequests] Failed to cache page PRs:', err);
+        }
+
         setPrs(formattedPRs);
       } catch (err) {
         console.error('[PendingEditRequests] Failed to fetch PRs:', err);
@@ -162,7 +206,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
     };
 
     fetchPendingPRs();
-  }, [config, sectionId, pageId]);
+  }, [stableRepo, sectionId, pageId, isAuthenticated]);
 
   // Handle closing a PR
   const handleClosePR = async (pr, event) => {
@@ -178,7 +222,7 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
 
     try {
       setClosingPR(pr.number);
-      const { owner, repo } = config.wiki.repository;
+      const { owner, repo } = stableRepo;
       const githubDataStoreModule = await import('../../store/githubDataStore');
       const store = githubDataStoreModule.useGitHubDataStore.getState();
       const octokit = getOctokit();
@@ -197,9 +241,18 @@ const PendingEditRequests = ({ sectionId, pageId }) => {
       console.log(`[PendingEditRequests] PR #${pr.number} closed successfully`);
 
       // Invalidate open PRs cache
-      const cacheKey = `${owner}/${repo}/open-prs`;
-      store.invalidatePRCache(cacheKey);
+      const allPRsCacheKey = `${owner}/${repo}/open-prs`;
+      store.invalidatePRCache(allPRsCacheKey);
       console.log('[PendingEditRequests] Invalidated open PRs cache');
+
+      // Invalidate per-page cache (localStorage)
+      const pagePRsCacheKey = `${owner}/${repo}/pending-edit-requests/${sectionId}/${pageId}`;
+      try {
+        localStorage.removeItem(pagePRsCacheKey);
+        console.log('[PendingEditRequests] Invalidated page PRs cache');
+      } catch (err) {
+        console.warn('[PendingEditRequests] Failed to invalidate page cache:', err);
+      }
 
       // Also invalidate user's PR cache
       store.invalidatePRsForUser(pr.author);

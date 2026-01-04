@@ -5,7 +5,9 @@
 
 import { configName, getItem, setItem, removeItem, clearAllCaches, clearAllCachesExceptDrafts } from './storageManager';
 import { migrateAll, needsMigration } from './storageMigration';
+import { createLogger } from './logger.js';
 
+const logger = createLogger('VersionManager');
 const VERSION_KEY = configName('app_version');
 
 /**
@@ -68,14 +70,14 @@ export const initializeVersionSystem = async (config) => {
     const isFirstRun = !storedVersion;
 
     if (isFirstRun) {
-      console.log('[VersionManager] First run detected');
+      logger.info('First run detected');
 
       // Check if migration is needed
       if (needsMigration()) {
-        console.log('[VersionManager] Running storage migration...');
+        logger.info('Running storage migration');
         const migrationStats = migrateAll();
         result.migrationRan = true;
-        console.log('[VersionManager] Migration complete:', migrationStats);
+        logger.info('Migration complete', migrationStats);
       }
 
       // Store current version
@@ -89,7 +91,7 @@ export const initializeVersionSystem = async (config) => {
     result.versionChanged = versionChanged;
 
     if (versionChanged) {
-      console.log('[VersionManager] Version changed:', {
+      logger.info('Version changed', {
         from: storedVersion,
         to: currentVersion,
       });
@@ -97,10 +99,10 @@ export const initializeVersionSystem = async (config) => {
       // Check if we should force re-login
       const forceRelog = config?.features?.forceRelogOnUpdate ?? false;
       if (forceRelog) {
-        console.log('[VersionManager] Force re-login enabled, clearing authentication...');
+        logger.info('Force re-login enabled, clearing authentication');
         const authKey = configName('wiki_auth');
         removeItem(authKey);
-        console.log('[VersionManager] Authentication cleared, user will need to re-login');
+        logger.info('Authentication cleared, user will need to re-login');
       }
 
       // Check if we should purge caches
@@ -112,9 +114,9 @@ export const initializeVersionSystem = async (config) => {
 
       if (purgeCaches) {
         if (forcePurge) {
-          console.log('[VersionManager] Force purging caches (triggered by commit message)...');
+          logger.info('Force purging caches (triggered by commit message)');
         } else {
-          console.log('[VersionManager] Purging caches...');
+          logger.info('Purging caches');
         }
 
         // Choose clearing strategy based on preserveDrafts option
@@ -125,9 +127,9 @@ export const initializeVersionSystem = async (config) => {
         result.cachesPurged = true;
 
         if (preserveDrafts) {
-          console.log(`[VersionManager] Purged ${purgedCount} cache entries (drafts preserved)`);
+          logger.info('Purged cache entries (drafts preserved)', { count: purgedCount });
         } else {
-          console.log(`[VersionManager] Purged ${purgedCount} cache entries (including drafts)`);
+          logger.info('Purged cache entries (including drafts)', { count: purgedCount });
         }
       }
 
@@ -137,7 +139,7 @@ export const initializeVersionSystem = async (config) => {
 
     return result;
   } catch (error) {
-    console.error('[VersionManager] Initialization failed:', error);
+    logger.error('Initialization failed', { error });
     return result;
   }
 };
@@ -165,9 +167,9 @@ export const getVersionInfo = (config) => {
  * @returns {number} Number of keys cleared
  */
 export const forcePurgeCaches = () => {
-  console.log('[VersionManager] Force purging all caches...');
+  logger.info('Force purging all caches');
   const purgedCount = clearAllCaches();
-  console.log(`[VersionManager] Force purged ${purgedCount} cache entries`);
+  logger.info('Force purged cache entries', { count: purgedCount });
   return purgedCount;
 };
 
@@ -176,7 +178,7 @@ export const forcePurgeCaches = () => {
  */
 export const resetVersion = () => {
   localStorage.removeItem(VERSION_KEY);
-  console.log('[VersionManager] Version reset');
+  logger.debug('Version reset');
 };
 
 export default {

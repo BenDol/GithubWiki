@@ -219,6 +219,35 @@ async function loadStaticFile(sectionId, pageId) {
  * @returns {Promise<Object>} Page data with content, metadata, sha, commitSha, source, warning?
  */
 export async function loadDynamicPage(sectionId, pageId, config, branch = 'main', bustCache = false) {
+  // Capture stack trace NOW (before Octokit job queue destroys it)
+  const capturedStack = new Error().stack;
+  const path = `public/content/${sectionId}/${pageId}.md`;
+
+  // Mark current page context for network debug tracking
+  if (typeof window !== 'undefined') {
+    window.__currentPageContext__ = {
+      page: `${sectionId}/${pageId}`,
+      component: 'DynamicPageLoader',
+      timestamp: Date.now()
+    };
+
+    // Store stack trace for fetchProxy to use (keyed by path)
+    if (!window.__apiCallStacks__) {
+      window.__apiCallStacks__ = new Map();
+    }
+    window.__apiCallStacks__.set(path, {
+      stack: capturedStack,
+      timestamp: Date.now()
+    });
+
+    // Clean up old entries (older than 10 seconds)
+    for (const [key, value] of window.__apiCallStacks__.entries()) {
+      if (Date.now() - value.timestamp > 10000) {
+        window.__apiCallStacks__.delete(key);
+      }
+    }
+  }
+
   try {
     // Check if feature enabled
     if (!shouldUseDynamicLoading(config)) {

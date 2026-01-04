@@ -13,6 +13,84 @@ import { getOctokit } from './api';
  * @param {boolean} bustCache - If true, adds cache-busting to get latest content (for recent PRs)
  */
 export const getFileContent = async (owner, repo, path, branch = 'main', bustCache = false) => {
+  /**
+   * NETWORK DEBUG: Stack Trace Capture Pattern
+   *
+   * This captures the stack trace BEFORE Octokit's async job queue destroys it.
+   * The stack is stored in window.__apiCallStacks__ for fetchProxy to retrieve later.
+   *
+   * HOW IT WORKS:
+   * 1. Application calls this function (e.g., from PageViewer.jsx)
+   * 2. Stack captured HERE (has full application context)
+   * 3. Stack stored with key (path or function name)
+   * 4. Octokit queues request in Job system (original stack lost)
+   * 5. Later, fetch is called
+   * 6. fetchProxy extracts URL path and looks up stored stack
+   * 7. If found and recent (< 5s), uses stored stack instead of current stack
+   *
+   * WHEN TO ADD THIS PATTERN:
+   * - High-traffic operations (called frequently by users)
+   * - Operations where debugging is important (build saves, comments, etc.)
+   * - Operations with complex call paths (hard to trace manually)
+   *
+   * WHEN NOT NEEDED:
+   * - fetchProxy already uses "most recent stack" fallback (within 3s)
+   * - Only add if you need EXACT source attribution (not just "recent call")
+   * - Skip for admin-only or rare operations
+   *
+   * PATTERN TO COPY:
+   * ```javascript
+   * export async function yourFunction(...args) {
+   *   // Capture stack trace for network debug tracking
+   *   if (typeof window !== 'undefined') {
+   *     const capturedStack = new Error().stack;
+   *     if (!window.__apiCallStacks__) {
+   *       window.__apiCallStacks__ = new Map();
+   *     }
+   *     // Use unique key: file path, function name, or operation ID
+   *     window.__apiCallStacks__.set('yourFunction', {
+   *       stack: capturedStack,
+   *       timestamp: Date.now()
+   *     });
+   *   }
+   *   // ... rest of function
+   * }
+   * ```
+   *
+   * EXAMPLES IN CODEBASE:
+   * - getFileContent() - uses path as key (for exact URL matching)
+   * - loadDynamicPage() - uses path as key
+   * - getDonatorStatus() - uses function name as key (fallback strategy)
+   */
+
+  // Capture stack trace NOW (before Octokit job queue destroys it)
+  const capturedStack = new Error().stack;
+
+  // Mark current context for network debug tracking
+  if (typeof window !== 'undefined') {
+    window.__currentPageContext__ = {
+      page: path.replace('public/content/', '').replace('.md', ''),
+      component: 'getFileContent',
+      timestamp: Date.now()
+    };
+
+    // Store stack trace for fetchProxy to use (keyed by path)
+    if (!window.__apiCallStacks__) {
+      window.__apiCallStacks__ = new Map();
+    }
+    window.__apiCallStacks__.set(path, {
+      stack: capturedStack,
+      timestamp: Date.now()
+    });
+
+    // Clean up old entries (older than 10 seconds)
+    for (const [key, value] of window.__apiCallStacks__.entries()) {
+      if (Date.now() - value.timestamp > 10000) {
+        window.__apiCallStacks__.delete(key);
+      }
+    }
+  }
+
   // DISABLED: githubDataStore access temporarily disabled due to circular dependency
   let store = null;
   // try {

@@ -1,5 +1,37 @@
 import { create } from 'zustand';
 
+// Helper to save donator status cache to sessionStorage
+const saveDonatorCacheToSession = (donatorStatus) => {
+  try {
+    if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') {
+      return;
+    }
+    sessionStorage.setItem('githubDataStore:donatorStatus', JSON.stringify(donatorStatus));
+  } catch (error) {
+    console.warn('[GitHub Cache] Failed to save donator status to sessionStorage', error);
+  }
+};
+
+// Helper to restore donator status cache from sessionStorage
+const restoreDonatorCacheFromSession = () => {
+  try {
+    if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') {
+      return {};
+    }
+    const stored = sessionStorage.getItem('githubDataStore:donatorStatus');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      console.log('[GitHub Cache] Restored donator status cache from sessionStorage', {
+        entries: Object.keys(parsed).length
+      });
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('[GitHub Cache] Failed to restore donator status from sessionStorage', error);
+  }
+  return {};
+};
+
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const PR_CACHE_TTL = 30 * 60 * 1000; // 30 minutes (for anonymous users to reduce abuse detection)
 const COMMIT_CACHE_TTL = 3 * 60 * 1000; // 3 minutes (for authenticated users)
@@ -48,7 +80,8 @@ export const useGitHubDataStore = create((set, get) => ({
 
   // Donator Status Data: { cacheKey: { data, cachedAt, cachingDisabled } }
   // Cache key format: owner/repo/userId
-  donatorStatus: {},
+  // Persisted to sessionStorage to survive page reloads (for warm load testing)
+  donatorStatus: restoreDonatorCacheFromSession(),
 
   // File Content Data: { cacheKey: { data, cachedAt } }
   // Cache key format: owner/repo/path:branch
@@ -695,12 +728,17 @@ export const useGitHubDataStore = create((set, get) => ({
 
   cacheDonatorStatus: (key, data) => {
     console.log(`[GitHub Cache] Caching donator status: ${key}`);
-    set(state => ({
-      donatorStatus: {
+    set(state => {
+      const newDonatorStatus = {
         ...state.donatorStatus,
         [key]: { data, cachedAt: Date.now(), cachingDisabled: false }
-      }
-    }));
+      };
+
+      // Persist to sessionStorage
+      saveDonatorCacheToSession(newDonatorStatus);
+
+      return { donatorStatus: newDonatorStatus };
+    });
   },
 
   /**
@@ -732,18 +770,22 @@ export const useGitHubDataStore = create((set, get) => ({
     // Re-enable caching after 5 minutes
     if (cached.cachingDisabled && Date.now() - cached.cachedAt >= 5 * 60 * 1000) {
       console.log(`[GitHub Cache] Re-enabling donator status caching: ${key}`);
-      set(state => ({
-        donatorStatus: {
+      set(state => {
+        const newDonatorStatus = {
           ...state.donatorStatus,
           [key]: { ...cached, cachingDisabled: false }
-        }
-      }));
+        };
+
+        // Persist to sessionStorage
+        saveDonatorCacheToSession(newDonatorStatus);
+
+        return { donatorStatus: newDonatorStatus };
+      });
     }
 
-    // Use longer TTL for anonymous users
-    // Anonymous: 30min cache
-    // Authenticated: 10min cache
-    const DONATOR_STATUS_TTL = isAuthenticated ? 10 * 60 * 1000 : 30 * 60 * 1000;
+    // Cache for 20 minutes regardless of auth status
+    // Donator status changes are rare and don't need frequent updates
+    const DONATOR_STATUS_TTL = 20 * 60 * 1000; // 20 minutes
     const ttl = DONATOR_STATUS_TTL;
 
     // Check if expired
@@ -753,6 +795,10 @@ export const useGitHubDataStore = create((set, get) => ({
       set(state => {
         const newDonatorStatus = { ...state.donatorStatus };
         delete newDonatorStatus[key];
+
+        // Persist to sessionStorage
+        saveDonatorCacheToSession(newDonatorStatus);
+
         return {
           donatorStatus: newDonatorStatus,
           metrics: {
@@ -780,11 +826,18 @@ export const useGitHubDataStore = create((set, get) => ({
       set(state => {
         const newDonatorStatus = { ...state.donatorStatus };
         delete newDonatorStatus[key];
+
+        // Persist to sessionStorage
+        saveDonatorCacheToSession(newDonatorStatus);
+
         return { donatorStatus: newDonatorStatus };
       });
     } else {
       console.log('[GitHub Cache] Invalidating ALL donator status cache');
       set({ donatorStatus: {} });
+
+      // Clear from sessionStorage
+      saveDonatorCacheToSession({});
     }
   },
 
@@ -795,12 +848,17 @@ export const useGitHubDataStore = create((set, get) => ({
    */
   invalidateDonatorStatusAndDisable: (key) => {
     console.log(`[GitHub Cache] Invalidating donator status and disabling caching for 5 minutes: ${key}`);
-    set(state => ({
-      donatorStatus: {
+    set(state => {
+      const newDonatorStatus = {
         ...state.donatorStatus,
         [key]: { data: null, cachedAt: Date.now(), cachingDisabled: true }
-      }
-    }));
+      };
+
+      // Persist to sessionStorage
+      saveDonatorCacheToSession(newDonatorStatus);
+
+      return { donatorStatus: newDonatorStatus };
+    });
   },
 
   // ===== Global Cache Methods =====

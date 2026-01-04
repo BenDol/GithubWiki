@@ -1,4 +1,7 @@
 import { getOctokit } from './api.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger('DonatorRegistry');
 
 /**
  * Donator Registry System
@@ -85,9 +88,21 @@ function validateDonatorStatus(donatorStatus) {
  * @returns {Object|null} Donator status or null if not found
  */
 export async function getDonatorStatus(owner, repo, username, userId = null) {
+  // Capture stack trace for network debug tracking
+  if (typeof window !== 'undefined') {
+    const capturedStack = new Error().stack;
+    if (!window.__apiCallStacks__) {
+      window.__apiCallStacks__ = new Map();
+    }
+    window.__apiCallStacks__.set('getDonatorStatus', {
+      stack: capturedStack,
+      timestamp: Date.now()
+    });
+  }
+
   const cacheKey = userId ? `${owner}/${repo}/${userId}` : `${owner}/${repo}/${username}`;
 
-  console.log(`[DonatorRegistry] Fetching donator status for ${username}${userId ? ` (ID: ${userId})` : ''}`);
+  logger.debug('Getting donator status', { username, userId, cacheKey });
 
   // Check cache first (only in browser context)
   if (typeof window !== 'undefined') {
@@ -100,21 +115,22 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
 
       const cached = store.getCachedDonatorStatus(cacheKey, isAuthenticated);
       if (cached !== null) {
-        console.log(`[DonatorRegistry] ✓ Cache hit - using cached donator status for ${username}`);
+        logger.debug('Cache hit - using cached donator status', { username, cacheKey });
         return cached;
+      } else {
+        logger.debug('Cache miss - fetching from GitHub API', { username, cacheKey });
       }
     } catch (err) {
+      logger.warn('Cache check failed', { error: err.message });
       // Silently fail if stores can't be loaded (serverless context)
     }
   }
 
   // Check if there's already a request in-flight for this user (prevent duplicate concurrent requests)
   if (pendingDonatorRequests.has(cacheKey)) {
-    console.log(`[DonatorRegistry] Request already in-flight for ${username}, waiting...`);
+    logger.debug('Request already in-flight, waiting', { username, cacheKey });
     return pendingDonatorRequests.get(cacheKey);
   }
-
-  console.log('[DonatorRegistry] Cache miss - fetching from GitHub issues');
 
   // Create the request promise
   const requestPromise = (async () => {
@@ -152,7 +168,7 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
         );
 
         if (donatorIssue) {
-          console.log(`[DonatorRegistry] Found donator status for user ${username} by ID: ${userId}`);
+          logger.debug('Found donator status by user ID', { username, userId });
         }
       }
 
@@ -163,21 +179,21 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
         );
 
         if (donatorIssue) {
-          console.log(`[DonatorRegistry] Found legacy donator status for ${username} by title`);
+          logger.debug('Found legacy donator status by title', { username });
         }
       }
 
       let donatorData = null;
 
       if (!donatorIssue) {
-        console.log(`[DonatorRegistry] No donator status found for user: ${username}`);
+        logger.debug('No donator status found', { username });
       } else {
         // Parse JSON from issue body
         try {
           donatorData = JSON.parse(donatorIssue.body);
-          console.log(`[DonatorRegistry] Loaded donator status for ${username}`);
+          logger.debug('Loaded donator status', { username, isDonator: donatorData?.isDonator });
         } catch (parseError) {
-          console.error(`[DonatorRegistry] Failed to parse donator data for ${username}:`, parseError);
+          logger.error('Failed to parse donator data', { username, error: parseError.message });
         }
       }
 
@@ -187,7 +203,7 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
           const { useGitHubDataStore } = await import('../../store/githubDataStore');
           const store = useGitHubDataStore.getState();
           store.cacheDonatorStatus(cacheKey, donatorData);
-          console.log(`[DonatorRegistry] Cached donator status for ${username}`);
+          logger.debug('Cached donator status', { username, cacheKey });
         } catch (err) {
           // Silently fail if store can't be loaded
         }
@@ -195,7 +211,7 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
 
       return donatorData;
     } catch (error) {
-      console.error(`[DonatorRegistry] Failed to get donator status for ${username}:`, error);
+      logger.error('Failed to get donator status', { username, error: error.message });
       return null;
     } finally {
       // Clear the in-flight request
@@ -248,7 +264,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       );
 
       if (existingIssue) {
-        console.log(`[DonatorRegistry] Found existing donator status for user ${username} by ID: ${userId}`);
+        logger.debug('Found existing donator status by user ID', { username, userId });
       }
     }
 
@@ -259,7 +275,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       );
 
       if (existingIssue) {
-        console.log(`[DonatorRegistry] Found legacy donator status for ${username} by title, will migrate to user ID label`);
+        logger.debug('Found legacy donator status by title, will migrate to user ID label', { username });
       }
     }
 
@@ -277,7 +293,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
 
     // Use bot service to create/update the donator issue
     if (existingIssue) {
-      console.log(`[DonatorRegistry] Updating donator status for ${username}...`);
+      logger.info('Updating donator status', { username });
 
       // Update using bot token (use parameter if provided, otherwise try environment)
       const token = botToken || process.env.WIKI_BOT_TOKEN ||
@@ -298,7 +314,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
         labels: issueLabels,
       });
 
-      console.log(`[DonatorRegistry] ✓ Donator status updated for ${username} (issue #${updatedIssue.number})`);
+      logger.info('Donator status updated', { username, issueNumber: updatedIssue.number });
 
       // Invalidate cache (only in browser context)
       if (typeof window !== 'undefined') {
@@ -307,7 +323,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
           const store = useGitHubDataStore.getState();
           const cacheKey = `${owner}/${repo}/${userId}`;
           store.invalidateDonatorStatusCache(cacheKey);
-          console.log(`[DonatorRegistry] Invalidated donator status cache for ${username}`);
+          logger.debug('Invalidated donator status cache', { username });
         } catch (err) {
           // Silently fail if not in browser context
         }
@@ -315,7 +331,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
 
       return updatedIssue;
     } else {
-      console.log(`[DonatorRegistry] Creating donator status for ${username}...`);
+      logger.info('Creating donator status', { username });
 
       // Create using bot token (use parameter if provided, otherwise try environment)
       const token = botToken || process.env.WIKI_BOT_TOKEN ||
@@ -335,7 +351,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
         labels: issueLabels,
       });
 
-      console.log(`[DonatorRegistry] ✓ Donator status created for ${username} (issue #${createdIssue.number})`);
+      logger.info('Donator status created', { username, issueNumber: createdIssue.number });
 
       // Invalidate cache (only in browser context)
       if (typeof window !== 'undefined') {
@@ -344,7 +360,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
           const store = useGitHubDataStore.getState();
           const cacheKey = `${owner}/${repo}/${userId}`;
           store.invalidateDonatorStatusCache(cacheKey);
-          console.log(`[DonatorRegistry] Invalidated donator status cache for ${username}`);
+          logger.debug('Invalidated donator status cache', { username });
         } catch (err) {
           // Silently fail if not in browser context
         }
@@ -353,7 +369,7 @@ export async function saveDonatorStatus(owner, repo, username, userId, donatorSt
       return createdIssue;
     }
   } catch (error) {
-    console.error(`[DonatorRegistry] Failed to save donator status for ${username}:`, error);
+    logger.error('Failed to save donator status', { username, error: error.message });
     throw error;
   }
 }
@@ -382,14 +398,14 @@ export async function getAllDonators(owner, repo) {
         const donatorData = JSON.parse(issue.body);
         donators.push(donatorData);
       } catch (parseError) {
-        console.warn(`[DonatorRegistry] Failed to parse donator status in issue #${issue.number}`);
+        logger.warn('Failed to parse donator status', { issueNumber: issue.number, error: parseError.message });
       }
     }
 
-    console.log(`[DonatorRegistry] Loaded ${donators.length} donator statuses`);
+    logger.debug('Loaded donator statuses', { count: donators.length });
     return donators;
   } catch (error) {
-    console.error('[DonatorRegistry] Failed to get all donators:', error);
+    logger.error('Failed to get all donators', { error: error.message });
     return [];
   }
 }
@@ -436,7 +452,7 @@ export async function removeDonatorStatus(owner, repo, username, userId = null, 
     }
 
     if (!donatorIssue) {
-      console.log(`[DonatorRegistry] No donator status found to remove for ${username}`);
+      logger.debug('No donator status found to remove', { username });
       return false;
     }
 
@@ -457,10 +473,10 @@ export async function removeDonatorStatus(owner, repo, username, userId = null, 
       state: 'closed',
     });
 
-    console.log(`[DonatorRegistry] ✓ Donator status removed for ${username} (closed issue #${donatorIssue.number})`);
+    logger.info('Donator status removed', { username, issueNumber: donatorIssue.number });
     return true;
   } catch (error) {
-    console.error(`[DonatorRegistry] Failed to remove donator status for ${username}:`, error);
+    logger.error('Failed to remove donator status', { username, error: error.message });
     throw error;
   }
 }

@@ -4,6 +4,10 @@
  * for game-specific rendering (e.g., skill cards, equipment cards)
  */
 
+import { createLogger } from './logger.js';
+
+const logger = createLogger('ContentRegistry');
+
 let registeredProcessor = null;
 let registeredComponents = {};
 let registeredSkillPreview = null;
@@ -19,11 +23,11 @@ let registeredPickers = {}; // Generic picker registry (e.g., { 'spirit': { comp
  */
 export function registerContentProcessor(processor) {
   if (typeof processor !== 'function') {
-    console.warn('[Content Registry] Processor must be a function');
+    logger.warn('Processor must be a function');
     return;
   }
   registeredProcessor = processor;
-  console.log('[Content Registry] Content processor registered');
+  logger.debug('Content processor registered');
 }
 
 /**
@@ -34,11 +38,11 @@ export function registerContentProcessor(processor) {
  */
 export function registerCustomComponents(components) {
   if (typeof components !== 'object') {
-    console.warn('[Content Registry] Components must be an object');
+    logger.warn('Components must be an object');
     return;
   }
   registeredComponents = { ...components };
-  console.log('[Content Registry] Custom components registered:', Object.keys(components));
+  logger.debug('Custom components registered', { components: Object.keys(components) });
 }
 
 /**
@@ -63,11 +67,11 @@ export function getCustomComponents() {
  */
 export function registerSkillPreview(renderer) {
   if (typeof renderer !== 'function') {
-    console.warn('[Content Registry] Skill preview renderer must be a function');
+    logger.warn('Skill preview renderer must be a function');
     return;
   }
   registeredSkillPreview = renderer;
-  console.log('[Content Registry] Skill preview renderer registered');
+  logger.debug('Skill preview renderer registered');
 }
 
 /**
@@ -84,11 +88,11 @@ export function getSkillPreview() {
  */
 export function registerEquipmentPreview(renderer) {
   if (typeof renderer !== 'function') {
-    console.warn('[Content Registry] Equipment preview renderer must be a function');
+    logger.warn('Equipment preview renderer must be a function');
     return;
   }
   registeredEquipmentPreview = renderer;
-  console.log('[Content Registry] Equipment preview renderer registered');
+  logger.debug('Equipment preview renderer registered');
 }
 
 /**
@@ -105,11 +109,11 @@ export function getEquipmentPreview() {
  */
 export function registerDataAutocompleteSearch(searchFunction) {
   if (typeof searchFunction !== 'function') {
-    console.warn('[Content Registry] Data autocomplete search must be a function');
+    logger.warn('Data autocomplete search must be a function');
     return;
   }
   registeredDataAutocompleteSearch = searchFunction;
-  console.log('[Content Registry] Data autocomplete search registered');
+  logger.debug('Data autocomplete search registered');
 }
 
 /**
@@ -130,11 +134,11 @@ export function getDataAutocompleteSearch() {
  */
 export function registerPicker(name, component, metadata = {}) {
   if (!name || typeof name !== 'string') {
-    console.warn('[Content Registry] Picker name must be a non-empty string');
+    logger.warn('Picker name must be a non-empty string');
     return;
   }
   if (!component) {
-    console.warn('[Content Registry] Picker component is required');
+    logger.warn('Picker component is required');
     return;
   }
   registeredPickers[name] = {
@@ -145,7 +149,7 @@ export function registerPicker(name, component, metadata = {}) {
     handler: metadata.handler || null, // Optional handler function for parent-specific logic
     renderPreview: metadata.renderPreview || null // Optional preview renderer for picker
   };
-  console.log(`[Content Registry] Picker '${name}' registered with label: ${registeredPickers[name].label}`);
+  logger.debug('Picker registered', { name, label: registeredPickers[name].label });
 }
 
 /**
@@ -192,5 +196,5 @@ export function clearRegistry() {
   registeredEquipmentPreview = null;
   registeredDataAutocompleteSearch = null;
   registeredPickers = {};
-  console.log('[Content Registry] Registry cleared');
+  logger.debug('Registry cleared');
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useWikiConfig } from './useWikiConfig.js';
 import { getDonatorStatus } from '../services/github/donatorRegistry.js';
 import { createLogger } from '../utils/logger.js';
@@ -16,6 +16,22 @@ export function useDonatorStatus(username, userId = null) {
   const [loading, setLoading] = useState(false);
   const { config } = useWikiConfig();
 
+  // Extract specific config values to avoid re-running on every config change
+  const donationBadgeEnabled = config?.features?.donation?.badge?.enabled;
+  const repositoryOwner = config?.wiki?.repository?.owner;
+  const repositoryRepo = config?.wiki?.repository?.repo;
+  const donationBadge = config?.features?.donation?.badge?.badge;
+  const donationColor = config?.features?.donation?.badge?.color;
+
+  // Create stable config object for dependencies
+  const stableConfig = useMemo(() => ({
+    badgeEnabled: donationBadgeEnabled,
+    owner: repositoryOwner,
+    repo: repositoryRepo,
+    badge: donationBadge,
+    color: donationColor,
+  }), [donationBadgeEnabled, repositoryOwner, repositoryRepo, donationBadge, donationColor]);
+
   useEffect(() => {
     // Skip if no username provided
     if (!username) {
@@ -25,28 +41,26 @@ export function useDonatorStatus(username, userId = null) {
     }
 
     // Skip if donator badges are not enabled
-    if (!config?.features?.donation?.badge?.enabled) {
+    if (!stableConfig.badgeEnabled) {
       setDonatorData(null);
       setLoading(false);
       return;
     }
 
     // Skip if no repository configured
-    if (!config?.wiki?.repository) {
+    if (!stableConfig.owner || !stableConfig.repo) {
       setDonatorData(null);
       setLoading(false);
       return;
     }
 
-    const { owner, repo } = config.wiki.repository;
-
     // Repository owner gets donator badge by default (they're funding the project!)
-    if (username === owner) {
+    if (username === stableConfig.owner) {
       const ownerBadge = {
         isDonator: true,
         donatedAt: new Date(0).toISOString(), // Epoch time (permanent)
-        badge: config.features.donation.badge.badge,
-        color: config.features.donation.badge.color,
+        badge: stableConfig.badge,
+        color: stableConfig.color,
         assignedBy: 'repository-owner',
       };
       setDonatorData(ownerBadge);
@@ -62,7 +76,7 @@ export function useDonatorStatus(username, userId = null) {
       setLoading(true);
       try {
         logger.debug('Loading donator status', { username });
-        const status = await getDonatorStatus(owner, repo, username, userId);
+        const status = await getDonatorStatus(stableConfig.owner, stableConfig.repo, username, userId);
 
         if (!cancelled) {
           setDonatorData(status);
@@ -86,7 +100,7 @@ export function useDonatorStatus(username, userId = null) {
     return () => {
       cancelled = true;
     };
-  }, [username, userId, config]);
+  }, [username, userId, stableConfig]);
 
   return {
     isDonator: donatorData?.isDonator || false,
