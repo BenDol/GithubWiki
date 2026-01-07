@@ -2,6 +2,8 @@ import { getOctokit } from './api';
 import { getCachedUserProfile } from './githubCache';
 import { saveUserSnapshotWithBot } from './botService';
 import { filterByReleaseDate } from '../../utils/releaseDate';
+import { getCacheValue, setCacheValue } from '../../utils/timeCache';
+import { cacheName } from '../../utils/storageManager';
 
 /**
  * User Profile Snapshot System
@@ -26,6 +28,9 @@ const SNAPSHOT_LABEL = 'user-snapshot';
 const SNAPSHOT_TITLE_PREFIX = '[User Snapshot]';
 const MAX_PRS_IN_SNAPSHOT = 100;
 
+// Cache TTL for snapshots: 10 minutes (snapshots are updated infrequently)
+const SNAPSHOT_CACHE_TTL = 10 * 60 * 1000;
+
 /**
  * Track in-progress snapshot updates to prevent concurrent duplicates
  * Key: username, Value: Promise
@@ -35,6 +40,7 @@ const snapshotUpdatesInProgress = new Map();
 /**
  * Get snapshot data for a specific user
  * Searches by user ID label (permanent) first, falls back to username title match (legacy)
+ * Cached for 10 minutes to reduce API calls and improve performance
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} username - GitHub username
@@ -42,6 +48,14 @@ const snapshotUpdatesInProgress = new Map();
  * @returns {Object|null} Snapshot data or null if not found
  */
 export async function getUserSnapshot(owner, repo, username, userId = null) {
+  // Check cache first (use userId if available, otherwise username)
+  const cacheKey = cacheName(`user_snapshot_${userId || username}`);
+  const cached = getCacheValue(cacheKey);
+  if (cached) {
+    console.log(`[UserSnapshot] Using cached snapshot for ${username} (${userId || 'no ID'})`);
+    return cached;
+  }
+
   try {
     const octokit = getOctokit();
 
@@ -99,6 +113,10 @@ export async function getUserSnapshot(owner, repo, username, userId = null) {
     try {
       const snapshotData = JSON.parse(snapshotIssue.body);
       console.log(`[UserSnapshot] Loaded snapshot for ${username}, last updated: ${snapshotData.lastUpdated}`);
+
+      // Cache the snapshot (10 minute TTL)
+      setCacheValue(cacheKey, snapshotData, SNAPSHOT_CACHE_TTL);
+
       return snapshotData;
     } catch (parseError) {
       console.error(`[UserSnapshot] Failed to parse snapshot data for ${username}:`, parseError);
@@ -187,6 +205,16 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
 
     const issue = await saveUserSnapshotWithBot(owner, repo, username, snapshotData, existingIssueNumber);
     console.log(`[UserSnapshot] ✓ Snapshot ${existingIssueNumber ? 'updated' : 'created'} for ${username} (issue #${issue.number})`);
+
+    // Invalidate cache after saving snapshot (both username and userId keys)
+    if (snapshotData.userId) {
+      const userIdCacheKey = cacheName(`user_snapshot_${snapshotData.userId}`);
+      localStorage.removeItem(userIdCacheKey);
+      console.log(`[UserSnapshot] Invalidated cache for user ID: ${snapshotData.userId}`);
+    }
+    const usernameCacheKey = cacheName(`user_snapshot_${username}`);
+    localStorage.removeItem(usernameCacheKey);
+    console.log(`[UserSnapshot] Invalidated cache for username: ${username}`);
 
     return issue;
   } catch (error) {
