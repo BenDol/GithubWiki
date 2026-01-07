@@ -25,12 +25,15 @@ export const getPrestigeTier = (stats, tiers, username = null, repoOwner = null)
     }
   }
 
-  // Calculate contribution score
-  // Weight: merged PRs are worth more than open/closed
+  // Calculate contribution score based on line changes only
+  // Additions are heavily weighted as they represent new content creation
+  // Deletions are lightly weighted as they represent cleanup/maintenance
+  const additions = stats.totalAdditions || 0;
+  const deletions = stats.totalDeletions || 0;
+
   const score =
-    (stats.mergedPRs * 3) +  // Merged PRs worth 3x
-    (stats.openPRs * 1) +     // Open PRs worth 1x
-    (stats.closedPRs * 0.5);  // Closed PRs worth 0.5x
+    (additions * 10) +  // Additions worth 10x (new content)
+    (deletions * 1);     // Deletions worth 1x (cleanup)
 
   // Sort tiers by minContributions descending
   const sortedTiers = [...tiers].sort((a, b) => b.minContributions - a.minContributions);
@@ -58,11 +61,13 @@ export const getProgressToNextTier = (stats, currentTier, tiers) => {
     return null;
   }
 
-  // Calculate current score
+  // Calculate current score based on line changes only
+  const additions = stats.totalAdditions || 0;
+  const deletions = stats.totalDeletions || 0;
+
   const score =
-    (stats.mergedPRs * 3) +
-    (stats.openPRs * 1) +
-    (stats.closedPRs * 0.5);
+    (additions * 10) +  // Additions worth 10x (new content)
+    (deletions * 1);     // Deletions worth 1x (cleanup)
 
   // Find next tier
   const sortedTiers = [...tiers].sort((a, b) => a.minContributions - b.minContributions);

@@ -206,15 +206,17 @@ export async function saveUserSnapshot(owner, repo, username, snapshotData) {
     const issue = await saveUserSnapshotWithBot(owner, repo, username, snapshotData, existingIssueNumber);
     console.log(`[UserSnapshot] ✓ Snapshot ${existingIssueNumber ? 'updated' : 'created'} for ${username} (issue #${issue.number})`);
 
-    // Invalidate cache after saving snapshot (both username and userId keys)
-    if (snapshotData.userId) {
-      const userIdCacheKey = cacheName(`user_snapshot_${snapshotData.userId}`);
-      localStorage.removeItem(userIdCacheKey);
-      console.log(`[UserSnapshot] Invalidated cache for user ID: ${snapshotData.userId}`);
+    // Invalidate cache after saving snapshot (client-side only)
+    if (typeof localStorage !== 'undefined') {
+      if (snapshotData.userId) {
+        const userIdCacheKey = cacheName(`user_snapshot_${snapshotData.userId}`);
+        localStorage.removeItem(userIdCacheKey);
+        console.log(`[UserSnapshot] Invalidated cache for user ID: ${snapshotData.userId}`);
+      }
+      const usernameCacheKey = cacheName(`user_snapshot_${username}`);
+      localStorage.removeItem(usernameCacheKey);
+      console.log(`[UserSnapshot] Invalidated cache for username: ${username}`);
     }
-    const usernameCacheKey = cacheName(`user_snapshot_${username}`);
-    localStorage.removeItem(usernameCacheKey);
-    console.log(`[UserSnapshot] Invalidated cache for username: ${username}`);
 
     return issue;
   } catch (error) {

@@ -194,11 +194,8 @@ const StarContributor = ({ sectionId, pageId }) => {
       {/* User action menu */}
       {showUserActionMenu && user && (
         <UserActionMenu
-          targetUser={{
-            username: topContributor.username,
-            userId: topContributor.userId,
-            displayName: displayAuthor,
-          }}
+          username={topContributor.username}
+          userId={topContributor.userId}
           onClose={() => setShowUserActionMenu(false)}
           position={userMenuPosition}
         />

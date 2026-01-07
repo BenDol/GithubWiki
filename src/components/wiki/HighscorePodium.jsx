@@ -34,11 +34,11 @@ const HighscorePodium = ({ topThree }) => {
   }, []);
 
   // Handle avatar click
-  const handleAvatarClick = (e, username) => {
+  const handleAvatarClick = (e, username, userId) => {
     if (!username) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setSelectedUser(username);
+    setSelectedUser({ username, userId });
     setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
     setShowUserActionMenu(true);
   };
@@ -269,7 +269,8 @@ const HighscorePodium = ({ topThree }) => {
       {/* User Action Menu */}
       {showUserActionMenu && selectedUser && (
         <UserActionMenu
-          username={selectedUser}
+          username={selectedUser.username}
+          userId={selectedUser.userId}
           onClose={handleUserMenuClose}
           position={userMenuPosition}
           onBan={() => {}}

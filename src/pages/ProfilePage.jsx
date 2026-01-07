@@ -79,11 +79,11 @@ const ProfilePage = () => {
   const [snapshotCreationError, setSnapshotCreationError] = useState(null);
 
   // Handle avatar click
-  const handleAvatarClick = (e, username) => {
+  const handleAvatarClick = (e, username, userId) => {
     if (!username) return;
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setSelectedUser(username);
+    setSelectedUser({ username, userId });
     setUserMenuPosition({ x: rect.left, y: rect.bottom - 2 });
     setShowUserActionMenu(true);
   };
@@ -175,6 +175,7 @@ const ProfilePage = () => {
           if (snapshot) {
             console.log(`[Profile] Snapshot loaded for ${targetUsername}:`, {
               lastUpdated: snapshot.lastUpdated,
+              joinedAt: snapshot.joinedAt,
               totalPRs: snapshot.stats.totalPRs,
               additions: snapshot.stats.totalAdditions,
             });
@@ -750,7 +751,16 @@ const ProfilePage = () => {
 
         {/* Prestige Badge Display */}
         {profileUser && config?.prestige?.enabled && pullRequests.length > 0 && (
-          <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-4 sm:p-6 border border-gray-200 dark:border-gray-600">
+          <div className="mt-6 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-4 sm:p-6 border border-gray-200 dark:border-gray-600 relative">
+            {/* Joined Date - Top Right Corner */}
+            {snapshotData?.joinedAt && (
+              <div className="absolute top-4 right-4 flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>Joined {new Date(snapshotData.joinedAt).toLocaleDateString()}</span>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row items-center sm:items-center gap-4 sm:gap-6">
               {/* Avatar with Prestige Badge */}
               <div className="flex-shrink-0">
@@ -863,7 +873,16 @@ const ProfilePage = () => {
 
         {/* Basic Profile Info - Show when no contributions yet */}
         {profileUser && !isOwnProfile && pullRequests.length === 0 && (
-          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 sm:p-6 border border-blue-200 dark:border-blue-800">
+          <div className="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 sm:p-6 border border-blue-200 dark:border-blue-800 relative">
+            {/* Joined Date - Top Right Corner */}
+            {snapshotData?.joinedAt && (
+              <div className="absolute top-4 right-4 flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 px-3 py-1.5 rounded-full border border-blue-200 dark:border-gray-600 shadow-sm">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>Joined {new Date(snapshotData.joinedAt).toLocaleDateString()}</span>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
               {/* Avatar without prestige badge */}
               <PrestigeAvatar
@@ -919,22 +938,6 @@ const ProfilePage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
                       <span>{profileUser.company}</span>
-                    </div>
-                  )}
-                  {profileUser.created_at && (
-                    <div className="flex items-center gap-1">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span>Joined GitHub {new Date(profileUser.created_at).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {snapshotData?.joinedAt && (
-                    <div className="flex items-center gap-1">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      <span>Joined wiki {new Date(snapshotData.joinedAt).toLocaleDateString()}</span>
                     </div>
                   )}
                 </div>
@@ -1593,7 +1596,8 @@ const ProfilePage = () => {
       {/* User Action Menu */}
       {showUserActionMenu && selectedUser && (
         <UserActionMenu
-          username={selectedUser}
+          username={selectedUser.username}
+          userId={selectedUser.userId}
           onClose={handleUserMenuClose}
           position={userMenuPosition}
           onBan={() => {}}

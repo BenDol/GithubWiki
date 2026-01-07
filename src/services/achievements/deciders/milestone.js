@@ -46,9 +46,11 @@ export async function veteran(userData, context) {
 
 /**
  * Early Adopter - User joined the wiki in its early days (within first 30 days)
- * Uses releaseDate from VITE_RELEASE_DATE environment variable
+ * Uses releaseDate from VITE_RELEASE_DATE environment variable and wiki join date from achievements issue
  */
 export async function earlyAdopter(userData, context) {
+  const { octokit, owner, repo, userId } = context;
+
   // Get release date from context (set via VITE_RELEASE_DATE env var)
   const releaseDate = context?.releaseDate;
   if (!releaseDate) {
@@ -56,17 +58,31 @@ export async function earlyAdopter(userData, context) {
     return false;
   }
 
-  if (!userData.pullRequests || userData.pullRequests.length === 0) return false;
+  try {
+    // Find user's achievements issue (created on first login)
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: `achievements,user-id:${userId}`,
+      state: 'open',
+      per_page: 1,
+    });
 
-  // Find the user's first PR (should already be filtered by release date in bot service)
-  const firstPR = userData.pullRequests[0]; // PRs are sorted oldest first in snapshot
-  if (!firstPR?.created_at) return false;
+    if (issues.length === 0) {
+      // No achievements issue = user just logged in, won't be early adopter
+      return false;
+    }
 
-  const firstPRDate = new Date(firstPR.created_at);
-  const timeDiff = firstPRDate.getTime() - releaseDate.getTime();
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    const achievementIssue = issues[0];
+    const joinedWikiDate = new Date(achievementIssue.created_at);
+    const timeDiff = joinedWikiDate.getTime() - releaseDate.getTime();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
 
-  return timeDiff >= 0 && timeDiff <= thirtyDays;
+    return timeDiff >= 0 && timeDiff <= thirtyDays;
+  } catch (error) {
+    console.error('Failed to check early adopter status:', error);
+    return false;
+  }
 }
 
 /**
