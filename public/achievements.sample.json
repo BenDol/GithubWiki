@@ -270,7 +270,7 @@
     {
       "id": "veteran",
       "title": "Veteran",
-      "description": "GitHub account is 1+ year old",
+      "description": "Been a wiki member for 1+ year",
       "icon": "🎖️",
       "category": "milestone",
       "rarity": "rare",

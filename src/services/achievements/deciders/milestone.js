@@ -11,15 +11,37 @@ export async function firstLogin(userData, context) {
 }
 
 /**
- * Veteran - User's GitHub account is 1+ year old
+ * Veteran - User has been a wiki member for 1+ year
+ * Checks when user first logged in to the wiki (achievements issue creation date)
  */
 export async function veteran(userData, context) {
-  if (!userData.user?.created_at) return false;
+  const { octokit, owner, repo, userId } = context;
 
-  const accountAge = Date.now() - new Date(userData.user.created_at).getTime();
-  const oneYear = 365 * 24 * 60 * 60 * 1000;
+  try {
+    // Find user's achievements issue (created on first login)
+    const { data: issues } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      labels: `achievements,user-id:${userId}`,
+      state: 'open',
+      per_page: 1,
+    });
 
-  return accountAge >= oneYear;
+    if (issues.length === 0) {
+      // No achievements issue = user just logged in, not a veteran yet
+      return false;
+    }
+
+    const achievementIssue = issues[0];
+    const joinedWikiDate = new Date(achievementIssue.created_at);
+    const membershipAge = Date.now() - joinedWikiDate.getTime();
+    const oneYear = 365 * 24 * 60 * 60 * 1000;
+
+    return membershipAge >= oneYear;
+  } catch (error) {
+    console.error('Failed to check veteran status:', error);
+    return false;
+  }
 }
 
 /**
