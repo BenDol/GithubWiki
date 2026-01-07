@@ -409,8 +409,10 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
   // Detect current branch for namespace isolation
   const branch = await detectCurrentBranch(config);
   const branchLabel = `branch:${branch}`;
+  const pageIdentifier = `${sectionId}/${pageId}`;
+  const pageIdLabel = `page:${pageIdentifier}`; // Unique label per page
   const cacheKey = `${owner}/${repo}/${branch}/${sectionId}/${pageId}`;
-  console.log(`[Admin] getOrCreateTopContributorIssue called - branch: ${branch}, cacheKey: ${cacheKey}`);
+  console.log(`[Admin] getOrCreateTopContributorIssue called - branch: ${branch}, page: ${pageIdentifier}, cacheKey: ${cacheKey}`);
 
   // Check cache first (5-minute TTL to reduce GitHub API calls)
   const cached = getCacheValue(cacheName('top_contributor_issue', cacheKey));
@@ -443,19 +445,29 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
       // Generate page title for issue
       const pageTitle = `${sectionId}/${pageId}`;
 
-      // Search for existing top contributor issue using listForRepo (fast, reliable)
-      console.log(`[Admin] Searching for top contributor with labels: "${TOP_CONTRIBUTOR_LABEL},${branchLabel}" in ${owner}/${repo}`);
+      // Search for existing top contributor issue using page-specific label for fast lookup
+      console.log(`[Admin] Searching for top contributor with labels: "${TOP_CONTRIBUTOR_LABEL},${branchLabel},${pageIdLabel}" in ${owner}/${repo}`);
       const { data: issues } = await octokit.rest.issues.listForRepo({
         owner,
         repo,
-        labels: `${TOP_CONTRIBUTOR_LABEL},${branchLabel}`,
+        labels: `${TOP_CONTRIBUTOR_LABEL},${branchLabel},${pageIdLabel}`,
         state: 'open',
-        per_page: 100, // Should be enough for most wikis
+        per_page: 1, // Only need 1 result since page label is unique
       });
-      console.log(`[Admin] Search returned ${issues.length} issue(s)`);
+      console.log(`[Admin] Search returned ${issues.length} issue(s) with page-specific label`);
 
+      // Log all found issues for debugging
+      if (issues.length > 0) {
+        console.log(`[Admin] Found top contributor issues:`, issues.map(i => ({
+          number: i.number,
+          title: i.title,
+          labels: i.labels.map(l => l.name)
+        })));
+      }
+
+      const expectedTitle = `[Top Contributor] ${pageTitle}`;
       const existingIssue = issues.find(
-        issue => issue.title === `[Top Contributor] ${pageTitle}`
+        issue => issue.title === expectedTitle
       );
 
       if (existingIssue) {
@@ -475,14 +487,43 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
         return;
       }
 
+      // Not found - log what we were looking for
+      console.log(`[Admin] No issue found with title "${expectedTitle}" among ${issues.length} issue(s) with top-contributor label`);
+
+      // Issue doesn't exist - check if user is authenticated before creating
+      // Anonymous users should not create top contributor issues (they're read-only)
+      let isAuthenticated = false;
+      try {
+        const user = await getAuthenticatedUser();
+        isAuthenticated = !!user;
+      } catch (authError) {
+        // Not authenticated, that's okay for reading
+        isAuthenticated = false;
+      }
+
+      if (!isAuthenticated) {
+        console.log('[Admin] Top contributor issue does not exist and user is not authenticated - returning null');
+        resolvePromise(null);
+        return;
+      }
+
       // Create new top contributor issue using bot service
-      console.log(`[Admin] Creating top contributor issue with bot... Labels: [${TOP_CONTRIBUTOR_LABEL}, ${branchLabel}, ${AUTOMATED_LABEL}]`);
+      // Format matches GitHub Action workflow: raw JSON only (no markdown)
+      console.log(`[Admin] Creating top contributor issue with bot... Labels: [${TOP_CONTRIBUTOR_LABEL}, ${branchLabel}, ${pageIdLabel}, ${AUTOMATED_LABEL}]`);
+      const emptyContributorData = {
+        username: null,
+        userId: null,
+        score: 0,
+        updatedAt: null
+      };
+      const issueBody = JSON.stringify(emptyContributorData, null, 2);
+
       const newIssue = await createAdminIssueWithBot(
         owner,
         repo,
         `[Top Contributor] ${pageTitle}`,
-        `⭐ **Top Contributor for ${pageTitle}**\n\nThis issue stores the top contributor data for this page.\n\n**Top Contributor:**\n\`\`\`json\n{\n  "username": null,\n  "userId": null,\n  "score": 0,\n  "updatedAt": null\n}\n\`\`\`\n\n---\n\n⚠️ **This issue is managed by the wiki bot.** Top contributor is automatically calculated based on commits.\n\n🤖 *This issue is managed by the wiki bot.*`,
-        [TOP_CONTRIBUTOR_LABEL, branchLabel, AUTOMATED_LABEL],
+        issueBody,
+        [TOP_CONTRIBUTOR_LABEL, branchLabel, pageIdLabel, AUTOMATED_LABEL],
         true // Lock the issue
       );
 
@@ -520,6 +561,12 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
 export const getTopContributor = async (owner, repo, sectionId, pageId, config, botUsername = null) => {
   try {
     const issue = await getOrCreateTopContributorIssue(owner, repo, sectionId, pageId, config, botUsername);
+
+    // If issue doesn't exist (e.g., anonymous user and issue not created yet), return null
+    if (!issue) {
+      console.log('[Admin] No top contributor issue exists yet');
+      return null;
+    }
 
     // Parse top contributor data from issue body
     // Try markdown code block format first (legacy format)
@@ -573,12 +620,8 @@ export const updateTopContributor = async (owner, repo, sectionId, pageId, contr
     updatedAt: new Date().toISOString(),
   };
 
-  // Update issue body
-  const jsonStr = JSON.stringify(updatedData, null, 2);
-  const newBody = issue.body.replace(
-    /```json\n[\s\S]*?\n```/,
-    `\`\`\`json\n${jsonStr}\n\`\`\``
-  );
+  // Update issue body with raw JSON (matches GitHub Action format)
+  const newBody = JSON.stringify(updatedData, null, 2);
 
   await updateAdminIssueWithBot(owner, repo, issue.number, newBody);
 

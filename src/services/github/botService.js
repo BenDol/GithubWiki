@@ -205,6 +205,8 @@ const updateIssueDirectly = async (owner, repo, issueNumber, body) => {
 
   console.log('[Bot Service] 🔧 Using direct API call for update (development mode)');
 
+  // Lazy-load Octokit only when function is called (avoids top-level await)
+  const { Octokit } = await import('octokit');
   const OctokitWithRetry = Octokit.plugin(retryPlugin);
   const octokit = new OctokitWithRetry({
     auth: botToken,
@@ -246,6 +248,8 @@ const lockIssueDirectly = async (owner, repo, issueNumber) => {
 
   console.log('[Bot Service] 🔧 Using direct API call for lock (development mode)');
 
+  // Lazy-load Octokit only when function is called (avoids top-level await)
+  const { Octokit } = await import('octokit');
   const OctokitWithRetry = Octokit.plugin(retryPlugin);
   const octokit = new OctokitWithRetry({
     auth: botToken,
@@ -534,6 +538,8 @@ export const createCommentOnIssueWithBot = async (owner, repo, issueNumber, body
         console.log('[Bot Service] Development mode: Using direct API call for comment');
 
         const botToken = getEnv("VITE_WIKI_BOT_TOKEN");
+        // Lazy-load Octokit only when function is called
+        const { Octokit } = await import('octokit');
         const OctokitWithRetry = Octokit.plugin(retryPlugin);
         const octokit = new OctokitWithRetry({
           auth: botToken,
@@ -721,6 +727,8 @@ const saveUserSnapshotDirectly = async (owner, repo, username, snapshotData, exi
     throw new Error('Bot token not configured');
   }
 
+  // Lazy-load Octokit only when function is called
+  const { Octokit } = await import('octokit');
   const OctokitWithRetry = Octokit.plugin(retryPlugin);
   const octokit = new OctokitWithRetry({
     auth: botToken,
@@ -869,6 +877,8 @@ const createIssueReportDirectly = async (report) => {
     throw new Error('Bot token not configured');
   }
 
+  // Lazy-load Octokit only when function is called
+  const { Octokit } = await import('octokit');
   const OctokitWithRetry = Octokit.plugin(retryPlugin);
   const octokit = new OctokitWithRetry({
     auth: botToken,
