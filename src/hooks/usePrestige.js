@@ -117,7 +117,12 @@ export const useUserPrestige = (username) => {
             console.log(`[Prestige] Found ${username} in snapshot, calculating prestige from stats`);
 
             // Calculate prestige tier from snapshot stats
-            const tier = getPrestigeTier(snapshot.stats, config.prestige.tiers);
+            const tier = getPrestigeTier(
+              snapshot.stats,
+              config.prestige.tiers,
+              username,
+              config?.wiki?.repository?.owner
+            );
 
             const data = {
               tier,
@@ -189,7 +194,12 @@ export const useUserPrestige = (username) => {
           };
 
           // Get prestige tier based on total PRs
-          const tier = getPrestigeTier(stats, config.prestige.tiers);
+          const tier = getPrestigeTier(
+            stats,
+            config.prestige.tiers,
+            username,
+            config?.wiki?.repository?.owner
+          );
 
           const data = { tier, stats };
 

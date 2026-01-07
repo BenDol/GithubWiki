@@ -7,11 +7,22 @@
  * Get user's prestige tier based on their statistics
  * @param {Object} stats - User contribution statistics
  * @param {Array} tiers - Prestige tier configuration from wiki-config
+ * @param {string} username - Username to check (optional)
+ * @param {string} repoOwner - Repository owner username (optional)
  * @returns {Object} The prestige tier object
  */
-export const getPrestigeTier = (stats, tiers) => {
+export const getPrestigeTier = (stats, tiers, username = null, repoOwner = null) => {
   if (!tiers || tiers.length === 0) {
     return null;
+  }
+
+  // Check if user is the repository owner - assign owner tier if it exists
+  if (username && repoOwner && username === repoOwner) {
+    const ownerTier = tiers.find(tier => tier.id === 'owner');
+    if (ownerTier) {
+      console.log(`[Prestige] User ${username} is repository owner, assigning owner tier`);
+      return ownerTier;
+    }
   }
 
   // Calculate contribution score

@@ -96,7 +96,12 @@ const PrestigeAvatar = ({
     showBadge && showPrestigeBadge && config?.prestige?.enabled === true
       ? loadedTier ||
         (finalStats && config?.prestige?.tiers?.length > 0
-          ? getPrestigeTier(finalStats, config.prestige.tiers)
+          ? getPrestigeTier(
+              finalStats,
+              config.prestige.tiers,
+              targetUsername,
+              config?.wiki?.repository?.owner
+            )
           : null)
       : null;
 

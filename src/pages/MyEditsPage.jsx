@@ -260,7 +260,12 @@ const MyEditsPage = () => {
   // Get prestige tier and progress
   const prestigeTier =
     config?.prestige?.enabled && config?.prestige?.tiers
-      ? getPrestigeTier(stats, config.prestige.tiers)
+      ? getPrestigeTier(
+          stats,
+          config.prestige.tiers,
+          user?.login,
+          config?.wiki?.repository?.owner
+        )
       : null;
 
   const progressToNextTier =
