@@ -158,6 +158,12 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
 
       let donatorIssue = null;
 
+      logger.debug('Searching for donator issue', {
+        username,
+        userId,
+        totalIssues: issues.length
+      });
+
       // First try: Search by user ID label (permanent identifier, preferred)
       if (userId) {
         donatorIssue = issues.find(issue =>
@@ -168,18 +174,19 @@ export async function getDonatorStatus(owner, repo, username, userId = null) {
         );
 
         if (donatorIssue) {
-          logger.debug('Found donator status by user ID', { username, userId });
+          logger.debug('Found donator status by user ID', { username, userId, issueNumber: donatorIssue.number });
         }
       }
 
       // Second try: Search by username in title (legacy entries or no user ID provided)
       if (!donatorIssue) {
+        const expectedTitle = `${DONATOR_TITLE_PREFIX} ${username}`;
         donatorIssue = issues.find(
-          issue => issue.title === `${DONATOR_TITLE_PREFIX} ${username}`
+          issue => issue.title === expectedTitle
         );
 
         if (donatorIssue) {
-          logger.debug('Found legacy donator status by title', { username });
+          logger.debug('Found legacy donator status by title', { username, issueNumber: donatorIssue.number });
         }
       }
 

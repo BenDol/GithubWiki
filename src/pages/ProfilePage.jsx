@@ -884,14 +884,16 @@ const ProfilePage = () => {
               </div>
             )}
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
-              {/* Avatar without prestige badge */}
+              {/* Avatar without prestige badge (but still show donator badge) */}
               <PrestigeAvatar
                 src={profileUser.avatar_url}
                 alt={profileUser.login}
                 username={profileUser.login}
                 userId={profileUser.id}
                 size="2xl"
-                showBadge={false}
+                showBadge={true}
+                showPrestigeBadge={false}
+                showDonatorBadge={true}
                 className="shadow-lg flex-shrink-0"
               />
 
