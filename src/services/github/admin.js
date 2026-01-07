@@ -396,14 +396,16 @@ export const getBannedUsers = async (owner, repo, config, botUsername = null) =>
 };
 
 /**
- * Get or create the top contributor issue for a specific page
+ * Get the top contributor issue for a specific page (read-only, does not create)
+ * Issues are created and managed by GitHub Actions only
+ * Uses page-specific labels for fast, direct lookup
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
  * @param {string} sectionId - Section ID (e.g., "characters")
  * @param {string} pageId - Page ID (e.g., "skills")
  * @param {Object} config - Wiki config for branch detection
  * @param {string} botUsername - Bot username (optional, falls back to env var)
- * @returns {Promise<Object>} Issue object containing top contributor data
+ * @returns {Promise<Object|null>} Issue object containing top contributor data, or null if not found
  */
 export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pageId, config, botUsername = null) => {
   // Detect current branch for namespace isolation
@@ -470,6 +472,11 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
         issue => issue.title === expectedTitle
       );
 
+      // Not found - log what we were looking for
+      if (!existingIssue && issues.length > 0) {
+        console.log(`[Admin] No issue found with title "${expectedTitle}" among ${issues.length} issue(s) with labels`);
+      }
+
       if (existingIssue) {
         // Security: Verify issue was created by authorized bot (wiki bot or GitHub Actions)
         const effectiveBotUsername = botUsername || (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_WIKI_BOT_USERNAME : null);
@@ -487,52 +494,10 @@ export const getOrCreateTopContributorIssue = async (owner, repo, sectionId, pag
         return;
       }
 
-      // Not found - log what we were looking for
-      console.log(`[Admin] No issue found with title "${expectedTitle}" among ${issues.length} issue(s) with top-contributor label`);
-
-      // Issue doesn't exist - check if user is authenticated before creating
-      // Anonymous users should not create top contributor issues (they're read-only)
-      let isAuthenticated = false;
-      try {
-        const user = await getAuthenticatedUser();
-        isAuthenticated = !!user;
-      } catch (authError) {
-        // Not authenticated, that's okay for reading
-        isAuthenticated = false;
-      }
-
-      if (!isAuthenticated) {
-        console.log('[Admin] Top contributor issue does not exist and user is not authenticated - returning null');
-        resolvePromise(null);
-        return;
-      }
-
-      // Create new top contributor issue using bot service
-      // Format matches GitHub Action workflow: raw JSON only (no markdown)
-      console.log(`[Admin] Creating top contributor issue with bot... Labels: [${TOP_CONTRIBUTOR_LABEL}, ${branchLabel}, ${pageIdLabel}, ${AUTOMATED_LABEL}]`);
-      const emptyContributorData = {
-        username: null,
-        userId: null,
-        score: 0,
-        updatedAt: null
-      };
-      const issueBody = JSON.stringify(emptyContributorData, null, 2);
-
-      const newIssue = await createAdminIssueWithBot(
-        owner,
-        repo,
-        `[Top Contributor] ${pageTitle}`,
-        issueBody,
-        [TOP_CONTRIBUTOR_LABEL, branchLabel, pageIdLabel, AUTOMATED_LABEL],
-        true // Lock the issue
-      );
-
-      console.log(`[Admin] Created top contributor issue #${newIssue.number}`);
-
-      // Cache for 5 minutes
-      setCacheValue(cacheName('top_contributor_issue', cacheKey), newIssue, 300000);
-
-      resolvePromise(newIssue);
+      // Issue doesn't exist - GitHub Actions will create it on next commit
+      // Client code should not create top contributor issues
+      console.log('[Admin] Top contributor issue does not exist yet - will be created by GitHub Actions on next commit');
+      resolvePromise(null);
     } catch (error) {
       console.error('Failed to get/create top contributor issue:', error);
       rejectPromise(error);
